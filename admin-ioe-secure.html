@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin Panel — I.O.E Hub</title>
+<link rel="stylesheet" href="css/global.css">
+<style>
+body { min-height:100vh; }
+.admin-wrap { max-width:560px; margin:0 auto; padding:40px 20px 60px; }
+
+/* ── LOGIN SCREEN ── */
+#loginScreen {
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; padding:32px;
+}
+.admin-icon { font-size:3rem; margin-bottom:18px; }
+.admin-login-title {
+  font-family:'Orbitron',sans-serif; font-size:1.1rem; font-weight:900;
+  color:#fff; letter-spacing:0.1em; margin-bottom:6px; text-align:center;
+}
+.admin-login-sub {
+  font-family:'Inter',sans-serif; font-size:0.8rem; color:var(--text-muted);
+  margin-bottom:28px; text-align:center;
+}
+.token-input {
+  width:100%; max-width:320px; padding:14px 16px;
+  border-radius:var(--radius); background:var(--bg-card2);
+  border:1px solid var(--border); color:var(--text);
+  font-family:monospace; font-size:0.85rem; outline:none;
+  text-align:center; margin-bottom:12px; transition:border-color 0.2s;
+}
+.token-input:focus { border-color:var(--border2); }
+.login-error {
+  color:#ff7096; font-family:'Inter',sans-serif; font-size:0.78rem;
+  margin-bottom:12px; display:none; text-align:center;
+}
+.btn-login {
+  width:100%; max-width:320px; padding:14px;
+  border-radius:var(--radius);
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  border:none; color:#fff; font-family:'Space Grotesk',sans-serif;
+  font-weight:700; font-size:0.92rem; cursor:pointer; transition:all 0.2s;
+}
+.btn-login:hover { filter:brightness(1.1); }
+
+.gen-token-box {
+  margin-top:32px; padding-top:24px; border-top:1px solid var(--border);
+  width:100%; max-width:320px; text-align:center;
+}
+.gen-token-label {
+  font-family:'Inter',sans-serif; font-size:0.74rem; color:var(--text-muted);
+  margin-bottom:10px;
+}
+.master-input {
+  width:100%; padding:11px 14px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.85rem;
+  outline:none; margin-bottom:10px; text-align:center;
+}
+.btn-gen {
+  width:100%; padding:11px; border-radius:var(--radius);
+  background:rgba(0,194,255,0.1); border:1px solid var(--border2);
+  color:var(--primary); font-family:'Space Grotesk',sans-serif;
+  font-weight:700; font-size:0.82rem; cursor:pointer; transition:all 0.2s;
+}
+.btn-gen:hover { background:rgba(0,194,255,0.18); }
+.token-result {
+  margin-top:14px; padding:14px; border-radius:var(--radius);
+  background:rgba(0,229,192,0.06); border:1px solid rgba(0,229,192,0.25);
+  font-family:monospace; font-size:0.75rem; color:var(--teal);
+  word-break:break-all; display:none;
+}
+
+/* ── DASHBOARD ── */
+#dashboard { display:none; }
+.dash-header {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:24px;
+}
+.dash-title {
+  font-family:'Space Grotesk',sans-serif; font-size:1.2rem; font-weight:700; color:#fff;
+}
+.btn-logout {
+  padding:8px 16px; border-radius:var(--radius);
+  background:var(--bg-card); border:1px solid var(--border);
+  color:var(--text-muted); font-family:'Inter',sans-serif; font-size:0.78rem;
+  cursor:pointer; transition:all 0.2s;
+}
+.btn-logout:hover { border-color:rgba(255,60,110,0.4); color:#ff7096; }
+
+.token-expiry-note {
+  font-family:'Inter',sans-serif; font-size:0.72rem; color:var(--text-muted);
+  margin-bottom:20px; padding:10px 14px; background:var(--bg-card);
+  border:1px solid var(--border); border-radius:var(--radius);
+}
+
+/* Search & ban box */
+.ban-box {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:20px; margin-bottom:20px;
+}
+.ban-box-title {
+  font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.95rem;
+  color:#fff; margin-bottom:14px;
+}
+.ban-search-row { display:flex; gap:8px; margin-bottom:12px; }
+.ban-inp {
+  flex:1; padding:11px 14px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.88rem;
+  outline:none; transition:border-color 0.2s;
+}
+.ban-inp:focus { border-color:var(--border2); }
+.ban-search-btn {
+  padding:11px 16px; border-radius:var(--radius);
+  background:rgba(0,194,255,0.12); border:1px solid var(--border2);
+  color:var(--primary); font-family:'Space Grotesk',sans-serif;
+  font-weight:700; font-size:0.8rem; cursor:pointer; white-space:nowrap;
+}
+
+.search-result-item {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 14px; background:var(--bg-card2); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:8px;
+}
+.sri-name { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.88rem; color:#fff; }
+.sri-device { font-family:monospace; font-size:0.65rem; color:var(--text-muted); margin-top:2px; }
+.btn-ban-this {
+  padding:7px 14px; border-radius:8px;
+  background:rgba(255,60,110,0.12); border:1px solid rgba(255,60,110,0.3);
+  color:#ff7096; font-family:'Space Grotesk',sans-serif; font-weight:700;
+  font-size:0.74rem; cursor:pointer; transition:all 0.2s; white-space:nowrap;
+}
+.btn-ban-this:hover { background:rgba(255,60,110,0.22); }
+
+.reason-inp {
+  width:100%; padding:10px 13px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.85rem;
+  outline:none; margin-top:8px; display:none;
+}
+
+/* Banned list */
+.banned-list { display:flex; flex-direction:column; gap:8px; }
+.banned-item {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 14px; background:rgba(255,60,110,0.04);
+  border:1px solid rgba(255,60,110,0.15); border-radius:var(--radius);
+}
+.bi-info { flex:1; }
+.bi-name { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.86rem; color:#fff; }
+.bi-reason { font-family:'Inter',sans-serif; font-size:0.74rem; color:var(--text-muted); margin-top:3px; }
+.bi-device { font-family:monospace; font-size:0.62rem; color:rgba(255,255,255,0.2); margin-top:3px; }
+.btn-unban {
+  padding:7px 14px; border-radius:8px;
+  background:rgba(0,229,192,0.1); border:1px solid rgba(0,229,192,0.3);
+  color:var(--teal); font-family:'Space Grotesk',sans-serif; font-weight:700;
+  font-size:0.74rem; cursor:pointer; transition:all 0.2s; white-space:nowrap;
+}
+.btn-unban:hover { background:rgba(0,229,192,0.2); }
+
+.empty-state {
+  text-align:center; padding:24px; font-family:'Inter',sans-serif;
+  font-size:0.82rem; color:var(--text-muted);
+}
+</style>
+</head>
+<body>
+<div class="astro-bg"><div class="astro-orb orb-1"></div><div class="astro-orb orb-2"></div><div class="astro-orb orb-3"></div></div>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="loginScreen">
+  <div class="admin-icon">🛡️</div>
+  <div class="admin-login-title">I.O.E ADMIN PANEL</div>
+  <div class="admin-login-sub">Akses terbatas — diperlukan token admin</div>
+
+  <input type="text" class="token-input" id="tokenInput" placeholder="Masukkan admin token...">
+  <div class="login-error" id="loginError">Token tidak valid atau sudah kadaluarsa</div>
+  <button class="btn-login" onclick="doLogin()">🔓 Masuk</button>
+
+  <div class="gen-token-box">
+    <div class="gen-token-label">Belum punya token? Generate dengan master key:</div>
+    <input type="password" class="master-input" id="masterKeyInput" placeholder="Master key...">
+    <button class="btn-gen" onclick="generateToken()">✨ Generate Token Baru (berlaku 7 hari)</button>
+    <div class="token-result" id="tokenResult"></div>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD ══ -->
+<div id="dashboard">
+  <div class="admin-wrap">
+    <div class="dash-header">
+      <div class="dash-title">🛡️ Admin Dashboard</div>
+      <button class="btn-logout" onclick="logout()">Keluar</button>
+    </div>
+
+    <div class="token-expiry-note" id="expiryNote">Token aktif</div>
+
+    <!-- Search & Ban -->
+    <div class="ban-box">
+      <div class="ban-box-title">🔍 Cari & Ban Member</div>
+      <div class="ban-search-row">
+        <input class="ban-inp" id="searchName" placeholder="Cari nama member...">
+        <button class="ban-search-btn" onclick="searchMember()">Cari</button>
+      </div>
+      <div id="searchResults"></div>
+    </div>
+
+    <!-- Banned list -->
+    <div class="ban-box">
+      <div class="ban-box-title">🚫 Daftar Member yang Diblokir</div>
+      <div class="banned-list" id="bannedList">
+        <div class="empty-state">Memuat...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let adminToken = sessionStorage.getItem('ioe_admin_token') || '';
+
+// ══ LOGIN ══
+async function doLogin() {
+  const t = document.getElementById('tokenInput').value.trim();
+  if (!t) return;
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/admin-token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'validate', token: t })
+    });
+    const d = await res.json();
+    if (d.valid) {
+      adminToken = t;
+      sessionStorage.setItem('ioe_admin_token', t);
+      showDashboard(d.expiresAt);
+    } else {
+      errEl.textContent = d.expired ? 'Token sudah kadaluarsa' : 'Token tidak valid';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Gagal terhubung ke server';
+    errEl.style.display = 'block';
+  }
+}
+
+async function generateToken() {
+  const mk = document.getElementById('masterKeyInput').value.trim();
+  if (!mk) return;
+  try {
+    const res = await fetch('/api/admin-token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generate', masterKey: mk })
+    });
+    const d = await res.json();
+    const resultEl = document.getElementById('tokenResult');
+    if (d.token) {
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `✓ Token baru: <strong style="color:#fff">${d.token}</strong><br><br>
+        <span style="color:rgba(255,255,255,0.4)">Simpan baik-baik! Berlaku 7 hari dari sekarang.</span>`;
+    } else {
+      resultEl.style.display = 'block';
+      resultEl.style.color = '#ff7096';
+      resultEl.textContent = d.error || 'Gagal generate token';
+    }
+  } catch(e) {
+    alert('Gagal terhubung ke server');
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem('ioe_admin_token');
+  adminToken = '';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+function showDashboard(expiresAt) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  if (expiresAt) {
+    const d = new Date(expiresAt);
+    document.getElementById('expiryNote').textContent =
+      `✓ Token aktif — berlaku sampai ${d.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})}`;
+  }
+  loadBannedList();
+}
+
+// ══ SEARCH MEMBER ══
+async function searchMember() {
+  const name = document.getElementById('searchName').value.trim();
+  if (!name) return;
+  const resEl = document.getElementById('searchResults');
+  resEl.innerHTML = '<div class="empty-state">Mencari...</div>';
+
+  try {
+    const res = await fetch(`/api/findmember?name=${encodeURIComponent(name)}&token=${adminToken}`);
+    const d = await res.json();
+    if (!d.results || d.results.length === 0) {
+      resEl.innerHTML = '<div class="empty-state">Tidak ditemukan member dengan nama tersebut</div>';
+      return;
+    }
+    resEl.innerHTML = '';
+    d.results.forEach(m => {
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      item.innerHTML = `
+        <div>
+          <div class="sri-name">${escHtml(m.name)}</div>
+          <div class="sri-device">${m.deviceId}</div>
+        </div>
+        <button class="btn-ban-this" onclick="promptBan('${m.deviceId}','${escHtml(m.name)}')">🚫 Ban</button>
+      `;
+      resEl.appendChild(item);
+    });
+  } catch(e) {
+    resEl.innerHTML = '<div class="empty-state">Gagal mencari. Coba lagi.</div>';
+  }
+}
+
+function promptBan(deviceId, name) {
+  const reason = prompt(`Ban "${name}"?\nMasukkan alasan ban:`, 'Pelanggaran aturan komunitas');
+  if (reason === null) return;
+  banDevice(deviceId, name, reason);
+}
+
+async function banDevice(deviceId, name, reason) {
+  try {
+    const res = await fetch('/api/ban', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ban', token: adminToken, deviceId, name, reason })
+    });
+    const d = await res.json();
+    if (d.success) {
+      alert(`✓ "${name}" berhasil diblokir`);
+      document.getElementById('searchResults').innerHTML = '';
+      document.getElementById('searchName').value = '';
+      loadBannedList();
+    } else {
+      alert('Gagal: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Gagal terhubung ke server');
+  }
+}
+
+// ══ BANNED LIST ══
+async function loadBannedList() {
+  const listEl = document.getElementById('bannedList');
+  try {
+    const res = await fetch('/api/ban', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'list', token: adminToken })
+    });
+    const d = await res.json();
+    if (!d.bans || d.bans.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">Belum ada member yang diblokir 🎉</div>';
+      return;
+    }
+    listEl.innerHTML = '';
+    d.bans.sort((a,b) => (b.bannedAt||0) - (a.bannedAt||0)).forEach(b => {
+      const item = document.createElement('div');
+      item.className = 'banned-item';
+      const date = b.bannedAt ? new Date(b.bannedAt).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}) : '';
+      item.innerHTML = `
+        <div class="bi-info">
+          <div class="bi-name">${escHtml(b.name || 'Unknown')}</div>
+          <div class="bi-reason">${escHtml(b.reason || '-')} · ${date}</div>
+          <div class="bi-device">${b.deviceId}</div>
+        </div>
+        <button class="btn-unban" onclick="unbanDevice('${b.deviceId}','${escHtml(b.name||'')}')">✓ Unban</button>
+      `;
+      listEl.appendChild(item);
+    });
+  } catch(e) {
+    listEl.innerHTML = '<div class="empty-state">Gagal memuat daftar ban</div>';
+  }
+}
+
+async function unbanDevice(deviceId, name) {
+  if (!confirm(`Unban "${name}"?`)) return;
+  try {
+    const res = await fetch('/api/ban', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'unban', token: adminToken, deviceId })
+    });
+    const d = await res.json();
+    if (d.success) { loadBannedList(); }
+    else alert('Gagal unban: ' + (d.error || ''));
+  } catch(e) { alert('Gagal terhubung ke server'); }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
+}
+
+// ══ AUTO LOGIN jika token tersimpan ══
+(async function() {
+  if (adminToken) {
+    try {
+      const res = await fetch('/api/admin-token', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'validate', token: adminToken })
+      });
+      const d = await res.json();
+      if (d.valid) { showDashboard(d.expiresAt); return; }
+    } catch(e) {}
+    sessionStorage.removeItem('ioe_admin_token');
+  }
+})();
+
+document.getElementById('tokenInput')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('searchName')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchMember();
+});
+</script>
+</body>
+</html>
