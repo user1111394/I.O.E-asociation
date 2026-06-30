@@ -1,0 +1,11 @@
+{
+  "name": "ioe-hub",
+  "version": "2.0.0",
+  "description": "I.O.E Hub — International Organization of Education",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
