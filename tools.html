@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Space Tools — I.O.E Hub</title>
+<link rel="stylesheet" href="css/global.css">
+<style>
+.page-wrap { padding-top:var(--nav-h); }
+
+.tools-grid { display:flex; flex-direction:column; gap:20px; padding:24px 20px 60px; max-width:800px; margin:0 auto; }
+
+.tool-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); overflow:hidden;
+}
+.tool-header {
+  padding:16px 18px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:10px;
+}
+.tool-icon { font-size:1.3rem; }
+.tool-title { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.95rem; color:#fff; }
+.tool-body { padding:18px; }
+
+/* ── SEARCH ── */
+.search-wrap { display:flex; gap:8px; margin-bottom:10px; }
+.search-input {
+  flex:1; padding:11px 14px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.9rem;
+  outline:none; transition:border-color 0.2s;
+}
+.search-input:focus { border-color:var(--border2); }
+.search-input::placeholder { color:var(--text-muted); }
+.search-btn {
+  padding:11px 18px; border-radius:var(--radius);
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  border:none; color:#fff; font-family:'Space Grotesk',sans-serif;
+  font-weight:700; font-size:0.85rem; cursor:pointer; transition:all 0.2s;
+  white-space:nowrap;
+}
+.search-btn:hover { filter:brightness(1.15); }
+.search-filter {
+  display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;
+}
+.search-pill {
+  font-size:0.7rem; padding:4px 10px; border-radius:20px;
+  border:1px solid var(--border); background:var(--bg-card);
+  color:var(--text-muted); cursor:pointer; transition:all 0.18s;
+  font-family:'Inter',sans-serif;
+}
+.search-pill.active { background:rgba(0,194,255,0.1); border-color:var(--border2); color:var(--primary); }
+.search-note {
+  font-family:'Inter',sans-serif; font-size:0.72rem;
+  color:var(--text-muted); line-height:1.5;
+}
+.search-note a { color:var(--primary); }
+
+/* ── CONVERTER ── */
+.conv-row { display:flex; gap:10px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap; }
+.conv-group { display:flex; flex-direction:column; gap:5px; flex:1; min-width:100px; }
+.conv-label {
+  font-family:'Inter',sans-serif; font-size:0.7rem;
+  color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em;
+}
+.conv-input {
+  width:100%; padding:10px 12px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Orbitron',sans-serif; font-size:0.9rem;
+  outline:none; transition:border-color 0.2s;
+}
+.conv-input:focus { border-color:var(--border2); }
+.conv-select {
+  width:100%; padding:10px 12px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.85rem;
+  outline:none; cursor:pointer;
+}
+.conv-btn {
+  padding:10px 18px; border-radius:var(--radius); height:40px;
+  background:rgba(0,194,255,0.15); border:1px solid var(--border2);
+  color:var(--primary); font-family:'Space Grotesk',sans-serif;
+  font-weight:700; font-size:0.8rem; cursor:pointer; transition:all 0.2s;
+  white-space:nowrap; align-self:flex-end;
+}
+.conv-btn:hover { background:rgba(0,194,255,0.25); }
+.conv-result {
+  padding:12px 14px; border-radius:var(--radius);
+  background:rgba(0,194,255,0.06); border:1px solid rgba(0,194,255,0.2);
+  font-family:'Orbitron',sans-serif; font-size:0.95rem; color:var(--primary);
+  min-height:44px; display:flex; align-items:center;
+  word-break:break-all;
+}
+.conv-result.empty { color:var(--text-muted); font-size:0.8rem; font-family:'Inter',sans-serif; }
+
+/* ── SPACE FACTS ── */
+.fact-box {
+  padding:18px; border-radius:var(--radius);
+  background:rgba(123,92,255,0.06); border:1px solid rgba(123,92,255,0.2);
+  margin-bottom:14px; min-height:80px;
+  display:flex; align-items:flex-start; gap:12px;
+}
+.fact-emoji { font-size:1.6rem; flex-shrink:0; margin-top:2px; }
+.fact-text {
+  font-family:'Inter',sans-serif; font-size:0.88rem;
+  color:rgba(255,255,255,0.75); line-height:1.7;
+}
+.fact-btn {
+  width:100%; padding:12px; border-radius:var(--radius);
+  background:linear-gradient(135deg,rgba(123,92,255,0.2),rgba(0,194,255,0.15));
+  border:1px solid rgba(123,92,255,0.3);
+  color:#fff; font-family:'Space Grotesk',sans-serif;
+  font-weight:700; font-size:0.88rem; cursor:pointer; transition:all 0.2s;
+}
+.fact-btn:hover { filter:brightness(1.2); }
+
+/* ── UNIT REF ── */
+.unit-ref {
+  display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;
+}
+.unit-item {
+  padding:10px 12px; background:var(--bg-card2);
+  border:1px solid var(--border); border-radius:var(--radius);
+}
+.unit-name { font-family:'Orbitron',sans-serif; font-size:0.62rem; color:var(--primary); letter-spacing:0.08em; }
+.unit-val  { font-family:'Inter',sans-serif; font-size:0.75rem; color:var(--text-muted); margin-top:3px; }
+</style>
+</head>
+<body>
+<div class="astro-bg"><div class="astro-orb orb-1"></div><div class="astro-orb orb-2"></div><div class="astro-orb orb-3"></div></div>
+<nav class="ioe-nav" id="ioe-nav"></nav>
+
+<div class="page-wrap">
+  <div class="tools-grid">
+
+    <div style="padding:4px 0 0">
+      <div class="section-title">Space Tools</div>
+      <div class="section-sub">Alat bantu eksplorasi & pencarian</div>
+    </div>
+
+    <!-- ══ SEARCH ══ -->
+    <div class="tool-card">
+      <div class="tool-header">
+        <span class="tool-icon">🔍</span>
+        <span class="tool-title">Cari Informasi</span>
+      </div>
+      <div class="tool-body">
+        <div class="search-wrap">
+          <input type="text" class="search-input" id="searchInput"
+            placeholder="Cari: galaksi bimasakti, sejarah romawi..." />
+          <button class="search-btn" onclick="doSearch()">Cari →</button>
+        </div>
+        <div class="search-filter">
+          <span class="search-pill active" data-site="" onclick="pickSite(this)">🌐 Semua</span>
+          <span class="search-pill" data-site="site:wikipedia.org" onclick="pickSite(this)">📖 Wikipedia</span>
+          <span class="search-pill" data-site="site:nasa.gov" onclick="pickSite(this)">🚀 NASA</span>
+          <span class="search-pill" data-site="astronomi OR sejarah" onclick="pickSite(this)">🔭 Astro+Sejarah</span>
+        </div>
+        <div class="search-note">
+          Pencarian membuka Google di tab baru dengan filter yang dipilih. Untuk pencarian lebih dalam,
+          coba tanyakan langsung ke <a href="cosmos.html">Cosmos AI →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ CONVERTER ══ -->
+    <div class="tool-card">
+      <div class="tool-header">
+        <span class="tool-icon">📏</span>
+        <span class="tool-title">Konverter Satuan Astronomi</span>
+      </div>
+      <div class="tool-body">
+        <div class="conv-row">
+          <div class="conv-group">
+            <label class="conv-label">Nilai</label>
+            <input type="number" class="conv-input" id="convVal" placeholder="1" step="any">
+          </div>
+          <div class="conv-group">
+            <label class="conv-label">Dari</label>
+            <select class="conv-select" id="convFrom">
+              <option value="km">Kilometer (km)</option>
+              <option value="m">Meter (m)</option>
+              <option value="mi">Miles (mi)</option>
+              <option value="au" selected>Astronomical Unit (AU)</option>
+              <option value="ly">Light Year (ly)</option>
+              <option value="pc">Parsec (pc)</option>
+              <option value="ls">Light Second (ls)</option>
+              <option value="lm">Light Minute (lm)</option>
+            </select>
+          </div>
+          <div class="conv-group">
+            <label class="conv-label">Ke</label>
+            <select class="conv-select" id="convTo">
+              <option value="km" selected>Kilometer (km)</option>
+              <option value="m">Meter (m)</option>
+              <option value="mi">Miles (mi)</option>
+              <option value="au">Astronomical Unit (AU)</option>
+              <option value="ly">Light Year (ly)</option>
+              <option value="pc">Parsec (pc)</option>
+              <option value="ls">Light Second (ls)</option>
+              <option value="lm">Light Minute (lm)</option>
+            </select>
+          </div>
+        </div>
+        <button class="conv-btn" style="width:100%;margin-bottom:12px" onclick="doConvert()">⚡ Konversi</button>
+        <div class="conv-result empty" id="convResult">Masukkan nilai dan tekan Konversi</div>
+
+        <div class="unit-ref">
+          <div class="unit-item">
+            <div class="unit-name">1 AU</div>
+            <div class="unit-val">149,597,870.7 km</div>
+          </div>
+          <div class="unit-item">
+            <div class="unit-name">1 Light Year</div>
+            <div class="unit-val">9,460,730,472,580 km</div>
+          </div>
+          <div class="unit-item">
+            <div class="unit-name">1 Parsec</div>
+            <div class="unit-val">3.086 × 10¹³ km</div>
+          </div>
+          <div class="unit-item">
+            <div class="unit-name">1 Light Second</div>
+            <div class="unit-val">299,792.458 km</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SPACE FACTS ══ -->
+    <div class="tool-card">
+      <div class="tool-header">
+        <span class="tool-icon">✨</span>
+        <span class="tool-title">Space & History Facts</span>
+      </div>
+      <div class="tool-body">
+        <div class="fact-box" id="factBox">
+          <span class="fact-emoji" id="factEmoji">🌌</span>
+          <div class="fact-text" id="factText">Tekan tombol di bawah untuk fakta menarik tentang luar angkasa dan sejarah!</div>
+        </div>
+        <button class="fact-btn" onclick="newFact()">🎲 Fakta Baru</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="js/nav.js"></script>
+<script>
+buildNav('tools.html');
+
+// ── SEARCH ──
+let searchSite = '';
+function pickSite(el) {
+  document.querySelectorAll('.search-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  searchSite = el.dataset.site;
+}
+
+function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  const query = searchSite ? `${q} ${searchSite}` : q;
+  window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
+}
+
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+// ── CONVERTER ──
+const TO_KM = {
+  km:  1,
+  m:   0.001,
+  mi:  1.60934,
+  au:  149597870.7,
+  ly:  9460730472580,
+  pc:  3.085677581e13,
+  ls:  299792.458,
+  lm:  17987547.48,
+};
+
+function doConvert() {
+  const val = parseFloat(document.getElementById('convVal').value);
+  if (isNaN(val)) {
+    document.getElementById('convResult').textContent = 'Masukkan angka yang valid';
+    document.getElementById('convResult').className = 'conv-result empty';
+    return;
+  }
+  const from = document.getElementById('convFrom').value;
+  const to   = document.getElementById('convTo').value;
+  const km   = val * TO_KM[from];
+  const result = km / TO_KM[to];
+
+  let display;
+  if (result >= 1e15 || (result < 0.0001 && result !== 0)) {
+    display = result.toExponential(6);
+  } else {
+    display = result.toLocaleString('id-ID', { maximumFractionDigits:8 });
+  }
+
+  const unitNames = {
+    km:'km', m:'m', mi:'mi', au:'AU', ly:'ly', pc:'pc', ls:'ls', lm:'lm'
+  };
+  document.getElementById('convResult').textContent =
+    `${val.toLocaleString()} ${unitNames[from]} = ${display} ${unitNames[to]}`;
+  document.getElementById('convResult').className = 'conv-result';
+}
+
+// ── SPACE FACTS ──
+const FACTS = [
+  { e:'🌌', t:'Galaksi Bimasakti mengandung sekitar 200-400 miliar bintang, dan Matahari kita hanyalah satu di antaranya — bintang yang sangat biasa di pinggiran galaksi.' },
+  { e:'⚫', t:'Lubang hitam supermasif di pusat galaksi M87, bernama M87*, memiliki massa setara 6,5 miliar Matahari. Foto pertamanya diambil pada 2019.' },
+  { e:'🌍', t:'Jika kamu bisa mengemudi dengan mobil ke Matahari dengan kecepatan 100 km/jam, perjalanan itu membutuhkan sekitar 171 tahun.' },
+  { e:'✨', t:'Cahaya yang kamu lihat dari bintang-bintang sebenarnya adalah cahaya masa lalu. Bintang terdekat (Proxima Centauri) berjarak 4.24 tahun cahaya — artinya cahayanya butuh 4.24 tahun untuk sampai ke Bumi.' },
+  { e:'🚀', t:'Neil Armstrong meninggalkan jejak kaki di Bulan pada 1969. Karena tidak ada angin di Bulan, jejak itu masih ada sampai sekarang dan mungkin akan bertahan jutaan tahun.' },
+  { e:'🪐', t:'Saturnus memiliki densitas yang begitu rendah sehingga secara teori bisa mengapung di atas air — jika ada lautan yang cukup besar untuk menampungnya.' },
+  { e:'🌠', t:'Setiap hari, sekitar 100 ton material luar angkasa (debu kosmik dan meteorit kecil) jatuh ke Bumi.' },
+  { e:'🔭', t:'Teleskop James Webb dapat mendeteksi inframerah dari galaksi yang terbentuk hanya 300 juta tahun setelah Big Bang — saat alam semesta masih sangat muda.' },
+  { e:'🏛️', t:'Bangsa Babilonia kuno sudah mampu memprediksi gerhana bulan sekitar 2.500 tahun lalu menggunakan catatan astronomi selama berabad-abad, tanpa teleskop.' },
+  { e:'🗺️', t:'Filsuf Yunani Eratosthenes berhasil menghitung keliling Bumi dengan akurasi sekitar 2% pada tahun 240 SM — hanya menggunakan bayangan matahari dan geometri.' },
+  { e:'⚗️', t:'Isaac Newton menemukan hukum gravitasi ketika usianya 23 tahun, saat London dilanda wabah dan ia terpaksa pulang ke kampung halamannya.' },
+  { e:'🌙', t:'Bulan perlahan-lahan menjauh dari Bumi sekitar 3.8 cm setiap tahunnya. Miliaran tahun lagi, gerhana matahari total tidak akan terjadi karena Bulan terlalu kecil.' },
+  { e:'🧭', t:'Peradaban Mesir Kuno membangun Piramida Giza dengan keselarasan astronomis yang luar biasa — lorong Raja di Piramida Besar mengarah tepat ke Bintang Utara.' },
+  { e:'⚡', t:'Matahari membutuhkan sekitar 225 juta tahun untuk menyelesaikan satu orbit penuh mengelilingi pusat Galaksi Bimasakti. Ini disebut "tahun galaktik" atau "cosmic year".' },
+  { e:'🌊', t:'Europa, bulan Jupiter, memiliki lautan air cair di bawah lapisan es tebalnya. Lautan ini diperkirakan dua kali lebih besar dari seluruh lautan di Bumi, menjadikannya kandidat terbaik untuk kehidupan di tata surya.' },
+  { e:'📜', t:'Perang Trojan yang diceritakan dalam Iliad Homer mungkin benar-benar terjadi sekitar tahun 1200 SM. Kota Troy (Troya) ditemukan di Turki modern pada abad ke-19.' },
+  { e:'🔺', t:'Bangsa Maya mengembangkan kalender yang sangat akurat dan mampu memprediksi gerhana ratusan tahun ke depan, tanpa teleskop atau matematika modern.' },
+  { e:'💫', t:'Voyager 1, diluncurkan tahun 1977, kini berada lebih dari 23 miliar km dari Bumi — menjadikannya objek buatan manusia yang paling jauh dari Bumi.' },
+];
+
+let lastFact = -1;
+function newFact() {
+  let idx;
+  do { idx = Math.floor(Math.random() * FACTS.length); } while (idx === lastFact);
+  lastFact = idx;
+  const f = FACTS[idx];
+  document.getElementById('factEmoji').textContent = f.e;
+  document.getElementById('factText').textContent  = f.t;
+  document.getElementById('factBox').style.animation = 'none';
+  requestAnimationFrame(() => {
+    document.getElementById('factBox').style.animation = 'fadeUp 0.3s ease';
+  });
+}
+</script>
+</body>
+</html>
