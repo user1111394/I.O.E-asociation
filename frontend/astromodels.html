@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Astro Explorer — I.O.E Hub</title>
+<link rel="stylesheet" href="css/global.css">
+<style>
+body { overflow:hidden; background:transparent; }
+
+#page-3d {
+  position:fixed; inset:0; padding-top:var(--nav-h);
+  display:flex; flex-direction:column;
+}
+
+/* ── SEARCH BAR ── */
+.explorer-search-bar {
+  padding:12px 16px; border-bottom:1px solid var(--border);
+  background:rgba(4,4,15,0.92); backdrop-filter:blur(12px);
+  flex-shrink:0; position:relative; z-index:20;
+}
+.search-input-row { display:flex; gap:8px; margin-bottom:10px; }
+.explorer-inp {
+  flex:1; padding:11px 15px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.9rem;
+  outline:none; transition:border-color 0.2s;
+}
+.explorer-inp:focus { border-color:var(--border2); }
+.explorer-inp::placeholder { color:var(--text-muted); }
+.explorer-search-btn {
+  padding:11px 16px; border-radius:var(--radius);
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  border:none; color:#fff; font-family:'Space Grotesk',sans-serif;
+  font-weight:700; font-size:0.85rem; cursor:pointer; white-space:nowrap;
+}
+.quick-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.qc {
+  font-size:0.7rem; padding:5px 12px; border-radius:20px;
+  border:1px solid var(--border); background:var(--bg-card);
+  color:var(--text-muted); cursor:pointer; transition:all 0.18s;
+  font-family:'Inter',sans-serif;
+}
+.qc:hover, .qc.active { background:rgba(0,194,255,0.1); border-color:var(--border2); color:var(--primary); }
+
+/* ── 3D VIEWPORT ── */
+.viewport-wrap {
+  flex:1; position:relative; overflow:hidden;
+  min-height:0;
+}
+#canvas3d { width:100%; height:100%; display:block; touch-action:none; }
+
+.viewport-hint {
+  position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+  font-family:'Inter',sans-serif; font-size:0.68rem; color:rgba(255,255,255,0.3);
+  background:rgba(0,0,0,0.4); padding:6px 14px; border-radius:20px;
+  pointer-events:none; backdrop-filter:blur(4px);
+  display:flex; align-items:center; gap:6px;
+}
+
+.loading-3d {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:12px;
+  background:rgba(4,4,15,0.6); z-index:10;
+}
+.loading-3d-text {
+  font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--text-muted);
+}
+
+/* Empty state */
+.empty-3d {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center; padding:32px;
+}
+.empty-3d-icon { font-size:3rem; margin-bottom:16px; opacity:0.5; animation:float 3s ease-in-out infinite; }
+.empty-3d-title { font-family:'Space Grotesk',sans-serif; font-size:1.05rem; font-weight:700; color:#fff; margin-bottom:8px; }
+.empty-3d-desc { font-family:'Inter',sans-serif; font-size:0.84rem; color:var(--text-muted); max-width:300px; line-height:1.6; }
+
+/* ── INFO PANEL (bottom sheet) ── */
+.info-sheet {
+  position:absolute; bottom:0; left:0; right:0; z-index:15;
+  background:rgba(8,8,20,0.96); backdrop-filter:blur(16px);
+  border-top:1px solid var(--border2);
+  border-radius:20px 20px 0 0;
+  max-height:0; overflow:hidden;
+  transition:max-height 0.35s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 -10px 40px rgba(0,0,0,0.5);
+}
+.info-sheet.open { max-height:62vh; overflow-y:auto; }
+
+.sheet-handle {
+  width:36px; height:4px; border-radius:2px;
+  background:rgba(255,255,255,0.2); margin:10px auto 4px;
+}
+.sheet-content { padding:8px 20px 24px; }
+
+.sheet-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+.sheet-emoji { font-size:2.2rem; }
+.sheet-title-wrap { flex:1; }
+.sheet-name { font-family:'Space Grotesk',sans-serif; font-size:1.2rem; font-weight:700; color:#fff; }
+.sheet-type { font-family:'Orbitron',sans-serif; font-size:0.62rem; color:var(--primary); letter-spacing:0.08em; margin-top:2px; }
+.sheet-close {
+  width:28px; height:28px; border-radius:50%;
+  background:var(--bg-card); border:1px solid var(--border);
+  color:var(--text-muted); font-size:0.9rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+
+.sheet-desc {
+  font-family:'Inter',sans-serif; font-size:0.86rem; color:rgba(255,255,255,0.65);
+  line-height:1.7; margin-bottom:16px;
+}
+.sheet-facts {
+  display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;
+}
+.sf-item {
+  padding:10px 12px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius);
+}
+.sf-label {
+  font-family:'Orbitron',sans-serif; font-size:0.56rem; color:var(--text-muted);
+  letter-spacing:0.08em; text-transform:uppercase; margin-bottom:3px;
+}
+.sf-val { font-family:'Space Grotesk',sans-serif; font-size:0.84rem; font-weight:700; color:#fff; }
+
+.sheet-history {
+  padding:14px; background:rgba(255,209,102,0.05);
+  border:1px solid rgba(255,209,102,0.15); border-radius:var(--radius);
+}
+.sh-label {
+  font-family:'Orbitron',sans-serif; font-size:0.6rem; color:var(--gold);
+  letter-spacing:0.08em; margin-bottom:6px; display:flex; align-items:center; gap:6px;
+}
+.sh-text { font-family:'Inter',sans-serif; font-size:0.82rem; color:rgba(255,255,255,0.6); line-height:1.65; }
+
+/* Loading skeleton text */
+.search-loading-row {
+  display:flex; align-items:center; gap:8px;
+  font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--primary);
+  padding:6px 0;
+}
+</style>
+</head>
+<body>
+<div class="astro-bg"><div class="astro-orb orb-1"></div><div class="astro-orb orb-2"></div><div class="astro-orb orb-3"></div></div>
+<nav class="ioe-nav" id="ioe-nav"></nav>
+
+<div id="page-3d">
+
+  <!-- SEARCH BAR -->
+  <div class="explorer-search-bar">
+    <div class="search-input-row">
+      <input type="text" class="explorer-inp" id="searchInput" placeholder="Cari planet, bulan, atau objek luar angkasa...">
+      <button class="explorer-search-btn" onclick="searchObject()">🔍 Cari</button>
+    </div>
+    <div class="quick-chips" id="quickChips">
+      <span class="qc" onclick="quickSearch('Merkurius', this)">☿ Merkurius</span>
+      <span class="qc" onclick="quickSearch('Venus', this)">♀ Venus</span>
+      <span class="qc active" onclick="quickSearch('Bumi', this)">🌍 Bumi</span>
+      <span class="qc" onclick="quickSearch('Mars', this)">♂ Mars</span>
+      <span class="qc" onclick="quickSearch('Jupiter', this)">♃ Jupiter</span>
+      <span class="qc" onclick="quickSearch('Saturnus', this)">♄ Saturnus</span>
+      <span class="qc" onclick="quickSearch('Uranus', this)">⛢ Uranus</span>
+      <span class="qc" onclick="quickSearch('Neptunus', this)">♆ Neptunus</span>
+      <span class="qc" onclick="quickSearch('Bulan', this)">🌙 Bulan</span>
+      <span class="qc" onclick="quickSearch('Matahari', this)">☀️ Matahari</span>
+    </div>
+  </div>
+
+  <!-- 3D VIEWPORT -->
+  <div class="viewport-wrap">
+    <canvas id="canvas3d"></canvas>
+
+    <div class="loading-3d" id="loading3d" style="display:none">
+      <div class="spinner"></div>
+      <div class="loading-3d-text">Memuat model 3D...</div>
+    </div>
+
+    <div class="empty-3d" id="empty3d" style="display:none">
+      <div class="empty-3d-icon">🔭</div>
+      <div class="empty-3d-title">Objek tidak ditemukan</div>
+      <div class="empty-3d-desc">Coba cari nama planet atau objek astronomi lain dalam Bahasa Indonesia atau Inggris.</div>
+    </div>
+
+    <div class="viewport-hint">👆 Geser perlahan untuk memutar · Cubit untuk zoom</div>
+  </div>
+
+  <!-- INFO BOTTOM SHEET -->
+  <div class="info-sheet" id="infoSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-content">
+      <div class="sheet-header">
+        <span class="sheet-emoji" id="sheetEmoji">🌍</span>
+        <div class="sheet-title-wrap">
+          <div class="sheet-name" id="sheetName">—</div>
+          <div class="sheet-type" id="sheetType">—</div>
+        </div>
+        <button class="sheet-close" onclick="closeSheet()">✕</button>
+      </div>
+      <div class="sheet-desc" id="sheetDesc">—</div>
+      <div class="sheet-facts" id="sheetFacts"></div>
+      <div class="sheet-history">
+        <div class="sh-label">📜 KAITAN SEJARAH</div>
+        <div class="sh-text" id="sheetHistory">—</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/nav.js"></script>
+<script>
+buildNav('astromodels.html');
+
+// ══════════════════════════════════
+// DATA OBJEK ASTRONOMI
+// ══════════════════════════════════
+const OBJECTS = {
+  merkurius: { emoji:'☿', name:'Merkurius', type:'Planet Terestrial', color:0x9c9c94, size:0.8, ring:false, texture:'rocky',
+    desc:'Planet terkecil dan terdekat dari Matahari. Permukaannya dipenuhi kawah seperti Bulan, dan suhunya berubah ekstrem antara siang dan malam karena nyaris tanpa atmosfer.',
+    facts:[['Jarak dari Matahari','57.9 juta km'],['Diameter','4,879 km'],['Periode Orbit','88 hari'],['Suhu','-180°C s/d 430°C']],
+    history:'Bangsa Sumeria sudah mencatat Merkurius sejak 3000 SM. Orang Yunani Kuno awalnya mengira ini dua benda berbeda — Apollo saat pagi dan Hermes saat senja — sebelum sadar itu objek yang sama.' },
+  venus: { emoji:'♀', name:'Venus', type:'Planet Terestrial', color:0xe8c989, size:0.95, ring:false, texture:'cloudy',
+    desc:'Planet terpanas di tata surya akibat efek rumah kaca ekstrem dari atmosfer karbon dioksida tebal. Berputar berlawanan arah dibanding kebanyakan planet lain.',
+    facts:[['Jarak dari Matahari','108.2 juta km'],['Diameter','12,104 km'],['Periode Orbit','225 hari'],['Suhu','~465°C']],
+    history:'Disebut "Bintang Fajar" oleh banyak peradaban kuno. Suku Maya menyusun kalender keagamaan berdasarkan siklus Venus yang sangat presisi, terekam dalam Kodeks Dresden.' },
+  bumi: { emoji:'🌍', name:'Bumi', type:'Planet Terestrial', color:0x2a6fdb, size:1, ring:false, texture:'earth',
+    desc:'Satu-satunya planet yang diketahui memiliki kehidupan. 71% permukaannya tertutup air, dengan atmosfer yang melindungi dari radiasi berbahaya.',
+    facts:[['Jarak dari Matahari','149.6 juta km'],['Diameter','12,742 km'],['Periode Orbit','365.25 hari'],['Satelit','1 (Bulan)']],
+    history:'Pemahaman manusia tentang Bumi berubah total saat Copernicus (1543) mengusulkan model heliosentris, menggantikan pandangan geosentris yang dipegang sejak zaman Aristoteles dan Ptolemeus.' },
+  mars: { emoji:'♂', name:'Mars', type:'Planet Terestrial', color:0xc1440e, size:0.85, ring:false, texture:'rocky',
+    desc:'Si Planet Merah, dinamai dari dewa perang Romawi. Memiliki gunung berapi terbesar di tata surya, Olympus Mons, dan bukti aliran air purba.',
+    facts:[['Jarak dari Matahari','227.9 juta km'],['Diameter','6,779 km'],['Periode Orbit','687 hari'],['Satelit','2 (Phobos, Deimos)']],
+    history:'Astronom Giovanni Schiaparelli (1877) melaporkan "canali" (kanal) di Mars, memicu spekulasi populer tentang peradaban Mars yang bertahan hingga awal abad ke-20.' },
+  jupiter: { emoji:'♃', name:'Jupiter', type:'Planet Gas Raksasa', color:0xd4a373, size:2.2, ring:false, texture:'gasgiant',
+    desc:'Planet terbesar di tata surya. Bintik Merah Besarnya adalah badai raksasa yang sudah berlangsung lebih dari 350 tahun.',
+    facts:[['Jarak dari Matahari','778.5 juta km'],['Diameter','139,820 km'],['Periode Orbit','11.9 tahun'],['Satelit','95+ diketahui']],
+    history:'Galileo Galilei menemukan 4 bulan terbesar Jupiter pada 1610 — penemuan ini jadi bukti kuat pertama bahwa tidak semua benda langit mengorbit Bumi, mengguncang dogma gereja saat itu.' },
+  saturnus: { emoji:'♄', name:'Saturnus', type:'Planet Gas Raksasa', color:0xead6a4, size:1.9, ring:true, texture:'gasgiant',
+    desc:'Terkenal dengan sistem cincin spektakulernya yang terdiri dari es dan debu. Densitasnya begitu rendah sehingga secara teori bisa mengapung di air.',
+    facts:[['Jarak dari Matahari','1.43 miliar km'],['Diameter','116,460 km'],['Periode Orbit','29.5 tahun'],['Satelit','146+ diketahui']],
+    history:'Galileo pertama melihat cincin Saturnus tahun 1610 tapi tidak paham bentuknya. Baru Christiaan Huygens pada 1655 berhasil menjelaskan bahwa itu adalah cincin datar mengelilingi planet.' },
+  uranus: { emoji:'⛢', name:'Uranus', type:'Planet Es Raksasa', color:0x9fe3e3, size:1.4, ring:true, texture:'ice',
+    desc:'Planet unik yang berputar miring 98 derajat, seolah "menggelinding" mengelilingi Matahari. Warnanya cyan pucat karena kandungan metana.',
+    facts:[['Jarak dari Matahari','2.87 miliar km'],['Diameter','50,724 km'],['Periode Orbit','84 tahun'],['Satelit','27 diketahui']],
+    history:'William Herschel menemukan Uranus tahun 1781 — planet pertama yang ditemukan dengan teleskop, bukan dengan mata telanjang seperti 5 planet klasik lainnya.' },
+  neptunus: { emoji:'♆', name:'Neptunus', type:'Planet Es Raksasa', color:0x4169e1, size:1.35, ring:false, texture:'ice',
+    desc:'Planet terjauh dari Matahari, dengan angin tercepat di tata surya mencapai 2,100 km/jam. Warnanya biru tua memukau karena metana di atmosfernya.',
+    facts:[['Jarak dari Matahari','4.5 miliar km'],['Diameter','49,244 km'],['Periode Orbit','165 tahun'],['Satelit','16 diketahui']],
+    history:'Neptunus ditemukan tahun 1846 melalui perhitungan matematis oleh Urbain Le Verrier sebelum benar-benar diamati — kemenangan besar bagi mekanika Newton dalam memprediksi keberadaan benda langit.' },
+  bulan: { emoji:'🌙', name:'Bulan', type:'Satelit Alami Bumi', color:0xc9c9c9, size:0.6, ring:false, texture:'rocky',
+    desc:'Satu-satunya benda langit selain Bumi yang pernah diinjak manusia. Permukaannya dipenuhi kawah akibat hantaman meteor selama miliaran tahun.',
+    facts:[['Jarak dari Bumi','384,400 km'],['Diameter','3,474 km'],['Periode Orbit','27.3 hari'],['Gravitasi','1/6 gravitasi Bumi']],
+    history:'Neil Armstrong dan Buzz Aldrin mendarat di Bulan 20 Juli 1969 lewat misi Apollo 11 — momen yang disaksikan sekitar 600 juta orang di seluruh dunia lewat siaran televisi.' },
+  matahari: { emoji:'☀️', name:'Matahari', type:'Bintang Tipe-G (Katai Kuning)', color:0xffd166, size:2.6, ring:false, texture:'sun',
+    desc:'Bintang pusat tata surya kita, menyumbang 99.86% massa total tata surya. Energinya berasal dari reaksi fusi nuklir hidrogen menjadi helium di intinya.',
+    facts:[['Diameter','1.39 juta km'],['Suhu Permukaan','5,500°C'],['Usia','~4.6 miliar tahun'],['Jenis','Katai Kuning (G-type)']],
+    history:'Banyak peradaban kuno menyembah Matahari sebagai dewa — Ra di Mesir, Surya di India, Amaterasu di Jepang. Heliosentrisme Copernicus akhirnya menempatkan Matahari sebagai pusat tata surya secara ilmiah pada 1543.' },
+};
+
+const ALIASES = {
+  mercury:'merkurius', earth:'bumi', moon:'bulan', sun:'matahari', sol:'matahari',
+  saturn:'saturnus', uranus:'uranus', neptune:'neptunus', jupiter:'jupiter', mars:'mars', venus:'venus',
+};
+
+function findObject(query) {
+  const q = query.toLowerCase().trim();
+  if (OBJECTS[q]) return OBJECTS[q];
+  if (ALIASES[q]) return OBJECTS[ALIASES[q]];
+  // Fuzzy partial match
+  for (const key in OBJECTS) {
+    if (key.includes(q) || OBJECTS[key].name.toLowerCase().includes(q)) return OBJECTS[key];
+  }
+  for (const key in ALIASES) {
+    if (key.includes(q)) return OBJECTS[ALIASES[key]];
+  }
+  return null;
+}
+
+// ══════════════════════════════════
+// THREE.JS SETUP
+// ══════════════════════════════════
+let scene, camera, renderer, planetMesh, ringMesh, starField;
+let isDragging = false, prevX = 0, prevY = 0;
+let rotX = 0.3, rotY = 0;
+let velX = 0, velY = 0; // kecepatan putar untuk inertia/momentum halus
+let autoRotate = true;
+let targetSize = 1;
+let currentSize = 1;
+let lowPerfMode = false; // otomatis aktif di device yang kurang kuat
+
+function initThree() {
+  const canvas = document.getElementById('canvas3d');
+  const wrap = canvas.parentElement;
+
+  // Deteksi device kurang kuat secara kasar (mobile + hemat baterai / core sedikit)
+  const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+  const lowCores = navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4;
+  lowPerfMode = isMobile && lowCores;
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(50, wrap.clientWidth / wrap.clientHeight, 0.1, 1000);
+  camera.position.z = 5;
+
+  renderer = new THREE.WebGLRenderer({ canvas, antialias:!lowPerfMode, alpha:true, powerPreference:'high-performance' });
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowPerfMode ? 1.5 : 2));
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0x404060, 1.2);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+  dirLight.position.set(5, 3, 5);
+  scene.add(dirLight);
+  const rimLight = new THREE.DirectionalLight(0x7b5cff, 0.6);
+  rimLight.position.set(-5, -2, -5);
+  scene.add(rimLight);
+
+  // Background starfield (jumlah bintang menyesuaikan performa device)
+  const starGeo = new THREE.BufferGeometry();
+  const starCount = lowPerfMode ? 350 : 800;
+  const positions = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount * 3; i++) positions[i] = (Math.random() - 0.5) * 60;
+  starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.06, transparent:true, opacity:0.6 });
+  starField = new THREE.Points(starGeo, starMat);
+  scene.add(starField);
+
+  animate();
+  window.addEventListener('resize', onResize);
+
+  // Drag controls
+  canvas.addEventListener('mousedown', onDragStart);
+  canvas.addEventListener('mousemove', onDragMove);
+  canvas.addEventListener('mouseup', onDragEnd);
+  canvas.addEventListener('mouseleave', onDragEnd);
+  canvas.addEventListener('touchstart', onDragStart, {passive:true});
+  canvas.addEventListener('touchmove', onDragMove, {passive:true});
+  canvas.addEventListener('touchend', onDragEnd);
+  canvas.addEventListener('wheel', onWheel, {passive:false});
+}
+
+function getXY(e) {
+  if (e.touches && e.touches[0]) return { x:e.touches[0].clientX, y:e.touches[0].clientY };
+  return { x:e.clientX, y:e.clientY };
+}
+function onDragStart(e) {
+  isDragging = true; autoRotate = false;
+  const p = getXY(e); prevX = p.x; prevY = p.y;
+  velX = 0; velY = 0;
+}
+function onDragMove(e) {
+  if (!isDragging) return;
+  const p = getXY(e);
+  const dx = p.x - prevX, dy = p.y - prevY;
+  // Sensitivitas dikurangi ~3x supaya lebih presisi & tidak "licin"
+  velY = dx * 0.0025;
+  velX = dy * 0.0025;
+  rotY += velY;
+  rotX += velX;
+  rotX = Math.max(-1.3, Math.min(1.3, rotX));
+  prevX = p.x; prevY = p.y;
+}
+function onDragEnd() {
+  isDragging = false;
+  // Momentum akan meluruh secara halus di animate(), bukan berhenti mendadak
+}
+function onWheel(e) {
+  e.preventDefault();
+  camera.position.z += e.deltaY * 0.003;
+  camera.position.z = Math.max(2.5, Math.min(10, camera.position.z));
+}
+
+function onResize() {
+  const wrap = document.getElementById('canvas3d').parentElement;
+  camera.aspect = wrap.clientWidth / wrap.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (planetMesh) {
+    if (autoRotate) {
+      rotY += 0.0022;
+    } else if (!isDragging) {
+      // Momentum meluruh halus setelah jari dilepas, bukan berhenti mendadak
+      rotY += velY;
+      rotX += velX;
+      velY *= 0.92;
+      velX *= 0.92;
+      rotX = Math.max(-1.3, Math.min(1.3, rotX));
+    }
+    planetMesh.rotation.y = rotY;
+    planetMesh.rotation.x = rotX;
+    if (ringMesh) { ringMesh.rotation.y = rotY; ringMesh.rotation.x = rotX + 1.2; }
+
+    // Smooth size transition
+    currentSize += (targetSize - currentSize) * 0.08;
+    planetMesh.scale.setScalar(currentSize);
+    if (ringMesh) ringMesh.scale.setScalar(currentSize);
+  }
+  if (starField) starField.rotation.y += 0.00008;
+  renderer.render(scene, camera);
+}
+
+function createPlanetTexture(type, baseColorHex) {
+  const canvas = document.createElement('canvas');
+  const texSize = lowPerfMode ? 512 : 1024;
+  canvas.width = texSize; canvas.height = texSize / 2;
+  const ctx = canvas.getContext('2d');
+  const baseColor = '#' + baseColorHex.toString(16).padStart(6,'0');
+  // Skalakan context supaya semua koordinat (ditulis untuk basis 1024x512) otomatis pas di resolusi rendah
+  ctx.scale(texSize / 1024, texSize / 1024);
+
+  if (type === 'earth') {
+    // Lautan dengan gradient halus (bukan warna flat)
+    const oceanGrad = ctx.createLinearGradient(0,0,0,512);
+    oceanGrad.addColorStop(0, '#0a3d6b');
+    oceanGrad.addColorStop(0.5, '#1565a8');
+    oceanGrad.addColorStop(1, '#0a3d6b');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, 0, 1024, 512);
+
+    // Benua dengan bentuk organik menggunakan banyak blob bertumpuk (halus, bukan tajam)
+    ctx.fillStyle = 'rgba(45,110,50,0.85)';
+    const continents = [
+      {x:180,y:160,w:140,h:90}, {x:260,y:220,w:100,h:70},
+      {x:520,y:140,w:160,h:100}, {x:600,y:230,w:90,h:60},
+      {x:780,y:180,w:120,h:80}, {x:850,y:260,w:80,h:50},
+      {x:380,y:320,w:110,h:70}, {x:120,y:300,w:80,h:60}
+    ];
+    continents.forEach(c => {
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        const ox = c.x + (Math.random()-0.5)*30, oy = c.y + (Math.random()-0.5)*20;
+        ctx.ellipse(ox, oy, c.w*(0.5+Math.random()*0.5), c.h*(0.5+Math.random()*0.5), Math.random()*Math.PI, 0, Math.PI*2);
+        ctx.fill();
+      }
+    });
+    // Gurun/dataran (variasi warna daratan)
+    ctx.fillStyle = 'rgba(180,150,80,0.4)';
+    continents.slice(0,3).forEach(c => {
+      ctx.beginPath();
+      ctx.ellipse(c.x-20, c.y+10, c.w*0.3, c.h*0.25, 0, 0, Math.PI*2);
+      ctx.fill();
+    });
+    // Awan tipis melayang (soft, transparan)
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    for (let i = 0; i < 18; i++) {
+      ctx.beginPath();
+      ctx.ellipse(Math.random()*1024, Math.random()*512, 40+Math.random()*70, 12+Math.random()*20, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // Kutub es
+    const poleGrad1 = ctx.createLinearGradient(0,0,0,50);
+    poleGrad1.addColorStop(0,'rgba(255,255,255,0.9)'); poleGrad1.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle = poleGrad1; ctx.fillRect(0,0,1024,50);
+    const poleGrad2 = ctx.createLinearGradient(0,462,0,512);
+    poleGrad2.addColorStop(0,'rgba(255,255,255,0)'); poleGrad2.addColorStop(1,'rgba(255,255,255,0.9)');
+    ctx.fillStyle = poleGrad2; ctx.fillRect(0,462,1024,50);
+
+  } else if (type === 'gasgiant') {
+    // Pita awan horizontal dengan gradient halus antar pita (bukan garis tegas)
+    const bandColors = [];
+    for (let i = 0; i < 16; i++) {
+      bandColors.push(`rgba(${200+Math.random()*40},${150+Math.random()*50},${90+Math.random()*40},1)`);
+    }
+    for (let y = 0; y < 512; y++) {
+      const bandIdx = Math.floor((y / 512) * bandColors.length);
+      ctx.fillStyle = bandColors[Math.min(bandIdx, bandColors.length-1)];
+      ctx.fillRect(0, y, 1024, 1.5);
+    }
+    // Turbulensi/pusaran halus di beberapa pita
+    ctx.globalAlpha = 0.3;
+    for (let i = 0; i < 20; i++) {
+      ctx.beginPath();
+      const y = Math.random()*512;
+      ctx.ellipse(Math.random()*1024, y, 60+Math.random()*100, 8+Math.random()*15, 0, 0, Math.PI*2);
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.4)' : 'rgba(120,80,40,0.4)';
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+  } else if (type === 'cloudy') {
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(0,0,1024,512);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    for (let i = 0; i < 45; i++) {
+      ctx.beginPath();
+      ctx.ellipse(Math.random()*1024, Math.random()*512, 30+Math.random()*60, 10+Math.random()*20, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+  } else if (type === 'rocky') {
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(0,0,1024,512);
+    // Kawah dengan shading (gelap di satu sisi, terang di sisi lain — lebih 3D)
+    for (let i = 0; i < 60; i++) {
+      const x = Math.random()*1024, y = Math.random()*512, r = 3+Math.random()*14;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x - r*0.25, y - r*0.25, r*0.6, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fill();
+    }
+
+  } else if (type === 'ice') {
+    const grad = ctx.createLinearGradient(0,0,1024,0);
+    grad.addColorStop(0, baseColor);
+    grad.addColorStop(0.5, '#e8f4ff');
+    grad.addColorStop(1, baseColor);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,1024,512);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, (i/14)*512 + Math.random()*10);
+      ctx.lineTo(1024, (i/14)*512 + Math.random()*10);
+      ctx.stroke();
+    }
+
+  } else if (type === 'sun') {
+    const grad = ctx.createRadialGradient(512,256,0,512,256,520);
+    grad.addColorStop(0, '#fffbe6');
+    grad.addColorStop(0.35, '#ffe28a');
+    grad.addColorStop(0.7, baseColor);
+    grad.addColorStop(1, '#ff8c42');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,1024,512);
+    // Granulasi permukaan halus
+    ctx.globalAlpha = 0.12;
+    for (let i = 0; i < 100; i++) {
+      ctx.beginPath();
+      ctx.arc(Math.random()*1024, Math.random()*512, 8+Math.random()*20, 0, Math.PI*2);
+      ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#ff6b1a';
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 4; // tekstur tetap tajam saat dilihat dari sudut miring
+  return tex;
+}
+
+function loadPlanet(obj) {
+  // Cleanup old
+  if (planetMesh) { scene.remove(planetMesh); planetMesh.geometry.dispose(); planetMesh.material.dispose(); planetMesh = null; }
+  if (ringMesh) { scene.remove(ringMesh); ringMesh.geometry.dispose(); ringMesh.material.dispose(); ringMesh = null; }
+
+  document.getElementById('loading3d').style.display = 'flex';
+  document.getElementById('empty3d').style.display = 'none';
+
+  setTimeout(() => {
+    const segments = lowPerfMode ? 28 : 48;
+    const geo = new THREE.SphereGeometry(1, segments, segments);
+    const tex = createPlanetTexture(obj.texture, obj.color);
+    let mat;
+    if (obj.texture === 'sun') {
+      mat = new THREE.MeshBasicMaterial({ map: tex });
+    } else {
+      mat = new THREE.MeshStandardMaterial({ map: tex, roughness:0.85, metalness:0.05 });
+    }
+    planetMesh = new THREE.Mesh(geo, mat);
+    scene.add(planetMesh);
+
+    if (obj.ring) {
+      const ringGeo = new THREE.RingGeometry(1.4, 2.1, 64);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: obj.color, side: THREE.DoubleSide, transparent:true, opacity:0.55
+      });
+      ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = 1.2;
+      scene.add(ringMesh);
+    }
+
+    targetSize = obj.size;
+    currentSize = obj.size * 0.3; // start small, animate up
+    autoRotate = true;
+    rotY = 0;
+
+    document.getElementById('loading3d').style.display = 'none';
+  }, 280);
+}
+
+function fillInfoSheet(obj) {
+  document.getElementById('sheetEmoji').textContent = obj.emoji;
+  document.getElementById('sheetName').textContent = obj.name;
+  document.getElementById('sheetType').textContent = obj.type.toUpperCase();
+  document.getElementById('sheetDesc').textContent = obj.desc;
+  document.getElementById('sheetHistory').textContent = obj.history;
+
+  const factsEl = document.getElementById('sheetFacts');
+  factsEl.innerHTML = obj.facts.map(([k,v]) =>
+    `<div class="sf-item"><div class="sf-label">${k}</div><div class="sf-val">${v}</div></div>`
+  ).join('');
+
+  document.getElementById('infoSheet').classList.add('open');
+}
+
+function closeSheet() {
+  document.getElementById('infoSheet').classList.remove('open');
+}
+
+function searchObject() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  const obj = findObject(q);
+  document.querySelectorAll('.qc').forEach(c => c.classList.remove('active'));
+  if (obj) {
+    loadPlanet(obj);
+    fillInfoSheet(obj);
+  } else {
+    document.getElementById('empty3d').style.display = 'flex';
+    closeSheet();
+  }
+}
+
+function quickSearch(name, el) {
+  document.getElementById('searchInput').value = name;
+  document.querySelectorAll('.qc').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  const obj = findObject(name);
+  if (obj) { loadPlanet(obj); fillInfoSheet(obj); }
+}
+
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchObject();
+});
+
+// ══ INIT ══
+initThree();
+loadPlanet(OBJECTS.bumi);
+fillInfoSheet(OBJECTS.bumi);
+</script>
+</body>
+</html>
