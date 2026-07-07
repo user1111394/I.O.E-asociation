@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Akun Diblokir — I.O.E</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a0e0e 0%, #0f0a1a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #fff;
+    }
+    .ban-box {
+      background: linear-gradient(135deg, #241419 0%, #150f1e 100%);
+      border: 1px solid rgba(255,107,107,0.3);
+      border-radius: 16px;
+      padding: 40px 30px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    }
+    .ban-icon {
+      font-size: 3.5rem;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 22px;
+      color: #ff6b6b;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    .ban-sub {
+      color: #a0aec0;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .reason-box {
+      background: rgba(255,107,107,0.08);
+      border: 1px solid rgba(255,107,107,0.25);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 30px;
+      text-align: left;
+    }
+    .reason-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #ff9b9b;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .reason-text {
+      font-size: 14px;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    button, .btn-link {
+      width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+      display: inline-block;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s;
+    }
+    .btn-logout {
+      background: rgba(255,255,255,0.08);
+      color: #cbd5e0;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .btn-logout:hover {
+      background: rgba(255,255,255,0.15);
+    }
+    .btn-appeal {
+      background: linear-gradient(90deg, #7b5cff, #00e5c0);
+      color: #000;
+    }
+    .btn-appeal:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(123,92,255,0.3);
+    }
+    .footer-note {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #718096;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+<div class="ban-box">
+  <div class="ban-icon">🚫</div>
+  <h1>Akun Kamu Diblokir</h1>
+  <p class="ban-sub">Akses ke I.O.E Hub sementara dibatasi</p>
+
+  <div class="reason-box">
+    <div class="reason-label">Alasan Pemblokiran</div>
+    <div class="reason-text" id="banReasonText">Memuat alasan...</div>
+  </div>
+
+  <div class="btn-group">
+    <a href="https://wa.me/#" class="btn-link btn-appeal" id="appealBtn" target="_blank" rel="noopener">
+      Hubungi ToS / Ajukan Banding
+    </a>
+    <button class="btn-logout" id="logoutBtn">Keluar Akun</button>
+  </div>
+
+  <p class="footer-note">
+    Jika kamu merasa ini adalah kesalahan, silakan hubungi tim ToS I.O.E melalui tombol di atas untuk mengajukan banding.
+  </p>
+</div>
+
+<script src="js/ioe-auth.js"></script>
+<script>
+  // Tampilkan alasan ban — prioritas dari sessionStorage (dikirim ioe-auth.js saat redirect),
+  // fallback fetch langsung ke server kalau sessionStorage kosong (misal user refresh halaman ini)
+  (async function loadBanReason() {
+    const reasonEl = document.getElementById('banReasonText');
+    const cached = sessionStorage.getItem('ioe_ban_reason');
+
+    if (cached) {
+      reasonEl.textContent = cached;
+      return;
+    }
+
+    // Fallback: fetch ulang dari server pakai session yang tersimpan
+    const session = getIoeSession();
+    if (!session || !session.memberId) {
+      reasonEl.textContent = 'Tidak dapat memuat alasan. Silakan login ulang.';
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'check-ban', memberId: session.memberId }),
+      });
+      const data = await res.json();
+      if (data.banned) {
+        reasonEl.textContent = data.reason || 'Pelanggaran aturan komunitas I.O.E';
+      } else {
+        // Ternyata sudah tidak banned (mungkin baru saja di-unban) — kembalikan ke halaman utama
+        reasonEl.textContent = 'Akun kamu sudah tidak diblokir. Mengalihkan...';
+        setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+      }
+    } catch (e) {
+      reasonEl.textContent = 'Pelanggaran aturan komunitas I.O.E';
+    }
+  })();
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    clearIoeSession();
+    sessionStorage.removeItem('ioe_ban_reason');
+    window.location.href = 'login.html';
+  });
+</script>
+
+</body>
+</html>
