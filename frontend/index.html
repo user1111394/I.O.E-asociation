@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>I.O.E Hub — International Organization of Education</title>
+<link rel="stylesheet" href="css/global.css">
+<style>
+/* ══════════ LOADING SCREEN ══════════ */
+#loading-screen {
+  position:fixed; inset:0; z-index:9999;
+  background:#04040f;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  transition:opacity 0.8s ease, visibility 0.8s;
+}
+#loading-screen.hide { opacity:0; visibility:hidden; }
+
+.load-logo {
+  width:90px; height:90px; object-fit:contain;
+  filter:drop-shadow(0 0 24px rgba(0,194,255,0.7));
+  animation:float 2s ease-in-out infinite;
+  margin-bottom:28px;
+}
+.load-logo-svg {
+  width:90px; height:90px;
+  filter:drop-shadow(0 0 24px rgba(0,194,255,0.7));
+  animation:float 2s ease-in-out infinite;
+  margin-bottom:28px;
+}
+.load-title {
+  font-family:'Orbitron',sans-serif; font-size:1.6rem; font-weight:900;
+  background:linear-gradient(135deg,#00c2ff,#7b5cff,#ff3c6e);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  letter-spacing:0.2em; margin-bottom:6px;
+}
+.load-sub {
+  font-family:'Exo 2',sans-serif; font-size:0.72rem; font-style:italic;
+  color:rgba(255,255,255,0.4); letter-spacing:0.18em;
+  text-transform:uppercase; margin-bottom:40px;
+}
+.load-bar-wrap {
+  width:220px; height:3px; background:rgba(255,255,255,0.08);
+  border-radius:2px; overflow:hidden; margin-bottom:14px;
+}
+.load-bar {
+  height:100%;
+  background:linear-gradient(90deg,#00c2ff,#7b5cff);
+  border-radius:2px;
+  width:0%;
+  transition:width 0.1s linear;
+}
+.load-percent {
+  font-family:'Orbitron',sans-serif; font-size:0.65rem;
+  color:rgba(255,255,255,0.3); letter-spacing:0.12em;
+}
+
+/* ══════════ HERO ══════════ */
+.hero {
+  min-height:100vh;
+  position:relative;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  overflow:hidden; padding:80px 20px 60px;
+}
+.hero-bg {
+  position:absolute; inset:0;
+  background:
+    url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=1400&q=85') center/cover no-repeat;
+}
+.hero-bg::after {
+  content:'';
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse at 30% 35%, rgba(123,92,255,0.5) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 60%, rgba(0,194,255,0.28) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(4,4,15,0.55) 0%, transparent 80%),
+    linear-gradient(180deg, rgba(4,4,15,0.35) 0%, rgba(4,4,15,0.9) 100%);
+}
+
+/* Stars canvas */
+#stars-canvas {
+  position:absolute; inset:0; z-index:1; pointer-events:none;
+}
+
+.hero-content {
+  position:relative; z-index:2;
+  display:flex; flex-direction:column;
+  align-items:center; text-align:center;
+  max-width:480px; width:100%;
+}
+
+.hero-logo {
+  width:130px; height:130px; object-fit:contain;
+  filter:drop-shadow(0 0 30px rgba(0,194,255,0.6));
+  animation:float 3s ease-in-out infinite;
+  margin-bottom:24px;
+}
+
+/* Inline SVG fallback logo */
+.hero-logo-svg {
+  width:130px; height:130px;
+  filter:drop-shadow(0 0 30px rgba(0,194,255,0.6));
+  animation:float 3s ease-in-out infinite;
+  margin-bottom:24px;
+}
+
+.hero-eyebrow {
+  font-family:'Orbitron',sans-serif; font-size:0.62rem; font-weight:700;
+  color:var(--primary); letter-spacing:0.22em; text-transform:uppercase;
+  border:1px solid rgba(0,194,255,0.3);
+  padding:4px 14px; border-radius:20px;
+  background:rgba(0,194,255,0.06);
+  margin-bottom:18px;
+}
+.hero-title {
+  font-family:'Exo 2',sans-serif; font-weight:300; font-style:italic;
+  font-size:2.2rem; color:#fff; line-height:1.25;
+  text-shadow:0 2px 30px rgba(0,0,0,0.5);
+  margin-bottom:10px;
+}
+.hero-title strong {
+  font-weight:700; font-style:normal;
+  background:linear-gradient(135deg,#00c2ff,#7b5cff);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.hero-org {
+  font-family:'Orbitron',sans-serif; font-size:0.7rem; font-weight:400;
+  color:rgba(255,255,255,0.35); letter-spacing:0.14em;
+  line-height:1.7; margin-bottom:40px;
+}
+.hero-org em {
+  display:block;
+  background:linear-gradient(90deg,#00c2ff,#7b5cff,#ff3c6e);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  font-style:normal; font-weight:700; font-size:0.85rem;
+  letter-spacing:0.08em;
+}
+
+/* Nav buttons */
+.hero-menu {
+  display:flex; flex-direction:column; gap:14px;
+  width:100%; max-width:380px;
+}
+.hero-nav-btn {
+  position:relative; width:100%;
+  background:none; border:none; cursor:pointer;
+  text-decoration:none; display:block;
+  transition:transform 0.18s, filter 0.18s;
+}
+.hero-nav-btn:hover  { transform:scale(1.025); filter:brightness(1.15); }
+.hero-nav-btn:active { transform:scale(0.97); }
+
+.hnb-outer {
+  padding:2px;
+  border-radius:8px;
+  position:relative;
+  overflow:hidden;
+}
+.hnb-outer::before {
+  content:'';
+  position:absolute; inset:0;
+  border-radius:8px;
+  padding:2px;
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+}
+.hnb-inner {
+  background:linear-gradient(135deg,rgba(20,10,40,0.95),rgba(8,4,20,0.98));
+  border-radius:6px;
+  padding:16px 22px;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:12px;
+}
+.hnb-left { display:flex; align-items:center; gap:12px; }
+.hnb-icon { font-size:1.3rem; }
+.hnb-text { text-align:left; }
+.hnb-label {
+  font-family:'Space Grotesk',sans-serif; font-size:1rem; font-weight:700;
+  color:#fff; letter-spacing:0.04em; display:block;
+}
+.hnb-desc {
+  font-family:'Inter',sans-serif; font-size:0.72rem;
+  color:rgba(255,255,255,0.38); display:block; margin-top:2px;
+}
+.hnb-arrow {
+  font-size:1rem; color:var(--primary);
+  transition:transform 0.2s;
+}
+.hero-nav-btn:hover .hnb-arrow { transform:translateX(4px); }
+
+/* Stats row */
+.hero-stats {
+  display:flex; gap:28px; margin-top:44px;
+  padding-top:28px;
+  border-top:1px solid rgba(255,255,255,0.07);
+}
+.stat-item { text-align:center; }
+.stat-num {
+  font-family:'Orbitron',sans-serif; font-size:1.2rem; font-weight:700;
+  color:var(--primary); display:block; line-height:1;
+}
+.stat-lbl {
+  font-family:'Inter',sans-serif; font-size:0.62rem;
+  color:rgba(255,255,255,0.3); margin-top:5px; display:block;
+  letter-spacing:0.08em; text-transform:uppercase;
+}
+
+/* ══════════ FEATURES SECTION ══════════ */
+.features { padding:48px 20px; max-width:800px; margin:0 auto; }
+.features-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:14px;
+  margin-top:24px;
+}
+.feat-card {
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:18px 16px;
+  text-decoration:none; display:block;
+  transition:all 0.2s; cursor:pointer;
+}
+.feat-card:hover {
+  border-color:var(--border2);
+  background:rgba(0,194,255,0.05);
+  transform:translateY(-3px);
+}
+.feat-icon { font-size:1.6rem; margin-bottom:10px; display:block; }
+.feat-name {
+  font-family:'Space Grotesk',sans-serif; font-weight:700;
+  font-size:0.88rem; color:#fff; margin-bottom:5px;
+}
+.feat-desc {
+  font-family:'Inter',sans-serif; font-size:0.73rem;
+  color:var(--text-muted); line-height:1.55;
+}
+
+/* ══════════ ABOUT SECTION ══════════ */
+.about { padding:40px 20px 60px; max-width:800px; margin:0 auto; }
+.about-card {
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  padding:28px 22px;
+  position:relative; overflow:hidden;
+}
+.about-card::before {
+  content:'';
+  position:absolute; top:-60px; right:-60px;
+  width:200px; height:200px; border-radius:50%;
+  background:radial-gradient(circle,rgba(123,92,255,0.15) 0%,transparent 70%);
+  pointer-events:none;
+}
+.about-body {
+  font-family:'Inter',sans-serif; font-size:0.9rem;
+  color:rgba(255,255,255,0.6); line-height:1.75;
+  margin-bottom:20px;
+}
+.about-body strong { color:var(--primary); }
+
+/* ══════════ SPARKLE DECO ══════════ */
+.sparkle-deco {
+  position:fixed; bottom:24px; right:20px; z-index:10;
+  animation:sparkle-a 2.5s ease-in-out infinite; pointer-events:none;
+}
+@keyframes sparkle-a {
+  0%,100%{opacity:0.6;transform:scale(1) rotate(0deg);}
+  50%{opacity:1;transform:scale(1.2) rotate(20deg);}
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+  <!-- IOE Logo SVG (fallback jika gambar belum ada) -->
+  <svg class="load-logo-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" style="stop-color:#00e5ff"/>
+        <stop offset="50%" style="stop-color:#00bcd4"/>
+        <stop offset="100%" style="stop-color:#7b5cff"/>
+      </linearGradient>
+      <filter id="glow1"><feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <ellipse cx="100" cy="108" rx="65" ry="26" fill="none" stroke="url(#lg1)" stroke-width="5"
+      filter="url(#glow1)" transform="rotate(-22,100,108)"/>
+    <circle cx="100" cy="108" r="32" fill="none" stroke="url(#lg1)" stroke-width="4" filter="url(#glow1)"/>
+    <ellipse cx="100" cy="108" rx="32" ry="13" fill="none" stroke="url(#lg1)" stroke-width="2" opacity="0.5"/>
+    <circle cx="100" cy="52" r="13" fill="url(#lg1)" filter="url(#glow1)"/>
+    <line x1="100" y1="65" x2="100" y2="80" stroke="url(#lg1)" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="155,38 158,48 168,48 160,54 163,64 155,58 147,64 150,54 142,48 152,48"
+      fill="#00e5ff" opacity="0.9" filter="url(#glow1)"/>
+  </svg>
+  <div class="load-title">I · O · E</div>
+  <div class="load-sub">International Organization of Education</div>
+  <div class="load-bar-wrap">
+    <div class="load-bar" id="loadBar"></div>
+  </div>
+  <div class="load-percent" id="loadPct">0%</div>
+</div>
+
+<!-- NAVBAR -->
+<div class="astro-bg"><div class="astro-orb orb-1"></div><div class="astro-orb orb-2"></div><div class="astro-orb orb-3"></div></div>
+<nav class="ioe-nav" id="ioe-nav"></nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <canvas id="stars-canvas"></canvas>
+
+  <div class="hero-content">
+    <!-- Logo: pakai img jika ada, fallback ke SVG -->
+    <img src="assets/logo.png" alt="I.O.E Logo" class="hero-logo"
+      onerror="this.style.display='none'; document.getElementById('hero-logo-svg').style.display='block'">
+    <svg id="hero-logo-svg" class="hero-logo-svg" style="display:none"
+      viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="lg2" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#00e5ff"/>
+          <stop offset="60%" style="stop-color:#00bcd4"/>
+          <stop offset="100%" style="stop-color:#7b5cff"/>
+        </linearGradient>
+        <filter id="glow2"><feGaussianBlur stdDeviation="4" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <ellipse cx="100" cy="108" rx="65" ry="26" fill="none" stroke="url(#lg2)" stroke-width="5"
+        filter="url(#glow2)" transform="rotate(-22,100,108)"/>
+      <circle cx="100" cy="108" r="32" fill="none" stroke="url(#lg2)" stroke-width="4" filter="url(#glow2)"/>
+      <ellipse cx="100" cy="108" rx="32" ry="13" fill="none" stroke="url(#lg2)" stroke-width="2" opacity="0.5"/>
+      <circle cx="100" cy="52" r="13" fill="url(#lg2)" filter="url(#glow2)"/>
+      <line x1="100" y1="65" x2="100" y2="80" stroke="url(#lg2)" stroke-width="4" stroke-linecap="round"/>
+      <polygon points="155,38 158,48 168,48 160,54 163,64 155,58 147,64 150,54 142,48 152,48"
+        fill="#00e5ff" opacity="0.9" filter="url(#glow2)"/>
+    </svg>
+
+    <div class="hero-eyebrow">✦ Portal Resmi I.O.E ✦</div>
+    <h1 class="hero-title">
+      selamat datang di<br><strong>I.O.E</strong>
+    </h1>
+    <div class="hero-org">
+      <em>International Organization of Education</em>
+      komunitas edukasi astronomi &amp; sejarah indonesia
+    </div>
+
+    <div class="hero-menu">
+      <a href="cosmos.html" class="hero-nav-btn">
+        <div class="hnb-outer">
+          <div class="hnb-inner">
+            <div class="hnb-left">
+              <span class="hnb-icon">🌌</span>
+              <div class="hnb-text">
+                <span class="hnb-label">Cosmos AI</span>
+                <span class="hnb-desc">Tanya apa saja tentang astronomi & sejarah</span>
+              </div>
+            </div>
+            <span class="hnb-arrow">→</span>
+          </div>
+        </div>
+      </a>
+      <a href="education.html" class="hero-nav-btn">
+        <div class="hnb-outer">
+          <div class="hnb-inner">
+            <div class="hnb-left">
+              <span class="hnb-icon">🔭</span>
+              <div class="hnb-text">
+                <span class="hnb-label">Education Hub</span>
+                <span class="hnb-desc">NASA APOD, ISS Tracker, Timeline Sejarah</span>
+              </div>
+            </div>
+            <span class="hnb-arrow">→</span>
+          </div>
+        </div>
+      </a>
+      <a href="tools.html" class="hero-nav-btn">
+        <div class="hnb-outer">
+          <div class="hnb-inner">
+            <div class="hnb-left">
+              <span class="hnb-icon">🔧</span>
+              <div class="hnb-text">
+                <span class="hnb-label">Space Tools</span>
+                <span class="hnb-desc">Konverter, Space Facts, pencarian</span>
+              </div>
+            </div>
+            <span class="hnb-arrow">→</span>
+          </div>
+        </div>
+      </a>
+      <a href="astromodels.html" class="hero-nav-btn">
+        <div class="hnb-outer">
+          <div class="hnb-inner">
+            <div class="hnb-left">
+              <span class="hnb-icon">🪐</span>
+              <div class="hnb-text">
+                <span class="hnb-label">3D Explorer</span>
+                <span class="hnb-desc">Jelajahi planet dalam model 3D interaktif</span>
+              </div>
+            </div>
+            <span class="hnb-arrow">→</span>
+          </div>
+        </div>
+      </a>
+      <a href="seleksi.html" class="hero-nav-btn">
+        <div class="hnb-outer">
+          <div class="hnb-inner">
+            <div class="hnb-left">
+              <span class="hnb-icon">📋</span>
+              <div class="hnb-text">
+                <span class="hnb-label">Daftar Member</span>
+                <span class="hnb-desc">Form seleksi & member card digital</span>
+              </div>
+            </div>
+            <span class="hnb-arrow">→</span>
+          </div>
+        </div>
+      </a>
+      <a href="chat.html" class="hero-nav-btn">
+        <div class="hnb-outer">
+          <div class="hnb-inner">
+            <div class="hnb-left">
+              <span class="hnb-icon">💬</span>
+              <div class="hnb-text">
+                <span class="hnb-label">Chat Publik</span>
+                <span class="hnb-desc">Real-time community chat</span>
+              </div>
+            </div>
+            <span class="hnb-arrow">→</span>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="hero-stats">
+      <div class="stat-item">
+        <span class="stat-num" id="stat-members">—</span>
+        <span class="stat-lbl">Members</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">∞</span>
+        <span class="stat-lbl">AI Queries</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">24/7</span>
+        <span class="stat-lbl">Online</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features">
+  <div class="section-title">Apa yang ada di I.O.E?</div>
+  <div class="section-sub">Semua yang kamu butuhkan</div>
+  <div class="features-grid">
+    <a href="cosmos.html" class="feat-card">
+      <span class="feat-icon">🤖</span>
+      <div class="feat-name">Cosmos AI</div>
+      <div class="feat-desc">Chatbot edukasi spesialis astronomi & sejarah berbahasa Indonesia</div>
+    </a>
+    <a href="education.html" class="feat-card">
+      <span class="feat-icon">📷</span>
+      <div class="feat-name">NASA APOD</div>
+      <div class="feat-desc">Foto astronomi pilihan NASA setiap harinya dengan penjelasan ilmiah</div>
+    </a>
+    <a href="education.html" class="feat-card">
+      <span class="feat-icon">🛸</span>
+      <div class="feat-name">ISS Tracker</div>
+      <div class="feat-desc">Pantau posisi Stasiun Luar Angkasa Internasional secara realtime</div>
+    </a>
+    <a href="education.html" class="feat-card">
+      <span class="feat-icon">⏳</span>
+      <div class="feat-name">Timeline Sejarah</div>
+      <div class="feat-desc">Perjalanan eksplorasi antariksa dari 1957 hingga kini</div>
+    </a>
+    <a href="astromodels.html" class="feat-card">
+      <span class="feat-icon">🪐</span>
+      <div class="feat-name">3D Astro Explorer</div>
+      <div class="feat-desc">Model 3D planet interaktif lengkap dengan sejarah & fakta</div>
+    </a>
+    <a href="tools.html" class="feat-card">
+      <span class="feat-icon">📏</span>
+      <div class="feat-name">Space Tools</div>
+      <div class="feat-desc">Konverter satuan astronomi, space facts acak, dan pencarian</div>
+    </a>
+    <a href="seleksi.html" class="feat-card">
+      <span class="feat-icon">🎴</span>
+      <div class="feat-name">Member Card</div>
+      <div class="feat-desc">Daftar dan dapatkan kartu member digital I.O.E resmi</div>
+    </a>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section class="about">
+  <div class="section-title">Tentang Kami</div>
+  <div class="section-sub">Apa itu I.O.E?</div>
+  <div class="about-card">
+    <p class="about-body">
+      <strong>International Organization of Education (I.O.E)</strong> adalah komunitas online
+      yang berdedikasi untuk menyebarkan ilmu pengetahuan, khususnya di bidang
+      <strong>Astronomi</strong> dan <strong>Sejarah</strong>. Kami percaya bahwa ilmu
+      semesta dan perjalanan peradaban manusia adalah dua sisi dari satu kisah yang sama —
+      kisah tentang rasa ingin tahu.
+    </p>
+    <p class="about-body">
+      Bergabunglah dengan komunitas kami, eksplorasi alam semesta, dan temukan
+      bagaimana sejarah membentuk cara kita memandang bintang.
+    </p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+      <a href="seleksi.html" class="btn-primary">📋 Daftar Sekarang</a>
+      <a href="chat.html" class="btn-ghost">💬 Gabung Chat</a>
+    </div>
+  </div>
+</section>
+
+<!-- Sparkle deco -->
+<div class="sparkle-deco">
+  <svg viewBox="0 0 34 34" width="32" height="32">
+    <polygon points="17,0 20,13 34,17 20,21 17,34 14,21 0,17 14,13" fill="#00c2ff" opacity="0.7"/>
+  </svg>
+</div>
+
+<script src="js/ioe-auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+  // Cek session & status ban otomatis begitu halaman dimuat (kalau sedang login).
+  // Kalau akun sedang di-ban, verifyIoeSession() akan redirect ke ban.html secara otomatis.
+  if (typeof verifyIoeSession === 'function' && getIoeSession()) {
+    verifyIoeSession();
+  }
+</script>
+<iframe src="email.html?mode=icon" style="border:none;width:44px;height:44px;position:fixed;top:-2px;right:56px;z-index:9999;background:transparent;" id="ioe-email-icon-frame" allowtransparency="true"></iframe>
+<script>
+// ── INIT NAV ──
+buildNav('index.html');
+
+// ── LOADING SCREEN ──
+(function() {
+  const bar = document.getElementById('loadBar');
+  const pct = document.getElementById('loadPct');
+  const screen = document.getElementById('loading-screen');
+  let progress = 0;
+  const interval = setInterval(() => {
+    progress += Math.random() * 18;
+    if (progress >= 100) {
+      progress = 100;
+      clearInterval(interval);
+      setTimeout(() => {
+        screen.classList.add('hide');
+        setTimeout(() => screen.remove(), 900);
+      }, 300);
+    }
+    bar.style.width = progress + '%';
+    pct.textContent = Math.floor(progress) + '%';
+  }, 90);
+})();
+
+// ── STAR CANVAS ──
+(function() {
+  const canvas = document.getElementById('stars-canvas');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resize() {
+    canvas.width  = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+  }
+
+  function initStars(n) {
+    stars = [];
+    for (let i = 0; i < n; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: Math.random() * 1.4 + 0.3,
+        o: Math.random() * 0.7 + 0.3,
+        s: Math.random() * 0.008 + 0.002,
+        d: Math.random() > 0.5 ? 1 : -1
+      });
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    stars.forEach(s => {
+      s.o += s.s * s.d;
+      if (s.o > 1 || s.o < 0.2) s.d *= -1;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${s.o})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+
+  resize();
+  initStars(160);
+  draw();
+  window.addEventListener('resize', () => { resize(); initStars(160); });
+})();
+
+// ── MEMBER COUNT dari Firebase ──
+// Placeholder — nanti connect ke Firebase
+document.getElementById('stat-members').textContent = '—';
+</script>
+</body>
+</html>
