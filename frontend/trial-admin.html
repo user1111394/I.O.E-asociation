@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>I.O.E</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0e27 0%, #0f0a1a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #fff;
+    }
+    .login-box {
+      background: linear-gradient(135deg, #1a1f3a 0%, #150f1e 100%);
+      border: 1px solid rgba(123,92,255,0.3);
+      border-radius: 16px;
+      padding: 40px 30px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    }
+    .logo-section { text-align: center; margin-bottom: 30px; }
+    .logo-icon {
+      width: 64px; height: 64px; border-radius: 50%;
+      margin-bottom: 14px; object-fit: cover;
+      border: 2px solid rgba(123,92,255,0.4);
+    }
+    h1 { font-size: 17px; color: #cbd5e0; font-weight: 600; }
+    .sub { font-size: 12px; color: #718096; margin-top: 6px; }
+    .form-group { margin-bottom: 18px; margin-top: 20px; }
+    input[type="text"] {
+      width: 100%; padding: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(123,92,255,0.25);
+      border-radius: 8px; color: #fff; font-size: 14px;
+      font-family: 'Courier New', monospace;
+      text-transform: uppercase;
+    }
+    input:focus { outline: none; border-color: #7b5cff; background: rgba(123,92,255,0.08); }
+    input::placeholder { color: #718096; font-family: -apple-system, sans-serif; text-transform: none; }
+    .btn-submit {
+      width: 100%; padding: 14px;
+      background: linear-gradient(90deg, #7b5cff, #00e5c0);
+      border: none; border-radius: 8px; color: #000;
+      font-weight: 700; font-size: 14px; cursor: pointer;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .btn-submit:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(123,92,255,0.3); }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+    .error-msg { color: #ff6b6b; font-size: 13px; margin-top: 10px; text-align: center; display: none; }
+    .error-msg.show { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="login-box">
+  <div class="logo-section">
+    <img src="assets/admin-logo.png" alt="" class="logo-icon">
+    <h1>Trial Admin Access</h1>
+    <p class="sub">Masukkan token 1x pakai dari Superadmin</p>
+  </div>
+
+  <form id="loginForm">
+    <div class="form-group">
+      <input type="text" id="tokenInput" placeholder="TRIAL-XXXXXXXX" autocomplete="off">
+    </div>
+    <button type="submit" class="btn-submit" id="submitBtn">Masuk</button>
+    <div class="error-msg" id="errorMsg"></div>
+  </form>
+</div>
+
+<script>
+  const form = document.getElementById('loginForm');
+  const input = document.getElementById('tokenInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const errorEl = document.getElementById('errorMsg');
+
+  // Kalau sudah ada sesi trial admin aktif & masih berlaku, langsung ke panel
+  (function checkExisting() {
+    const sess = localStorage.getItem('ioe_trial_admin_session');
+    if (sess) {
+      try {
+        const parsed = JSON.parse(sess);
+        if (parsed.sessionToken && parsed.expiresAt > Date.now()) {
+          window.location.href = 'index.html';
+        } else {
+          localStorage.removeItem('ioe_trial_admin_session');
+        }
+      } catch (e) {}
+    }
+  })();
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const trialToken = input.value.trim().toUpperCase();
+    errorEl.classList.remove('show');
+
+    if (!trialToken) {
+      errorEl.textContent = 'Masukkan token';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Memproses...';
+
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify-trial-token', trialToken }),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        errorEl.textContent = data.error || 'Token tidak valid';
+        errorEl.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Masuk';
+        return;
+      }
+
+      localStorage.setItem('ioe_trial_admin_session', JSON.stringify({
+        sessionToken: data.sessionToken,
+        expiresAt: data.expiresAt,
+        loginAt: Date.now(),
+      }));
+
+      submitBtn.textContent = '✓ Berhasil';
+      setTimeout(() => { window.location.href = 'index.html'; }, 600);
+
+    } catch (e) {
+      errorEl.textContent = 'Gagal terhubung ke server';
+      errorEl.classList.add('show');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Masuk';
+    }
+  });
+</script>
+
+</body>
+</html>
