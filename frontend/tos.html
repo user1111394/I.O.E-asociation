@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Banding ToS — I.O.E</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0e27 0%, #0f0a1a 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      color: #fff;
+    }
+    .header {
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .back-btn {
+      background: rgba(255,255,255,0.08);
+      border: none;
+      color: #fff;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .header-title { font-size: 15px; font-weight: 600; }
+    .header-sub { font-size: 11px; color: #718096; }
+
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .msg.member {
+      align-self: flex-end;
+      background: linear-gradient(90deg, #7b5cff, #00e5c0);
+      color: #000;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.ai {
+      align-self: flex-start;
+      background: rgba(123,92,255,0.15);
+      border: 1px solid rgba(123,92,255,0.3);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.admin {
+      align-self: flex-start;
+      background: rgba(0,229,197,0.15);
+      border: 1px solid rgba(0,229,197,0.4);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.system {
+      align-self: center;
+      background: rgba(255,255,255,0.05);
+      color: #a0aec0;
+      font-size: 11px;
+      text-align: center;
+      max-width: 90%;
+    }
+    .msg-label {
+      font-size: 10px;
+      opacity: 0.7;
+      margin-bottom: 3px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .input-area {
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.03);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      gap: 10px;
+    }
+    #messageInput {
+      flex: 1;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(123,92,255,0.25);
+      border-radius: 20px;
+      color: #fff;
+      font-size: 13px;
+      resize: none;
+    }
+    #messageInput:focus { outline: none; border-color: #7b5cff; }
+    #sendBtn {
+      background: linear-gradient(90deg, #7b5cff, #00e5c0);
+      border: none;
+      border-radius: 50%;
+      width: 42px; height: 42px;
+      cursor: pointer;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    #sendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .typing-indicator {
+      align-self: flex-start;
+      font-size: 12px;
+      color: #718096;
+      padding: 8px 14px;
+      display: none;
+    }
+    .typing-indicator.show { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <button class="back-btn" onclick="window.location.href='ban.html'">←</button>
+  <div>
+    <div class="header-title">💬 Banding ToS</div>
+    <div class="header-sub">AI akan membantu, superadmin akan meninjau</div>
+  </div>
+</div>
+
+<div class="chat-area" id="chatArea">
+  <div class="msg system">Ceritakan situasimu, AI ToS kami akan membantu menjawab dan meneruskan ke superadmin jika diperlukan.</div>
+</div>
+
+<div class="typing-indicator" id="typingIndicator">AI sedang mengetik...</div>
+
+<div class="input-area">
+  <textarea id="messageInput" placeholder="Tulis pesanmu..." rows="1"></textarea>
+  <button id="sendBtn" onclick="sendMessage()">➤</button>
+</div>
+
+<script src="js/ioe-auth.js"></script>
+<script>
+  const chatArea = document.getElementById('chatArea');
+  const messageInput = document.getElementById('messageInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const typingIndicator = document.getElementById('typingIndicator');
+
+  let session = null;
+
+  function renderMessage(msg) {
+    const div = document.createElement('div');
+    div.className = `msg ${msg.sender}`;
+    if (msg.sender === 'ai') {
+      div.innerHTML = `<div class="msg-label">AI ToS</div>${escHtml(msg.text)}`;
+    } else if (msg.sender === 'admin') {
+      div.innerHTML = `<div class="msg-label">Superadmin</div>${escHtml(msg.text)}`;
+    } else {
+      div.textContent = msg.text;
+    }
+    chatArea.appendChild(div);
+  }
+
+  function escHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function scrollToBottom() {
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+
+  async function loadThread() {
+    if (!session) return;
+    try {
+      const res = await fetch('/api/tos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get-thread',
+          memberId: session.memberId,
+          sessionToken: session.sessionToken,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.thread.length > 0) {
+        chatArea.innerHTML = '';
+        data.thread.forEach(renderMessage);
+        scrollToBottom();
+      }
+    } catch (e) {
+      console.warn('Gagal memuat riwayat chat:', e.message);
+    }
+  }
+
+  async function sendMessage() {
+    const text = messageInput.value.trim();
+    if (!text || !session) return;
+
+    renderMessage({ sender: 'member', text });
+    scrollToBottom();
+    messageInput.value = '';
+    sendBtn.disabled = true;
+    typingIndicator.classList.add('show');
+    scrollToBottom();
+
+    try {
+      const res = await fetch('/api/tos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send-message',
+          memberId: session.memberId,
+          sessionToken: session.sessionToken,
+          text,
+        }),
+      });
+      const data = await res.json();
+
+      typingIndicator.classList.remove('show');
+
+      if (data.success) {
+        renderMessage({ sender: 'ai', text: data.aiReply });
+        if (data.escalated) {
+          renderMessage({ sender: 'system', text: '📨 Permintaan banding diteruskan ke superadmin untuk ditinjau.' });
+        }
+      } else {
+        renderMessage({ sender: 'system', text: 'Gagal mengirim pesan: ' + (data.error || 'Unknown error') });
+      }
+      scrollToBottom();
+    } catch (e) {
+      typingIndicator.classList.remove('show');
+      renderMessage({ sender: 'system', text: 'Gagal terhubung ke server' });
+      scrollToBottom();
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  messageInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // Init: pastikan member login (pakai session yang ada, ban atau tidak tetap boleh akses ToS)
+  (function init() {
+    session = getIoeSession();
+    if (!session) {
+      window.location.href = 'login.html';
+      return;
+    }
+    loadThread();
+  })();
+</script>
+
+</body>
+</html>
