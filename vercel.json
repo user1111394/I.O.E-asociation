@@ -1,11 +1,9 @@
 {
   "version": 2,
-  "buildCommand": "npm install",
   "outputDirectory": "frontend",
   "rewrites": [
     { "source": "/api/ai",          "destination": "/api/ai.js" },
     { "source": "/api/nasa",        "destination": "/api/nasa.js" },
-    { "source": "/api/iss",         "destination": "/api/iss.js" },
     { "source": "/api/imgsearch",   "destination": "/api/imgsearch.js" },
     { "source": "/api/member",      "destination": "/api/member.js" },
     { "source": "/api/checkban",    "destination": "/api/checkban.js" },
