@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event — I.O.E Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  header {
+    padding: 20px 18px 16px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  header .logo { font-size: 1.3rem; }
+  header h1 {
+    font-size: 1.15rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .container { max-width: 640px; margin: 0 auto; padding: 18px; }
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: #718096;
+  }
+  .empty-state .icon { font-size: 2.6rem; margin-bottom: 10px; }
+  .event-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(123,92,255,0.25);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 16px;
+    animation: fadeIn 0.4s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px);} to {opacity:1; transform:translateY(0);} }
+  .event-card h2 { font-size: 1.05rem; color: #fff; margin-bottom: 6px; }
+  .event-card .desc { font-size: 0.85rem; color: #a0aec0; line-height: 1.5; margin-bottom: 12px; }
+  .event-meta {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.75rem; color: #ff5aa0;
+    background: rgba(255,90,160,0.1);
+    border: 1px solid rgba(255,90,160,0.25);
+    padding: 5px 10px; border-radius: 20px;
+    width: fit-content; margin-bottom: 14px;
+  }
+  .file-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 8px;
+  }
+  .file-item {
+    border-radius: 10px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3);
+    aspect-ratio: 1; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    text-decoration: none;
+  }
+  .file-item img { width: 100%; height: 100%; object-fit: cover; }
+  .file-item .file-fallback {
+    font-size: 1.6rem; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .file-item .file-name {
+    font-size: 0.6rem; color: #a0aec0; padding: 0 4px; text-align: center;
+    word-break: break-all; line-height: 1.2;
+  }
+  .loading { text-align: center; padding: 60px 20px; color: #718096; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🌌</span>
+  <h1>Event I.O.E Hub</h1>
+</header>
+
+<div class="container">
+  <div id="eventList" class="loading">Memuat event...</div>
+</div>
+
+<script type="module">
+  // Config Firebase khusus Event (sama dengan yang dipakai di nav.js superadmin panel)
+  const EVENT_FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyCvIFCwWaH7r8i-8AeqTK2jE5YjMcBhJsg",
+    authDomain:        "storage-event-a5d18.firebaseapp.com",
+    databaseURL:       "https://storage-event-a5d18-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:         "storage-event-a5d18",
+    messagingSenderId: "432915436521",
+    appId:             "1:432915436521:web:384ff16175eb45e46c3178"
+  };
+
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const { getDatabase, ref, get, remove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+
+  const app = initializeApp(EVENT_FIREBASE_CONFIG);
+  const db = getDatabase(app);
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function isImage(name) {
+    return /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+  }
+
+  function renderEvents(events) {
+    const listEl = document.getElementById('eventList');
+
+    if (events.length === 0) {
+      listEl.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🌠</div>
+          <p>Belum ada event yang berlangsung.<br>Pantengin terus ya!</p>
+        </div>`;
+      return;
+    }
+
+    const now = Date.now();
+    listEl.innerHTML = events.map(ev => {
+      const daysLeft = Math.max(0, Math.ceil((ev.expiresAt - now) / (24 * 60 * 60 * 1000)));
+      const filesHtml = (ev.files || []).map(f => {
+        if (isImage(f.name)) {
+          return `<a class="file-item" href="${f.url}" target="_blank"><img src="${f.url}" alt="${escHtml(f.name)}" loading="lazy"></a>`;
+        }
+        return `
+          <a class="file-item" href="${f.url}" target="_blank">
+            <div class="file-fallback">
+              📄
+              <span class="file-name">${escHtml(f.name)}</span>
+            </div>
+          </a>`;
+      }).join('');
+
+      return `
+        <div class="event-card">
+          <h2>${escHtml(ev.title)}</h2>
+          ${ev.desc ? `<div class="desc">${escHtml(ev.desc)}</div>` : ''}
+          <div class="event-meta">⏳ ${daysLeft} hari lagi</div>
+          ${filesHtml ? `<div class="file-grid">${filesHtml}</div>` : ''}
+        </div>`;
+    }).join('');
+  }
+
+  async function loadEvents() {
+    try {
+      const snap = await get(ref(db, 'events'));
+      const data = snap.val();
+
+      if (!data) { renderEvents([]); return; }
+
+      const now = Date.now();
+      const all = Object.values(data);
+
+      // Lazy delete: bersihkan event yang sudah expired (sinkron dengan panel superadmin)
+      for (const ev of all) {
+        if (ev.expiresAt && ev.expiresAt < now) {
+          await remove(ref(db, `events/${ev.id}`));
+        }
+      }
+
+      const active = all.filter(ev => !ev.expiresAt || ev.expiresAt >= now);
+      active.sort((a, b) => b.createdAt - a.createdAt);
+      renderEvents(active);
+    } catch (err) {
+      console.error('Gagal memuat event:', err);
+      document.getElementById('eventList').innerHTML =
+        '<div class="empty-state">⚠️ Gagal memuat event. Coba refresh halaman.</div>';
+    }
+  }
+
+  loadEvents();
+</script>
+
+</body>
+</html>
