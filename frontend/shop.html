@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shop — I.O.E Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  header {
+    padding: 20px 18px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  header h1 {
+    font-size: 1.1rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .coin-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,200,0,0.1);
+    border: 1px solid rgba(255,200,0,0.3);
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 0.85rem; font-weight: 700; color: #ffd23f;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 20px 18px; }
+
+  .checkin-card {
+    background: rgba(123,92,255,0.08);
+    border: 1px solid rgba(123,92,255,0.3);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .checkin-card .label { font-size: 0.85rem; color: #cbd5e0; }
+  .checkin-card .label small { display: block; color: #718096; font-size: 0.72rem; margin-top: 2px; }
+  .checkin-btn {
+    background: linear-gradient(135deg,#7b5cff,#00c2ff);
+    border: none; color: #fff; font-weight: 700;
+    padding: 10px 18px; border-radius: 10px; font-size: 0.8rem;
+  }
+  .checkin-btn:disabled { opacity: 0.4; }
+
+  .item-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .item-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 14px;
+    text-align: center;
+  }
+  .item-card .icon {
+    width: 64px; height: 64px; margin: 0 auto 10px;
+    border-radius: 12px; overflow: hidden;
+    background: rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.8rem;
+  }
+  .item-card .icon img { width: 100%; height: 100%; object-fit: cover; }
+  .item-card .nama { font-size: 0.85rem; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .item-card .harga {
+    font-size: 0.78rem; color: #ffd23f; font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .buy-btn {
+    width: 100%; padding: 8px; border-radius: 8px; border: none;
+    background: rgba(0,229,192,0.15); color: #00e5c0;
+    font-size: 0.75rem; font-weight: 700;
+    border: 1px solid rgba(0,229,192,0.3);
+  }
+  .buy-btn:disabled { opacity: 0.4; }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: #718096; }
+  .loading { text-align: center; padding: 60px 20px; color: #718096; }
+
+  .status-msg {
+    margin-top: 16px; font-size: 0.8rem;
+    padding: 10px 14px; border-radius: 10px;
+    display: none;
+  }
+  .status-msg.show { display: block; }
+  .status-msg.success { background: rgba(0,229,192,0.1); color: #00e5c0; border: 1px solid rgba(0,229,192,0.25); }
+  .status-msg.error { background: rgba(255,90,160,0.1); color: #ff5aa0; border: 1px solid rgba(255,90,160,0.25); }
+
+  /* Modal detail item */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    align-items: center; justify-content: center; padding: 20px; z-index: 100;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: #14141f; border: 1px solid rgba(123,92,255,0.3);
+    border-radius: 16px; padding: 22px; max-width: 360px; width: 100%;
+    text-align: center;
+  }
+  .modal-box .icon { width: 80px; height: 80px; margin: 0 auto 14px; border-radius: 14px; overflow: hidden; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 2.2rem; }
+  .modal-box .icon img { width: 100%; height: 100%; object-fit: cover; }
+  .modal-box .nama { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .modal-box .deskripsi { font-size: 0.82rem; color: #a0aec0; line-height: 1.5; margin-bottom: 16px; }
+  .modal-box .harga { font-size: 0.9rem; color: #ffd23f; font-weight: 700; margin-bottom: 16px; }
+  .modal-close { margin-top: 10px; background: transparent; border: 1px solid rgba(255,255,255,0.15); color: #a0aec0; padding: 8px 16px; border-radius: 8px; font-size: 0.78rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Shop</h1>
+  <div class="coin-badge">🪙 <span id="coinAmount">—</span></div>
+</header>
+
+<div class="container">
+  <div class="checkin-card">
+    <div class="label">Daily Check-in<small>Klaim koin gratis tiap hari</small></div>
+    <button class="checkin-btn" id="checkinBtn" onclick="doCheckin()">Klaim</button>
+  </div>
+
+  <div id="shopFilterTabs" style="display:none; gap:6px; margin-bottom:14px;"></div>
+
+  <div id="itemArea" class="loading">Memuat item...</div>
+  <div id="statusMsg" class="status-msg"></div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<script src="js/nav.js"></script>
+<script src="js/ioe-auth.js"></script>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, get } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+// Config sama persis dengan yang di nav.js — diduplikasi di sini karena
+// script module ini punya scope terisolasi, tidak bisa akses variabel
+// EVENT_FIREBASE_CONFIG dari nav.js (yang dimuat sebagai script biasa).
+const EVENT_FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyCvIFCwWaH7r8i-8AeqTK2jE5YjMcBhJsg",
+  authDomain:        "storage-event-a5d18.firebaseapp.com",
+  databaseURL:       "https://storage-event-a5d18-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "storage-event-a5d18",
+  messagingSenderId: "432915436521",
+  appId:             "1:432915436521:web:384ff16175eb45e46c3178"
+};
+
+const session = getIoeSession();
+let currentItems = [];
+let activeEventIds = new Set();
+let activeEventTitles = {};
+let currentFilter = 'global'; // 'global' atau eventId tertentu
+
+if (!session) {
+  window.location.href = 'login.html';
+} else {
+  init();
+}
+
+async function init() {
+  await loadActiveEvents();
+  await loadBalance();
+  await loadItems();
+}
+
+// Ambil daftar event yang masih aktif dari Firebase (sama seperti event.html),
+// dipakai untuk: (1) menyaring item event yang event-nya sudah kadaluarsa,
+// (2) menampilkan nama event di badge/tab filter.
+async function loadActiveEvents() {
+  try {
+    const app = initializeApp(EVENT_FIREBASE_CONFIG, 'shop-event-check');
+    const db = getDatabase(app);
+    const snap = await get(ref(db, 'events'));
+    const data = snap.val();
+    if (!data) return;
+
+    const now = Date.now();
+    Object.values(data).forEach(ev => {
+      if (!ev.expiresAt || ev.expiresAt >= now) {
+        activeEventIds.add(ev.id);
+        activeEventTitles[ev.id] = ev.title;
+      }
+    });
+  } catch (err) {
+    console.error('Gagal memuat daftar event aktif:', err);
+    // Kalau gagal, biarkan kosong — item event otomatis tersembunyi (fail-safe)
+  }
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+async function loadBalance() {
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get-balance',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('coinAmount').textContent = data.coins;
+    }
+  } catch (err) {
+    console.error('Gagal ambil saldo:', err);
+  }
+}
+
+async function doCheckin() {
+  const btn = document.getElementById('checkinBtn');
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'daily-checkin',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showStatus(data.error || 'Gagal check-in', 'error');
+      if (typeof data.coins === 'number') {
+        document.getElementById('coinAmount').textContent = data.coins;
+      }
+      btn.textContent = 'Sudah Diklaim';
+      return;
+    }
+
+    document.getElementById('coinAmount').textContent = data.coins;
+    showStatus(`+${data.coinsEarned} koin berhasil diklaim!`, 'success');
+    btn.textContent = 'Sudah Diklaim';
+  } catch (err) {
+    console.error('Gagal check-in:', err);
+    showStatus('Gagal check-in, coba lagi.', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Klaim';
+  }
+}
+
+async function loadItems() {
+  const area = document.getElementById('itemArea');
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'list-items' }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memuat item');
+
+    // Item bertipe 'event' hanya ditampilkan kalau event terkait masih aktif.
+    // Item bertipe 'global' (atau tanpa koinType, untuk item lama) selalu tampil.
+    const allItems = data.items || [];
+    currentItems = allItems.filter(item => {
+      if (item.koinType !== 'event') return true;
+      return activeEventIds.has(item.eventId);
+    });
+
+    // Untuk item bertipe 'peraccount', ambil dulu berapa kali member ini
+    // sudah membeli tiap item tersebut (data per-member, tidak ikut
+    // terkirim dari list-items biasa karena itu bersifat global per item).
+    await loadPurchaseCounts();
+
+    renderFilterTabs();
+    renderVisibleItems();
+  } catch (err) {
+    console.error('Gagal muat item:', err);
+    area.innerHTML = `<div class="empty-state">⚠️ Gagal memuat item shop.</div>`;
+  }
+}
+
+let purchaseCounts = {}; // itemId -> jumlah pembelian member ini (khusus item peraccount)
+
+async function loadPurchaseCounts() {
+  const peraccountItems = currentItems.filter(it => it.stokType === 'peraccount');
+  if (peraccountItems.length === 0) return;
+
+  await Promise.all(peraccountItems.map(async (item) => {
+    try {
+      const res = await fetch('/api/shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get-purchase-count',
+          memberId: session.memberId,
+          sessionToken: session.sessionToken,
+          itemId: item.id,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) purchaseCounts[item.id] = data.count;
+    } catch (err) {
+      console.error('Gagal ambil purchase count untuk item', item.id, err);
+    }
+  }));
+}
+
+function renderFilterTabs() {
+  const tabsEl = document.getElementById('shopFilterTabs');
+  const eventIdsWithItems = [...new Set(currentItems.filter(it => it.koinType === 'event').map(it => it.eventId))];
+
+  if (eventIdsWithItems.length === 0) {
+    tabsEl.style.display = 'none';
+    return;
+  }
+
+  tabsEl.style.display = 'flex';
+  const globalBtn = `<button class="filter-tab${currentFilter === 'global' ? ' active' : ''}" onclick="switchFilter('global')" style="flex-shrink:0; padding:6px 14px; border-radius:20px; font-size:0.72rem; font-weight:600; background:${currentFilter === 'global' ? 'rgba(123,92,255,0.2)' : 'rgba(255,255,255,0.05)'}; border:1px solid ${currentFilter === 'global' ? 'rgba(123,92,255,0.5)' : 'rgba(255,255,255,0.1)'}; color:${currentFilter === 'global' ? '#fff' : '#a0aec0'};">🪙 Global</button>`;
+  const eventBtns = eventIdsWithItems.map(evId => {
+    const active = currentFilter === evId;
+    const title = activeEventTitles[evId] || 'Event';
+    return `<button class="filter-tab${active ? ' active' : ''}" onclick="switchFilter('${evId}')" style="flex-shrink:0; padding:6px 14px; border-radius:20px; font-size:0.72rem; font-weight:600; background:${active ? 'rgba(255,90,160,0.2)' : 'rgba(255,255,255,0.05)'}; border:1px solid ${active ? 'rgba(255,90,160,0.5)' : 'rgba(255,255,255,0.1)'}; color:${active ? '#fff' : '#a0aec0'};">🎉 ${escHtml(title)}</button>`;
+  }).join('');
+
+  tabsEl.innerHTML = globalBtn + eventBtns;
+  tabsEl.style.overflowX = 'auto';
+}
+
+function switchFilter(filter) {
+  currentFilter = filter;
+  renderFilterTabs();
+  renderVisibleItems();
+}
+
+function renderVisibleItems() {
+  const area = document.getElementById('itemArea');
+  const visible = currentItems.filter(item => {
+    if (currentFilter === 'global') return item.koinType !== 'event';
+    return item.koinType === 'event' && item.eventId === currentFilter;
+  });
+
+  if (visible.length === 0) {
+    area.innerHTML = `<div class="empty-state">🛒<br>Belum ada item di kategori ini.</div>`;
+    return;
+  }
+
+  area.innerHTML = `<div class="item-grid">${visible.map(renderItemCard).join('')}</div>`;
+}
+
+function isItemOutOfStock(item) {
+  if (item.stokType === 'daily' || item.stokType === 'onetime') return item.stokSisa <= 0;
+  if (item.stokType === 'peraccount') return (purchaseCounts[item.id] || 0) >= item.stokJumlah;
+  return false;
+}
+
+function getStokLabel(item) {
+  if (item.stokType === 'unlimited') return '';
+  if (item.stokType === 'daily') return `🔄 ${item.stokSisa}/${item.stokJumlah} hari ini`;
+  if (item.stokType === 'peraccount') return `👤 ${purchaseCounts[item.id] || 0}/${item.stokJumlah} dibeli`;
+  return `🔒 ${item.stokSisa}/${item.stokJumlah}`;
+}
+
+function renderItemCard(item) {
+  const iconInner = item.icon
+    ? `<img src="${item.icon}" alt="${escHtml(item.nama)}">`
+    : '🎁';
+  const coinIcon = item.koinType === 'event' ? '🎉' : '🪙';
+  const isOutOfStock = isItemOutOfStock(item);
+  const stokLabel = getStokLabel(item);
+
+  return `
+    <div class="item-card" onclick="openModal('${item.id}')" style="${isOutOfStock ? 'opacity:0.5;' : ''}">
+      <div class="icon">${iconInner}</div>
+      <div class="nama">${escHtml(item.nama)}</div>
+      <div class="harga">${coinIcon} ${item.harga}</div>
+      ${stokLabel ? `<div style="font-size:0.62rem; color:#718096; margin-bottom:6px;">${stokLabel}</div>` : ''}
+      <button class="buy-btn" onclick="event.stopPropagation(); buyItem('${item.id}')" ${isOutOfStock ? 'disabled' : ''}>${isOutOfStock ? 'Batas Tercapai' : 'Beli'}</button>
+    </div>`;
+}
+
+function openModal(itemId) {
+  const item = currentItems.find(it => it.id === itemId);
+  if (!item) return;
+
+  const iconInner = item.icon
+    ? `<img src="${item.icon}" alt="${escHtml(item.nama)}">`
+    : '🎁';
+  const coinIcon = item.koinType === 'event' ? '🎉' : '🪙';
+  const coinLabel = item.koinType === 'event' ? `Koin Event: ${escHtml(activeEventTitles[item.eventId] || '')}` : 'Koin Global';
+  const isOutOfStock = isItemOutOfStock(item);
+  const stokLabel = getStokLabel(item);
+
+  document.getElementById('modalBox').innerHTML = `
+    <div class="icon">${iconInner}</div>
+    <div class="nama">${escHtml(item.nama)}</div>
+    <div class="deskripsi">${escHtml(item.deskripsi || 'Tidak ada deskripsi.')}</div>
+    <div style="font-size:0.68rem; color:#718096; margin-bottom:4px;">${coinLabel}</div>
+    ${stokLabel ? `<div style="font-size:0.68rem; color:#718096; margin-bottom:8px;">${stokLabel}</div>` : ''}
+    <div class="harga">${coinIcon} ${item.harga}</div>
+    <button class="buy-btn" onclick="buyItem('${item.id}')" ${isOutOfStock ? 'disabled' : ''}>${isOutOfStock ? 'Batas Tercapai' : 'Beli Sekarang'}</button>
+    <button class="modal-close" onclick="closeModal()">Tutup</button>
+  `;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+
+async function buyItem(itemId) {
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'buy-item',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+        itemId,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showStatus(data.error || 'Gagal membeli item', 'error');
+      return;
+    }
+
+    const item = currentItems.find(it => it.id === itemId);
+    const isEventItem = item && item.koinType === 'event';
+
+    if (item && item.stokType === 'peraccount') {
+      purchaseCounts[itemId] = (purchaseCounts[itemId] || 0) + 1;
+    }
+
+    if (isEventItem) {
+      showStatus(`Berhasil membeli ${data.item.nama}! Sisa koin event: ${data.coins}`, 'success');
+    } else {
+      document.getElementById('coinAmount').textContent = data.coins;
+      showStatus(`Berhasil membeli ${data.item.nama}!`, 'success');
+    }
+    closeModal();
+    renderVisibleItems(); // refresh tampilan supaya label stok/batas ter-update
+  } catch (err) {
+    console.error('Gagal beli item:', err);
+    showStatus('Gagal membeli item, coba lagi.', 'error');
+  }
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg show ' + type;
+  setTimeout(() => { el.className = 'status-msg'; }, 4000);
+}
+
+// Script ini bertipe module (dibutuhkan untuk import Firebase), jadi fungsi
+// tidak otomatis menempel ke window seperti script biasa — perlu di-expose
+// manual supaya bisa dipanggil dari atribut onclick="" di HTML.
+window.doCheckin = doCheckin;
+window.closeModal = closeModal;
+window.switchFilter = switchFilter;
+window.openModal = openModal;
+window.buyItem = buyItem;
+
+</script>
+</body>
+</html>
