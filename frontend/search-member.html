@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cari Member — I.O.E Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  header {
+    padding: 20px 18px 16px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  header h1 {
+    font-size: 1.1rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 24px 18px; }
+
+  .search-row {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .search-row input {
+    flex: 1;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(123,92,255,0.3);
+    background: rgba(255,255,255,0.04);
+    color: #fff;
+    font-size: 0.9rem;
+  }
+  .search-row input:focus { outline: none; border-color: #7b5cff; }
+  .search-row button {
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .search-row button:disabled { opacity: 0.6; }
+
+  .result-list {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .result-empty, .result-loading {
+    text-align: center; color: #718096; font-size: 0.85rem;
+    padding: 40px 20px;
+  }
+
+  .member-card {
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(123,92,255,0.2);
+    border-radius: 14px;
+    padding: 12px 14px;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+  }
+  .member-card:active { background: rgba(123,92,255,0.1); }
+
+  .member-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .member-info { flex: 1; min-width: 0; }
+  .member-nama { font-size: 0.92rem; font-weight: 600; color: #fff; }
+  .member-meta {
+    font-size: 0.75rem; color: #718096;
+    display: flex; align-items: center; gap: 6px; margin-top: 2px;
+  }
+  .member-rank {
+    font-size: 0.68rem; font-weight: 600;
+    color: #00c2ff;
+    background: rgba(0,194,255,0.12);
+    border: 1px solid rgba(0,194,255,0.3);
+    padding: 2px 9px; border-radius: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔍 Cari Member</h1>
+</header>
+
+<div class="container">
+  <div class="search-row">
+    <input type="text" id="searchInput" placeholder="Cari nama atau username..." maxlength="60">
+    <button id="searchBtn" onclick="doSearch()">Cari</button>
+  </div>
+
+  <div id="resultArea" class="result-list">
+    <div class="result-empty">Ketik nama atau username buat mulai cari member.</div>
+  </div>
+</div>
+
+<script src="js/nav.js"></script>
+<script>
+
+const input = document.getElementById('searchInput');
+const btn = document.getElementById('searchBtn');
+const resultArea = document.getElementById('resultArea');
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    doSearch();
+  }
+});
+
+async function doSearch() {
+  const query = input.value.trim();
+  if (!query) return;
+
+  btn.disabled = true;
+  resultArea.innerHTML = '<div class="result-loading">Mencari...</div>';
+
+  try {
+    const res = await fetch('/api/member-list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'search-public', query }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal mencari member');
+
+    const members = data.members || [];
+    if (members.length === 0) {
+      resultArea.innerHTML = '<div class="result-empty">Tidak ada member yang cocok dengan pencarian.</div>';
+      return;
+    }
+
+    resultArea.innerHTML = members.map(m => {
+      const avatar = m.fotoProfil
+        ? `<img class="member-avatar" src="${m.fotoProfil}" alt="">`
+        : `<div class="member-avatar">👤</div>`;
+      return `
+        <a class="member-card" href="akun.html?id=${encodeURIComponent(m.memberId)}">
+          ${avatar}
+          <div class="member-info">
+            <div class="member-nama">${escHtml(m.nama)}</div>
+            <div class="member-meta">
+              <span>@${escHtml(m.username)}</span>
+              <span class="member-rank">${escHtml(m.rank || 'Cadet')}</span>
+            </div>
+          </div>
+        </a>
+      `;
+    }).join('');
+  } catch (err) {
+    resultArea.innerHTML = `<div class="result-empty">⚠️ ${escHtml(err.message || 'Gagal mencari, coba lagi.')}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+</script>
+</body>
+</html>
