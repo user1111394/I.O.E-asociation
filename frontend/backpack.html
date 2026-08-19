@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backpack — I.O.E Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  header {
+    padding: 20px 18px 16px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  header h1 {
+    font-size: 1.1rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 20px 18px; }
+
+  .item-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .item-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 10px;
+    text-align: center;
+    position: relative;
+  }
+  .item-card .icon {
+    width: 100%; aspect-ratio: 1; margin-bottom: 8px;
+    border-radius: 10px; overflow: hidden;
+    background: rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem;
+  }
+  .item-card .icon img { width: 100%; height: 100%; object-fit: cover; }
+  .item-card .nama {
+    font-size: 0.72rem; font-weight: 600; color: #fff;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .item-card .qty-badge {
+    position: absolute; top: 6px; right: 6px;
+    background: rgba(123,92,255,0.9);
+    color: #fff; font-size: 0.65rem; font-weight: 700;
+    padding: 2px 6px; border-radius: 10px;
+    min-width: 18px;
+  }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: #718096; }
+  .loading { text-align: center; padding: 60px 20px; color: #718096; }
+
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    align-items: center; justify-content: center; padding: 20px; z-index: 100;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: #14141f; border: 1px solid rgba(123,92,255,0.3);
+    border-radius: 16px; padding: 22px; max-width: 360px; width: 100%;
+    text-align: center;
+  }
+  .modal-box .icon { width: 80px; height: 80px; margin: 0 auto 14px; border-radius: 14px; overflow: hidden; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 2.2rem; }
+  .modal-box .icon img { width: 100%; height: 100%; object-fit: cover; }
+  .modal-box .nama { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .modal-box .deskripsi { font-size: 0.82rem; color: #a0aec0; line-height: 1.5; margin-bottom: 16px; }
+  .modal-box .qty { font-size: 0.85rem; color: #7b5cff; font-weight: 700; margin-bottom: 16px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .modal-close { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: #a0aec0; padding: 8px 16px; border-radius: 8px; font-size: 0.78rem; }
+  .modal-equip-btn {
+    border: none; border-radius: 8px; padding: 8px 16px; font-size: 0.78rem; font-weight: 700;
+    background: linear-gradient(135deg,#7b5cff,#00c2ff); color: #fff;
+  }
+  .modal-equip-btn.unequip { background: rgba(255,90,160,0.15); color: #ff5aa0; border: 1px solid rgba(255,90,160,0.3); }
+  .modal-equip-btn:disabled { opacity: 0.5; }
+  .func-tag {
+    display: inline-block; font-size: 0.68rem; font-weight: 600; color: #00e5c0;
+    background: rgba(0,229,192,0.1); border: 1px solid rgba(0,229,192,0.25);
+    padding: 2px 10px; border-radius: 12px; margin-bottom: 10px;
+  }
+  .equipped-badge {
+    position: absolute; top: 6px; left: 6px;
+    background: rgba(0,229,192,0.9); color: #06251f; font-size: 0.6rem; font-weight: 700;
+    padding: 2px 6px; border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎒 Backpack</h1>
+</header>
+
+<div class="container">
+  <div id="backpackArea" class="loading">Memuat backpack...</div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<script src="js/nav.js"></script>
+<script src="js/ioe-auth.js"></script>
+<script>
+
+const session = getIoeSession();
+let currentBackpack = [];
+let currentEquipped = { equippedBorder: null, equippedBackground: null };
+
+if (!session) {
+  window.location.href = 'login.html';
+} else {
+  loadBackpack();
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+async function loadBackpack() {
+  const area = document.getElementById('backpackArea');
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get-backpack',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memuat backpack');
+
+    currentBackpack = data.backpack || [];
+    currentEquipped.equippedBorder = data.equippedBorder || null;
+    currentEquipped.equippedBackground = data.equippedBackground || null;
+
+    if (currentBackpack.length === 0) {
+      area.innerHTML = `<div class="empty-state">🎒<br>Backpack masih kosong.<br>Yuk belanja di Shop!</div>`;
+      return;
+    }
+
+    area.innerHTML = `<div class="item-grid">${currentBackpack.map(renderItemCard).join('')}</div>`;
+  } catch (err) {
+    console.error('Gagal muat backpack:', err);
+    area.innerHTML = `<div class="empty-state">⚠️ Gagal memuat backpack.</div>`;
+  }
+}
+
+function isItemEquipped(item) {
+  if (item.kategori === 'func-border') return currentEquipped.equippedBorder?.itemId === item.itemId;
+  if (item.kategori === 'func-background') return currentEquipped.equippedBackground?.itemId === item.itemId;
+  return false;
+}
+
+function renderItemCard(item) {
+  const iconInner = item.icon
+    ? `<img src="${item.icon}" alt="${escHtml(item.nama)}">`
+    : '🎁';
+  const equippedBadge = isItemEquipped(item) ? `<div class="equipped-badge">Dipakai</div>` : '';
+  return `
+    <div class="item-card" onclick="openModal('${item.itemId}')">
+      ${equippedBadge}
+      <div class="qty-badge">x${item.quantity}</div>
+      <div class="icon">${iconInner}</div>
+      <div class="nama">${escHtml(item.nama)}</div>
+    </div>`;
+}
+
+function openModal(itemId) {
+  const item = currentBackpack.find(it => it.itemId === itemId);
+  if (!item) return;
+
+  const iconInner = item.icon
+    ? `<img src="${item.icon}" alt="${escHtml(item.nama)}">`
+    : '🎁';
+
+  const isFunc = item.kategori === 'func-border' || item.kategori === 'func-background';
+  const funcLabel = item.kategori === 'func-border' ? 'Border Akun' : 'Background Akun';
+  const equipped = isItemEquipped(item);
+
+  const funcTag = isFunc ? `<div class="func-tag">${funcLabel}</div><br>` : '';
+  const equipBtn = isFunc
+    ? equipped
+      ? `<button class="modal-equip-btn unequip" onclick="doUnequip('${item.itemId}', '${item.kategori}')">Lepas</button>`
+      : `<button class="modal-equip-btn" onclick="doEquip('${item.itemId}')">Pakai</button>`
+    : '';
+
+  document.getElementById('modalBox').innerHTML = `
+    ${funcTag}
+    <div class="icon">${iconInner}</div>
+    <div class="nama">${escHtml(item.nama)}</div>
+    <div class="deskripsi">${escHtml(item.deskripsi || 'Tidak ada deskripsi.')}</div>
+    <div class="qty">Dimiliki: x${item.quantity}</div>
+    <div class="modal-actions">
+      ${equipBtn}
+      <button class="modal-close" onclick="closeModal()">Tutup</button>
+    </div>
+  `;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+
+async function doEquip(itemId) {
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'equip-item',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+        itemId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memakai item');
+
+    if (data.slot === 'equippedBorder') currentEquipped.equippedBorder = data.equipped;
+    else currentEquipped.equippedBackground = data.equipped;
+
+    closeModal();
+    loadBackpack();
+  } catch (err) {
+    alert('Gagal memakai item: ' + (err.message || err));
+  }
+}
+
+async function doUnequip(itemId, kategori) {
+  const slot = kategori === 'func-border' ? 'equippedBorder' : 'equippedBackground';
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'unequip-item',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+        slot,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal melepas item');
+
+    currentEquipped[slot] = null;
+    closeModal();
+    loadBackpack();
+  } catch (err) {
+    alert('Gagal melepas item: ' + (err.message || err));
+  }
+}
+
+</script>
+</body>
+</html>
