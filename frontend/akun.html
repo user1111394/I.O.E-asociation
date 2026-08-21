@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akun Saya — I.O.E Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  header {
+    padding: 20px 18px 16px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  header h1 {
+    font-size: 1.1rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 30px 18px; }
+
+  .profile-card {
+    position: relative;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(123,92,255,0.25);
+    border-radius: 20px;
+    padding: 30px 20px;
+    text-align: center;
+    overflow: hidden; /* penting: bikin background item Func ke-clip rapi di dalam card */
+  }
+
+  /* Background item Func: sekarang ngisi SELURUH card (bukan cuma di
+     belakang foto), jadi jadi wallpaper untuk seluruh profil — foto, nama,
+     rank, ID, tombol Suka semua tampil di atasnya. */
+  .card-bg-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .card-bg-layer img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    opacity: 0.55; /* biar teks/konten di atasnya tetap kebaca jelas */
+  }
+
+  /* Semua konten asli card (foto, nama, rank, dst) didorong ke atas layer
+     background lewat z-index, supaya tidak ketutup / tidak ketutupan. */
+  .card-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .photo-wrap {
+    position: relative;
+    width: 120px; height: 120px;
+    margin: 0 auto 18px;
+  }
+
+  .photo-wrap img.profile-photo, .photo-wrap .photo-placeholder {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid rgba(123,92,255,0.5);
+    background: rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.6rem;
+    position: relative;
+    z-index: 1;
+  }
+  /* Border item Func: layer di atas foto, ukuran lebih besar supaya
+     framing/border-nya terlihat mengelilingi foto profil bulat. */
+  .photo-border-layer {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 150px; height: 150px;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    pointer-events: none;
+  }
+  .photo-border-layer img { width: 100%; height: 100%; object-fit: contain; }
+  .photo-edit-btn {
+    position: absolute; bottom: 2px; right: 2px;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg,#7b5cff,#00c2ff);
+    border: 3px solid #0a0a12;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; cursor: pointer;
+    z-index: 3; /* di atas border layer, supaya tombol edit tidak ketutupan */
+  }
+  #photoInput { display: none; }
+
+  .nama { font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .rank-badge {
+    display: inline-block;
+    font-size: 0.75rem; font-weight: 600;
+    color: #00c2ff;
+    background: rgba(0,194,255,0.12);
+    border: 1px solid rgba(0,194,255,0.3);
+    padding: 4px 14px; border-radius: 20px;
+    margin-bottom: 16px;
+  }
+  /* Rank tangga (otomatis dari total like) — warna makin "hangat" makin tinggi */
+  .rank-badge.rank-newbie      { color: #a0aec0; background: rgba(160,174,192,0.12); border-color: rgba(160,174,192,0.3); }
+  .rank-badge.rank-beginner    { color: #00c2ff; background: rgba(0,194,255,0.12);  border-color: rgba(0,194,255,0.3); }
+  .rank-badge.rank-junior      { color: #00e5c0; background: rgba(0,229,192,0.12);  border-color: rgba(0,229,192,0.3); }
+  .rank-badge.rank-senior      { color: #7b5cff; background: rgba(123,92,255,0.12); border-color: rgba(123,92,255,0.3); }
+  .rank-badge.rank-master      { color: #ff8f5a; background: rgba(255,143,90,0.12); border-color: rgba(255,143,90,0.3); }
+  .rank-badge.rank-grandmaster { color: #ffd23f; background: rgba(255,210,63,0.14); border-color: rgba(255,210,63,0.35); }
+  .rank-badge.rank-influencer {
+    color: #fff; border-color: transparent;
+    background: linear-gradient(90deg,#ff5aa0,#ffd23f);
+  }
+  /* Cheater — BUKAN pencapaian, warna merah tegas + border putus-putus,
+     sengaja dibuat beda supaya tidak terkesan sebagai badge kebanggaan */
+  .rank-badge.rank-cheater {
+    color: #ff3b3b; background: rgba(255,59,59,0.1);
+    border: 1px dashed rgba(255,59,59,0.5);
+  }
+  /* Rank eksklusif — gift manual admin */
+  .rank-badge.rank-collaborator {
+    color: #fff; border-color: transparent;
+    background: linear-gradient(90deg,#ffd23f,#00e5c0);
+  }
+  .rank-badge.rank-eksklusif { color: #00c2ff; background: rgba(0,194,255,0.16); border-color: rgba(0,194,255,0.5); font-weight: 700; }
+  .rank-badge.rank-winner    { color: #ff3b3b; background: rgba(255,59,59,0.14); border-color: rgba(255,59,59,0.4); font-weight: 700; }
+  .rank-badge.rank-creator {
+    color: #fff; border-color: transparent;
+    background: linear-gradient(90deg,#ff5aa0,#ffd23f,#00e5c0,#00c2ff,#7b5cff);
+  }
+  .member-id {
+    font-size: 0.8rem; color: #718096;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+  }
+
+  .status-msg {
+    margin-top: 16px; font-size: 0.8rem;
+    padding: 8px 12px; border-radius: 8px;
+    display: none;
+  }
+  .status-msg.show { display: block; }
+  .status-msg.success { background: rgba(0,229,192,0.1); color: #00e5c0; border: 1px solid rgba(0,229,192,0.25); }
+  .status-msg.error { background: rgba(255,90,160,0.1); color: #ff5aa0; border: 1px solid rgba(255,90,160,0.25); }
+
+  .like-row {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-top: 18px;
+  }
+  .like-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,90,160,0.1);
+    border: 1px solid rgba(255,90,160,0.3);
+    color: #ff5aa0;
+    padding: 9px 20px;
+    border-radius: 20px;
+    font-size: 0.85rem; font-weight: 600;
+    cursor: pointer;
+  }
+  .like-btn.liked {
+    background: linear-gradient(90deg,#ff5aa0,#ff8f5a);
+    color: #fff; border-color: transparent;
+  }
+  .like-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .like-count { font-size: 0.8rem; color: #a0aec0; }
+
+  .loading { text-align: center; padding: 60px 20px; color: #718096; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="pageTitle">Akun Saya</h1>
+</header>
+
+<div class="container">
+  <div id="profileArea" class="loading">Memuat profil...</div>
+</div>
+
+<script src="js/nav.js"></script>
+<script src="js/ioe-auth.js"></script>
+<script>
+
+const session = getIoeSession();
+const urlParams = new URLSearchParams(window.location.search);
+const viewedId = urlParams.get('id'); // memberId yang mau dilihat, dari klik hasil search
+
+// Mode publik aktif kalau ada ?id=xxx DAN itu bukan akun kita sendiri.
+// Kalau ?id= sama dengan memberId sendiri, tetap dianggap mode edit (halaman akun sendiri).
+const isPublicMode = !!viewedId && (!session || viewedId !== session.memberId);
+
+let equippedBorder = null;
+let equippedBackground = null;
+let publicProfileData = null; // dipakai kalau isPublicMode
+let hasLiked = false;
+
+if (!session && !isPublicMode) {
+  // Belum login dan bukan lagi lihat profil orang lain -> wajib login
+  window.location.href = 'login.html';
+} else if (isPublicMode) {
+  document.getElementById('pageTitle').textContent = 'Profil Member';
+  loadPublicProfile(viewedId);
+} else {
+  renderProfile(session);
+  loadEquippedItems();
+}
+
+async function loadPublicProfile(targetId) {
+  const area = document.getElementById('profileArea');
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-public-profile', memberId: targetId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Profil tidak ditemukan');
+
+    publicProfileData = data;
+    equippedBorder = data.equippedBorder || null;
+    equippedBackground = data.equippedBackground || null;
+
+    // Kalau yang login sendiri sudah pernah like akun ini, cek dari sisi
+    // klien tidak bisa (likedBy tidak dikirim ke publik) — jadi status like
+    // "milikku" dicek lewat toggle pertama kali saja; UI awal netral.
+    renderPublicProfile(data);
+  } catch (err) {
+    area.innerHTML = `<div class="loading">⚠️ ${escHtml(err.message || 'Gagal memuat profil')}</div>`;
+  }
+}
+
+function renderPublicProfile(data) {
+  const area = document.getElementById('profileArea');
+  const photoInner = data.fotoProfil
+    ? `<img class="profile-photo" src="${data.fotoProfil}" alt="Foto profil">`
+    : `<div class="photo-placeholder">👤</div>`;
+
+  const bgLayer = equippedBackground
+    ? `<div class="card-bg-layer"><img src="${equippedBackground.icon}" alt=""></div>`
+    : '';
+  const borderLayer = equippedBorder
+    ? `<div class="photo-border-layer"><img src="${equippedBorder.icon}" alt=""></div>`
+    : '';
+
+  const canLike = !!session && session.memberId !== data.memberId;
+  const likeBtn = canLike
+    ? `<button class="like-btn ${hasLiked ? 'liked' : ''}" id="likeBtn" onclick="doToggleLike('${data.memberId}')">
+         <span id="likeIcon">${hasLiked ? '💖' : '🤍'}</span> <span id="likeLabel">${hasLiked ? 'Disukai' : 'Suka'}</span>
+       </button>`
+    : '';
+
+  area.innerHTML = `
+    <div class="profile-card">
+      ${bgLayer}
+      <div class="card-content">
+        <div class="photo-wrap">
+          ${photoInner}
+          ${borderLayer}
+        </div>
+        <div class="nama">${escHtml(data.nama)}</div>
+        <div class="rank-badge rank-${escHtml(data.rankId || 'newbie')}">${escHtml(data.rank || 'Newbie')}</div>
+        <div class="member-id">${escHtml(data.memberId)}</div>
+        <div class="like-row">
+          ${likeBtn}
+          <span class="like-count" id="likeCount">${data.totalLikes} suka</span>
+        </div>
+        ${!session ? '<div class="status-msg show error" style="margin-top:14px;">Login dulu buat kasih like ✨</div>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function doToggleLike(targetMemberId) {
+  if (!session) return;
+  const btn = document.getElementById('likeBtn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'toggle-like',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+        targetMemberId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal like');
+
+    hasLiked = data.liked;
+    document.getElementById('likeCount').textContent = `${data.totalLikes} suka`;
+    document.getElementById('likeIcon').textContent = hasLiked ? '💖' : '🤍';
+    document.getElementById('likeLabel').textContent = hasLiked ? 'Disukai' : 'Suka';
+    btn.classList.toggle('liked', hasLiked);
+  } catch (err) {
+    alert('Gagal memberi like: ' + (err.message || err));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function loadEquippedItems() {
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get-backpack',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memuat item terpakai');
+
+    equippedBorder = data.equippedBorder || null;
+    equippedBackground = data.equippedBackground || null;
+    renderProfile(session);
+  } catch (err) {
+    console.error('Gagal memuat border/background akun:', err);
+    // Diam-diam gagal — profil tetap tampil tanpa border/background kustom,
+    // tidak perlu mengganggu member dengan error untuk fitur kosmetik ini.
+  }
+}
+
+function renderProfile(s) {
+  const area = document.getElementById('profileArea');
+  const photoInner = s.fotoProfil
+    ? `<img class="profile-photo" src="${s.fotoProfil}" alt="Foto profil">`
+    : `<div class="photo-placeholder">👤</div>`;
+
+  const bgLayer = equippedBackground
+    ? `<div class="card-bg-layer"><img src="${equippedBackground.icon}" alt="${escHtml(equippedBackground.nama)}"></div>`
+    : '';
+  const borderLayer = equippedBorder
+    ? `<div class="photo-border-layer"><img src="${equippedBorder.icon}" alt="${escHtml(equippedBorder.nama)}"></div>`
+    : '';
+
+  area.innerHTML = `
+    <div class="profile-card">
+      ${bgLayer}
+      <div class="card-content">
+        <div class="photo-wrap">
+          ${photoInner}
+          ${borderLayer}
+          <div class="photo-edit-btn" onclick="document.getElementById('photoInput').click()">✏️</div>
+        </div>
+        <div class="nama">${escHtml(s.nama)}</div>
+        <div class="rank-badge rank-${escHtml(s.rankId || 'newbie')}">${escHtml(s.rank || 'Newbie')}</div>
+        <div class="member-id">${escHtml(s.memberId)}</div>
+        <input type="file" id="photoInput" accept="image/*" onchange="uploadPhoto(this)">
+        <div id="statusMsg" class="status-msg"></div>
+      </div>
+    </div>
+  `;
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+async function uploadPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  if (!file.type.startsWith('image/')) {
+    showStatus('File harus berupa gambar.', 'error');
+    return;
+  }
+  const maxSizeMB = 5;
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    showStatus(`Ukuran foto maksimal ${maxSizeMB}MB.`, 'error');
+    return;
+  }
+
+  showStatus('Mengupload foto...', 'success');
+
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const uploadRes = await fetch('/api/event-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uploadType: 'profile-photo',
+        fileName: `${session.memberId}-${Date.now()}.${file.name.split('.').pop()}`,
+        fileDataBase64: base64,
+        contentType: file.type,
+      }),
+    });
+    const uploadData = await uploadRes.json();
+    if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload gagal');
+
+    // Simpan URL foto ke akun member
+    const saveRes = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update-profile-photo',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+        fotoUrl: uploadData.url,
+      }),
+    });
+    const saveData = await saveRes.json();
+    if (!saveRes.ok) throw new Error(saveData.error || 'Gagal menyimpan foto');
+
+    // Update session lokal supaya foto langsung kelihatan tanpa perlu login ulang
+    session.fotoProfil = uploadData.url;
+    if (typeof saveIoeSession === 'function') {
+      saveIoeSession(session);
+    }
+
+    showStatus('Foto profil berhasil diperbarui!', 'success');
+    renderProfile(session);
+  } catch (err) {
+    console.error('Upload foto gagal:', err);
+    showStatus('Gagal upload foto: ' + (err.message || err), 'error');
+  }
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'status-msg show ' + type;
+}
+
+</script>
+</body>
+</html>
