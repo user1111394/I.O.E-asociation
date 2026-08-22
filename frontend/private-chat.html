@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Pribadi — I.O.E Hub</title>
+<link rel="stylesheet" href="css/global.css">
+<style>
+* { -webkit-tap-highlight-color:transparent; }
+body { overflow:hidden; background:var(--bg-deep, #04040f); min-height:100vh; }
+
+.tt-bar {
+  position:fixed; bottom:0; left:0; right:0; z-index:800;
+  height:64px;
+  background:rgba(4,4,15,0.96);
+  backdrop-filter:blur(20px);
+  border-top:1px solid rgba(255,255,255,0.07);
+  display:flex; align-items:center; justify-content:space-around;
+  padding:0 8px;
+  box-shadow:0 -8px 30px rgba(0,0,0,0.4);
+}
+.tt-tab {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:3px; flex:1; padding:8px 4px; cursor:pointer;
+  border:none; background:none; transition:all 0.18s;
+  text-decoration:none; position:relative;
+}
+.tt-tab-icon { font-size:1.3rem; line-height:1; }
+.tt-tab-label {
+  font-family:'Inter',sans-serif; font-size:0.6rem; font-weight:500;
+  color:rgba(255,255,255,0.35); letter-spacing:0.03em;
+}
+.tt-tab.active .tt-tab-icon { transform:scale(1.15); }
+.tt-tab.active .tt-tab-label { color:var(--primary); font-weight:700; }
+
+#pc-app {
+  position:fixed; inset:0;
+  padding-top:var(--nav-h);
+  padding-bottom:64px;
+  display:flex; flex-direction:column;
+}
+
+.pc-screen { display:none; flex-direction:column; height:100%; overflow:hidden; }
+.pc-screen.active { display:flex; }
+
+#pc-loading {
+  display:none; align-items:center; justify-content:center; height:100%;
+  font-family:'Space Grotesk',sans-serif; color:var(--text-muted); font-size:0.9rem;
+}
+#pc-loading.show { display:flex; }
+
+/* ── LIST SCREEN ── */
+.pc-list-header {
+  padding:14px 16px; flex-shrink:0;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.pc-list-title { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1.1rem; color:#fff; }
+.pc-new-chat-btn {
+  width:36px; height:36px; border-radius:50%; border:none;
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  color:#fff; font-size:1.1rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 4px 16px rgba(123,92,255,0.4);
+}
+
+.pc-search-box { padding:12px 16px; flex-shrink:0; border-bottom:1px solid var(--border); display:none; }
+.pc-search-box.show { display:block; }
+.pc-search-row { display:flex; gap:8px; margin-bottom:10px; }
+.pc-search-row input {
+  flex:1; padding:10px 14px; border-radius:var(--radius);
+  background:var(--bg-card2); border:1px solid var(--border); color:var(--text);
+  font-family:'Inter',sans-serif; font-size:0.85rem; outline:none;
+}
+.pc-search-row input:focus { border-color:var(--border2); }
+.pc-search-row button {
+  padding:10px 16px; border-radius:var(--radius); border:none;
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  color:#fff; font-weight:700; font-size:0.82rem; cursor:pointer;
+}
+.pc-search-loading, .pc-search-empty {
+  font-family:'Inter',sans-serif; font-size:0.8rem; color:var(--text-muted);
+  padding:10px 4px;
+}
+
+.pc-chat-list-wrap { flex:1; overflow-y:auto; padding:8px; }
+.pc-chat-item-wrap {
+  display:flex; align-items:center; gap:6px; margin-bottom:8px;
+}
+.pc-chat-item {
+  width:100%; display:flex; align-items:center; gap:12px;
+  padding:12px; border-radius:var(--radius); border:none;
+  background:var(--bg-card2); cursor:pointer;
+  text-align:left; transition:background 0.15s;
+}
+.pc-chat-item:active { background:var(--bg-card3, rgba(255,255,255,0.06)); }
+.pc-chat-delete-btn {
+  flex-shrink:0; width:38px; height:38px; border-radius:50%;
+  border:1px solid rgba(255,90,160,0.25); background:rgba(255,90,160,0.08);
+  font-size:0.95rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+.pc-chat-delete-btn:active { background:rgba(255,90,160,0.18); }
+.pc-avatar {
+  width:44px; height:44px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,rgba(123,92,255,0.35),rgba(0,194,255,0.35));
+  border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Grotesk',sans-serif; font-weight:700; color:#fff; font-size:1.05rem;
+  overflow:hidden;
+}
+.pc-chat-item-body { flex:1; min-width:0; }
+.pc-chat-item-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:2px; }
+.pc-chat-item-name { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.9rem; color:#fff; }
+.pc-chat-item-preview {
+  font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--text-muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pc-unread-badge {
+  background:var(--primary); color:#04040f; font-family:'Orbitron',sans-serif;
+  font-size:0.62rem; font-weight:700; padding:2px 7px; border-radius:10px; flex-shrink:0;
+}
+
+#pc-list-empty {
+  display:none; flex-direction:column; align-items:center; justify-content:center;
+  height:100%; padding:32px; text-align:center; gap:8px;
+}
+#pc-list-empty .pc-empty-icon { font-size:2.5rem; margin-bottom:6px; }
+#pc-list-empty .pc-empty-text { font-family:'Inter',sans-serif; color:var(--text-muted); font-size:0.85rem; }
+
+/* ── CHAT WINDOW SCREEN ── */
+.pc-chat-topbar {
+  padding:10px 16px; flex-shrink:0;
+  border-bottom:1px solid var(--border);
+  background:rgba(4,4,15,0.9);
+  display:flex; align-items:center; gap:10px;
+}
+.pc-back-btn {
+  width:32px; height:32px; border-radius:50%; border:none;
+  background:var(--bg-card2); color:#fff; font-size:1rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+#pc-chat-header-avatar {
+  width:30px; height:30px; border-radius:50%; flex-shrink:0; overflow:hidden;
+  background:linear-gradient(135deg,rgba(123,92,255,0.35),rgba(0,194,255,0.35));
+  border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Grotesk',sans-serif; font-weight:700; color:#fff; font-size:0.8rem;
+}
+#pc-chat-header-name { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.95rem; color:#fff; flex:1; }
+.pc-chat-header-delete-btn {
+  flex-shrink:0; width:32px; height:32px; border-radius:50%;
+  border:1px solid rgba(255,90,160,0.25); background:rgba(255,90,160,0.08);
+  font-size:0.9rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+.pc-chat-header-delete-btn:active { background:rgba(255,90,160,0.18); }
+
+#pc-messages {
+  flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:8px;
+  border: 3px solid lime; /* DEBUG SEMENTARA */
+}
+.pc-msg { display:flex; align-items:flex-end; gap:6px; border: 2px solid yellow; /* DEBUG SEMENTARA */ }
+.pc-msg-theirs { justify-content:flex-start; }
+.pc-msg-mine { justify-content:flex-end; flex-direction:row-reverse; }
+.pc-msg-avatar {
+  width:26px; height:26px; border-radius:50%; flex-shrink:0; overflow:hidden;
+  background:linear-gradient(135deg,rgba(123,92,255,0.35),rgba(0,194,255,0.35));
+  border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Grotesk',sans-serif; font-weight:700; color:#fff; font-size:0.65rem;
+}
+.pc-msg-bubble {
+  max-width:75%; padding:10px 14px; border-radius:16px;
+  font-family:'Inter',sans-serif; font-size:0.86rem; line-height:1.4;
+  word-wrap:break-word; white-space:pre-wrap;
+  border: 2px solid red; /* DEBUG SEMENTARA */
+}
+.pc-msg-theirs .pc-msg-bubble {
+  background:var(--bg-card2); color:var(--text); border:1px solid var(--border);
+  border-bottom-left-radius:4px;
+}
+.pc-msg-mine .pc-msg-bubble {
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  color:#fff; border-bottom-right-radius:4px;
+}
+
+.pc-input-bar {
+  padding:10px 12px; flex-shrink:0;
+  border-top:1px solid var(--border);
+  background:rgba(4,4,15,0.9);
+  display:flex; align-items:flex-end; gap:8px;
+}
+#pc-msg-input {
+  flex:1; resize:none; max-height:100px; padding:10px 14px;
+  border-radius:20px; background:var(--bg-card2); border:1px solid var(--border);
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.88rem; outline:none;
+}
+#pc-msg-input:focus { border-color:var(--border2); }
+.pc-send-btn {
+  width:40px; height:40px; border-radius:50%; border:none; flex-shrink:0;
+  background:linear-gradient(135deg,var(--secondary),var(--primary));
+  color:#fff; font-size:1rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+</style>
+</head>
+<body>
+
+<nav class="ioe-nav" id="ioe-nav"></nav>
+
+<div id="pc-app">
+  <div id="pc-loading" class="show">Memuat chat pribadi...</div>
+
+  <!-- ══════════ LIST SCREEN ══════════ -->
+  <div id="pc-list-screen" class="pc-screen">
+    <div class="pc-list-header">
+      <span class="pc-list-title">💬 Chat Pribadi</span>
+      <button class="pc-new-chat-btn" onclick="document.getElementById('pc-search-box').classList.toggle('show')" aria-label="Chat baru">+</button>
+    </div>
+
+    <div class="pc-search-box" id="pc-search-box">
+      <div class="pc-search-row">
+        <input type="text" id="pc-search-input" placeholder="Cari username..." onkeydown="if(event.key==='Enter'){event.preventDefault(); window.pcSearchUsername();}">
+        <button onclick="window.pcSearchUsername()">Cari</button>
+      </div>
+      <div id="pc-search-result"></div>
+    </div>
+
+    <div class="pc-chat-list-wrap">
+      <div id="pc-chat-list"></div>
+      <div id="pc-list-empty">
+        <div class="pc-empty-icon">💬</div>
+        <div class="pc-empty-text">Belum ada percakapan.<br>Tap tombol + untuk mulai chat baru.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ CHAT WINDOW SCREEN ══════════ -->
+  <div id="pc-chat-screen" class="pc-screen">
+    <div class="pc-chat-topbar">
+      <button class="pc-back-btn" onclick="window.pcBackToList()" aria-label="Kembali">←</button>
+      <div id="pc-chat-header-avatar"></div>
+      <span id="pc-chat-header-name"></span>
+      <button class="pc-chat-header-delete-btn" onclick="window.pcDeleteActiveChat()" aria-label="Hapus percakapan">🗑️</button>
+    </div>
+    <div id="pc-messages"></div>
+    <div class="pc-input-bar">
+      <textarea id="pc-msg-input" rows="1" placeholder="Ketik pesan..." onkeydown="window.pcHandleInputKeydown(event)"></textarea>
+      <button class="pc-send-btn" onclick="window.pcSendMessage()" aria-label="Kirim">➤</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/nav.js"></script>
+<script src="js/ioe-auth.js"></script>
+<script src="js/private-chat.js"></script>
+
+<div class="tt-bar">
+  <a href="chat.html" class="tt-tab">
+    <span class="tt-tab-icon">💬</span>
+    <span class="tt-tab-label">Chat</span>
+  </a>
+  <a href="private-chat.html" class="tt-tab active">
+    <span class="tt-tab-icon">📩</span>
+    <span class="tt-tab-label">Pribadi</span>
+  </a>
+  <a href="index.html" class="tt-tab">
+    <span class="tt-tab-icon">🏠</span>
+    <span class="tt-tab-label">Beranda</span>
+  </a>
+</div>
+
+</body>
+</html>
