@@ -301,23 +301,14 @@ function openSuperadminPanel() {
         <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">🪙 Nama koin khusus event ini (misal "Koin Grand Opening")</label>
         <input id="sa-event-coin-name" type="text" placeholder="Nama koin event" style="width:100%; padding:10px 12px; margin-bottom:14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.25); border-radius:8px; color:#fff; font-size:13px; box-sizing:border-box;">
 
-        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">🖼️ Pilih Template</label>
-        <div style="display:flex; gap:8px; margin-bottom:14px;">
-          <button type="button" onclick="saSelectEventTemplate('A')" id="sa-tpl-a-btn" style="flex:1; padding:10px; background:rgba(255,90,160,0.2); border:2px solid #ff5aa0; border-radius:8px; color:#fff; font-size:12px; font-weight:600; cursor:pointer;">Template A<br><span style="font-weight:400; font-size:10px; color:#a0aec0;">Poster tengah</span></button>
-          <button type="button" onclick="saSelectEventTemplate('B')" id="sa-tpl-b-btn" style="flex:1; padding:10px; background:rgba(255,255,255,0.05); border:2px solid rgba(255,90,160,0.25); border-radius:8px; color:#fff; font-size:12px; font-weight:600; cursor:pointer;">Template B<br><span style="font-weight:400; font-size:10px; color:#a0aec0;">Poster + karakter kiri</span></button>
-        </div>
-        <input type="hidden" id="sa-event-template" value="A">
+        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">🌌 Upload Background (full layar, dari tim desain)</label>
+        <input id="sa-event-bg-input" type="file" accept="image/*" style="width:100%; margin-bottom:14px; font-size:12px; color:#cbd5e0;">
 
-        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">Upload Poster (jpg/png, dari tim desain)</label>
-        <input id="sa-event-poster-input" type="file" accept="image/*" style="width:100%; margin-bottom:10px; font-size:12px; color:#cbd5e0;">
+        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">🖼️ Upload Border/Bingkai (PNG transparan, dari tim desain)</label>
+        <input id="sa-event-borderimg-input" type="file" accept="image/png" style="width:100%; margin-bottom:14px; font-size:12px; color:#cbd5e0;">
 
-        <div id="sa-event-character-wrap" style="display:none;">
-          <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">Upload Karakter (opsional — kosongkan kalau karakter sudah menyatu di poster)</label>
-          <input id="sa-event-character-input" type="file" accept="image/*" style="width:100%; margin-bottom:10px; font-size:12px; color:#cbd5e0;">
-        </div>
-
-        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">🎨 Warna Background Border Quest</label>
-        <input id="sa-event-border-color" type="color" value="#1e3a8a" style="width:100%; height:40px; margin-bottom:14px; background:transparent; border:1px solid rgba(255,90,160,0.25); border-radius:8px; cursor:pointer;">
+        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">🎨 Upload Isi Tengah Border (warna/gambar/pattern, mengisi lubang bingkai)</label>
+        <input id="sa-event-questbg-input" type="file" accept="image/*" style="width:100%; margin-bottom:14px; font-size:12px; color:#cbd5e0;">
 
         <div id="sa-event-upload-status" style="font-size:11px; color:#718096; margin-bottom:10px;"></div>
 
@@ -690,28 +681,6 @@ async function saGetEventFirebase() {
 // ── Quest builder: state sementara untuk quest yang lagi dibangun di form ──
 let saQuestDraft = [];
 
-function saSelectEventTemplate(tpl) {
-  document.getElementById('sa-event-template').value = tpl;
-
-  const btnA = document.getElementById('sa-tpl-a-btn');
-  const btnB = document.getElementById('sa-tpl-b-btn');
-  const charWrap = document.getElementById('sa-event-character-wrap');
-
-  if (tpl === 'A') {
-    btnA.style.background = 'rgba(255,90,160,0.2)';
-    btnA.style.border = '2px solid #ff5aa0';
-    btnB.style.background = 'rgba(255,255,255,0.05)';
-    btnB.style.border = '2px solid rgba(255,90,160,0.25)';
-    charWrap.style.display = 'none';
-  } else {
-    btnB.style.background = 'rgba(255,90,160,0.2)';
-    btnB.style.border = '2px solid #ff5aa0';
-    btnA.style.background = 'rgba(255,255,255,0.05)';
-    btnA.style.border = '2px solid rgba(255,90,160,0.25)';
-    charWrap.style.display = 'block';
-  }
-}
-
 function saAddQuestRow() {
   const id = 'q_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   saQuestDraft.push({ id, type: 'visit', title: '', rewardCoin: 10 });
@@ -778,10 +747,9 @@ async function saCreateEvent() {
   const desc = document.getElementById('sa-event-desc').value.trim();
   const days = parseInt(document.getElementById('sa-event-days').value, 10);
   const coinName = document.getElementById('sa-event-coin-name').value.trim();
-  const template = document.getElementById('sa-event-template').value;
-  const borderColor = document.getElementById('sa-event-border-color').value;
-  const posterInput = document.getElementById('sa-event-poster-input');
-  const characterInput = document.getElementById('sa-event-character-input');
+  const bgInput = document.getElementById('sa-event-bg-input');
+  const borderImgInput = document.getElementById('sa-event-borderimg-input');
+  const questBgInput = document.getElementById('sa-event-questbg-input');
   const statusEl = document.getElementById('sa-event-upload-status');
   const btn = document.getElementById('sa-event-submit-btn');
 
@@ -795,9 +763,11 @@ async function saCreateEvent() {
     statusEl.style.color = '#ff6b6b';
     return;
   }
-  const posterFile = posterInput.files && posterInput.files[0];
-  if (!posterFile) {
-    statusEl.textContent = '⚠️ Upload poster dulu.';
+  const bgFile = bgInput.files && bgInput.files[0];
+  const borderImgFile = borderImgInput.files && borderImgInput.files[0];
+  const questBgFile = questBgInput.files && questBgInput.files[0];
+  if (!bgFile || !borderImgFile || !questBgFile) {
+    statusEl.textContent = '⚠️ Upload Background, Border, dan Isi Tengah Border — ketiganya wajib.';
     statusEl.style.color = '#ff6b6b';
     return;
   }
@@ -821,15 +791,14 @@ async function saCreateEvent() {
   try {
     const eventId = 'event_' + Date.now();
 
-    statusEl.textContent = 'Upload poster...';
-    const posterUrl = await saUploadEventImage(posterFile);
+    statusEl.textContent = 'Upload background...';
+    const backgroundUrl = await saUploadEventImage(bgFile);
 
-    let characterUrl = '';
-    const characterFile = characterInput && characterInput.files && characterInput.files[0];
-    if (template === 'B' && characterFile) {
-      statusEl.textContent = 'Upload karakter...';
-      characterUrl = await saUploadEventImage(characterFile);
-    }
+    statusEl.textContent = 'Upload border/bingkai...';
+    const borderShapeUrl = await saUploadEventImage(borderImgFile);
+
+    statusEl.textContent = 'Upload isi tengah border...';
+    const questBgUrl = await saUploadEventImage(questBgFile);
 
     // Susun quest jadi object (bukan array) supaya gampang di-lookup per ID
     // saat member klaim reward nanti.
@@ -853,10 +822,9 @@ async function saCreateEvent() {
     await set(ref(db, `events/${eventId}`), {
       id: eventId,
       title, desc,
-      template,
-      posterUrl,
-      characterUrl,
-      borderColor,
+      backgroundUrl,
+      borderShapeUrl,
+      questBgUrl,
       coinName,
       quests: questsObj,
       createdAt: now,
@@ -870,8 +838,9 @@ async function saCreateEvent() {
     document.getElementById('sa-event-desc').value = '';
     document.getElementById('sa-event-days').value = '';
     document.getElementById('sa-event-coin-name').value = '';
-    posterInput.value = '';
-    if (characterInput) characterInput.value = '';
+    bgInput.value = '';
+    borderImgInput.value = '';
+    questBgInput.value = '';
     saQuestDraft = [];
     saRenderQuestList();
     saLoadEventList();

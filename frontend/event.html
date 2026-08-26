@@ -7,19 +7,20 @@
 <script src="js/ioe-auth.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
+  html, body { height: 100%; overflow: hidden; }
   body {
-    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    background: #0a0a12;
     color: #e2e8f0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    display: flex; flex-direction: column;
-    min-height: 100%;
   }
+
+  /* ══ Layer 1: header tetap di atas segalanya ══ */
   header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
     padding: 10px 14px;
     display: flex; align-items: center; gap: 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    flex-shrink: 0;
+    background: rgba(10,10,18,0.75);
+    backdrop-filter: blur(6px);
   }
   header .logo { font-size: 1rem; }
   header h1 {
@@ -29,100 +30,137 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .event-tabs {
+    position: fixed; top: 42px; left: 0; right: 0; z-index: 20;
     display: flex; gap: 6px; overflow-x: auto;
-    padding: 8px 12px; flex-shrink: 0;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 8px 12px;
+    background: rgba(10,10,18,0.6);
   }
   .event-tabs::-webkit-scrollbar { display: none; }
   .event-tab {
     flex-shrink: 0;
     padding: 6px 12px; border-radius: 20px;
     font-size: 0.72rem; font-weight: 600;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
     color: #a0aec0; cursor: pointer;
     white-space: nowrap;
   }
   .event-tab.active {
-    background: rgba(123,92,255,0.2);
-    border-color: rgba(123,92,255,0.5);
+    background: rgba(123,92,255,0.3);
+    border-color: rgba(123,92,255,0.6);
     color: #fff;
   }
-  .event-stage { flex: 1; position: relative; }
-  .empty-state { text-align: center; padding: 60px 20px; color: #718096; }
+
+  .empty-state { text-align: center; padding: 90px 20px 20px; color: #718096; }
   .empty-state .icon { font-size: 2.6rem; margin-bottom: 10px; }
-  .loading { text-align: center; padding: 60px 20px; color: #718096; }
+  .loading { text-align: center; padding: 90px 20px 20px; color: #718096; }
 
-  .event-panel { display: none; padding: 16px; }
-  .event-panel.active { display: block; }
+  /* ══ Layer 2: panggung event, satu per event, ditumpuk penuh layar ══ */
+  .event-panel {
+    display: none;
+    position: fixed; inset: 0;
+    align-items: center; justify-content: center;
+  }
+  .event-panel.active { display: flex; }
 
-  /* Poster event, dua layout tergantung template */
-  .event-poster-wrap {
+  /* Background.jpg — mengisi penuh layar, paling belakang */
+  .event-bg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+
+  /* Bingkai border + isi quest — TIDAK memenuhi layar, mengambang di
+     tengah, supaya Background.jpg tetap terlihat di pinggirnya */
+  .quest-frame-wrap {
     position: relative;
-    border-radius: 16px; overflow: hidden;
-    margin-bottom: 16px;
-  }
-  .event-poster-wrap.template-a img.poster { width: 100%; display: block; }
-  .event-poster-wrap.template-b {
-    display: flex; align-items: flex-end; gap: 0;
-  }
-  .event-poster-wrap.template-b img.poster { flex: 1; width: 100%; display: block; }
-  .event-poster-wrap.template-b img.character {
-    position: absolute; left: 0; bottom: 0;
-    max-height: 92%; max-width: 42%;
-    object-fit: contain;
-    pointer-events: none;
+    z-index: 1;
+    width: min(84vw, 420px);
+    height: min(72vh, 640px);
+    margin-top: 48px; /* beri ruang untuk header */
   }
 
-  /* Border quest — bentuk tetap, warna dinamis lewat CSS variable */
-  .quest-frame {
-    --quest-border-color: #1e3a8a;
-    background: linear-gradient(180deg, var(--quest-border-color), color-mix(in srgb, var(--quest-border-color) 60%, #000));
-    border-radius: 18px;
-    border: 2px solid rgba(255,255,255,0.15);
-    padding: 4px;
+  /* Isi tengah (custom questBg) — di-mask mengikuti bentuk lubang Border.png,
+     supaya warna/gambar custom cuma mengisi area dalam bingkai, bukan kotak
+     persegi biasa */
+  .quest-frame-bg {
+    position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center;
+    -webkit-mask-image: var(--border-mask);
+    mask-image: var(--border-mask);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
   }
-  .quest-frame-inner {
-    background: rgba(0,0,0,0.35);
-    border-radius: 14px;
-    padding: 14px;
+
+  /* Isi quest yang bisa discroll — didudukkan SEDIKIT lebih kecil dari
+     quest-frame-bg supaya tidak menutupi hiasan bingkai di tepi, dan
+     scrollbar-nya disembunyikan supaya terasa seperti "layar" bukan
+     halaman web biasa */
+  .quest-scroll {
+    position: absolute;
+    inset: 12% 10%;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     display: flex; flex-direction: column; gap: 10px;
+    padding: 4px 2px;
   }
+  .quest-scroll::-webkit-scrollbar { display: none; }
+
+  /* Border.png — hiasan bingkai itu sendiri, di paling depan, klik-tembus
+     supaya tidak mengganggu interaksi quest di baliknya */
+  .quest-frame-border {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: fill;
+    pointer-events: none;
+    z-index: 2;
+  }
+
   .quest-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.15);
     border-radius: 12px;
     padding: 12px;
+    flex-shrink: 0;
   }
   .quest-card-head {
     display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
   }
   .quest-num {
-    width: 26px; height: 26px; border-radius: 50%;
+    width: 24px; height: 24px; border-radius: 50%;
     background: #d94141; color: #fff;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.8rem; font-weight: 700; flex-shrink: 0;
+    font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
   }
-  .quest-title { font-size: 0.85rem; font-weight: 600; color: #fff; }
+  .quest-title { font-size: 0.8rem; font-weight: 600; color: #fff; }
   .quest-input {
-    width: 100%; padding: 10px 12px; margin-bottom: 8px;
-    background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 8px; color: #fff; font-size: 0.8rem;
+    width: 100%; padding: 9px 10px; margin-bottom: 8px;
+    background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px; color: #fff; font-size: 0.75rem;
   }
   .quest-btn-row { display: flex; gap: 8px; }
   .quest-btn {
-    flex: 1; padding: 10px; border: none; border-radius: 8px;
+    flex: 1; padding: 9px; border: none; border-radius: 8px;
     background: linear-gradient(90deg,#2563eb,#1d4ed8);
-    color: #fff; font-weight: 700; font-size: 0.8rem; cursor: pointer;
+    color: #fff; font-weight: 700; font-size: 0.75rem; cursor: pointer;
   }
   .quest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .quest-btn.claimed { background: rgba(0,229,197,0.25); color: #00e5c0; }
-  .quest-status { font-size: 0.72rem; margin-top: 6px; min-height: 14px; }
+  .quest-btn.claimed { background: rgba(0,229,197,0.3); color: #00e5c0; }
+  .quest-status { font-size: 0.68rem; margin-top: 6px; min-height: 14px; }
 
-  .event-desc { font-size: 0.78rem; color: #a0aec0; margin-bottom: 14px; text-align: center; }
+  .event-title-label {
+    text-align: center; font-size: 0.8rem; font-weight: 700; color: #fff;
+    margin-bottom: 4px;
+  }
+  .event-desc { font-size: 0.7rem; color: #cbd5e0; margin-bottom: 8px; text-align: center; }
   .event-coin-label {
-    text-align: center; font-size: 0.75rem; color: #ffd23f;
-    margin-bottom: 10px; font-weight: 600;
+    text-align: center; font-size: 0.7rem; color: #ffd23f;
+    margin-bottom: 8px; font-weight: 600;
   }
 </style>
 </head>
@@ -135,9 +173,7 @@
 
 <div id="eventTabs" class="event-tabs" style="display:none;"></div>
 
-<div class="event-stage">
-  <div id="eventStage" class="loading">Memuat event...</div>
-</div>
+<div id="eventStage" class="loading">Memuat event...</div>
 
 <script type="module">
   // ── Config Firebase khusus Event (sama seperti nav.js superadmin) ──
@@ -161,20 +197,16 @@
   }
 
   // ── Ambil identitas member yang sedang login, pakai getIoeSession() dari
-  //    js/ioe-auth.js (di-include lewat <script> biasa di <head>, jadi
-  //    fungsinya sudah tersedia secara global di sini). ──
+  //    js/ioe-auth.js (sudah tersedia global lewat <script> di <head>). ──
   function getCurrentMember() {
     const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
     if (!session || !session.memberId || !session.sessionToken) return null;
     return { memberId: session.memberId, sessionToken: session.sessionToken };
   }
 
-  let activeEventId = null;
   window._eventsCache = [];
-  window._claimedCache = {}; // { eventId: { questId: true } }
 
   function switchEvent(eventId) {
-    activeEventId = eventId;
     document.querySelectorAll('.event-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.eventId === eventId);
     });
@@ -221,8 +253,6 @@
       return;
     }
 
-    // Untuk quest submit-link, minimal pastikan kolom tidak kosong.
-    // (Validasi link itu sendiri valid/tidaknya bisa ditambah belakangan.)
     if (type === 'submit-link') {
       const linkInput = document.getElementById(`quest-link-${questId}`);
       if (!linkInput || !linkInput.value.trim()) {
@@ -268,28 +298,28 @@
     const quests = ev.quests ? Object.values(ev.quests) : [];
     const claimed = claimedMap[ev.id] || {};
 
-    const posterBlock = ev.template === 'B'
-      ? `<div class="event-poster-wrap template-b">
-           <img class="poster" src="${ev.posterUrl}" alt="${escHtml(ev.title)}">
-           ${ev.characterUrl ? `<img class="character" src="${ev.characterUrl}" alt="karakter">` : ''}
-         </div>`
-      : `<div class="event-poster-wrap template-a">
-           <img class="poster" src="${ev.posterUrl}" alt="${escHtml(ev.title)}">
-         </div>`;
-
     const questCards = quests.length > 0
       ? quests.map((q, i) => renderQuestCard(ev, q, i + 1, claimed)).join('')
       : '<div class="quest-card">Belum ada quest untuk event ini.</div>';
 
+    // borderShapeUrl dipakai DUA kali:
+    //  1. sebagai mask-image (CSS var --border-mask) supaya questBgUrl cuma
+    //     mengisi area dalam lubang bingkai, bukan kotak penuh
+    //  2. sebagai <img> biasa di paling depan, jadi hiasan bingkainya sendiri
+    const maskVar = `url('${ev.borderShapeUrl}')`;
+
     return `
       <div class="event-panel${index === 0 ? ' active' : ''}" data-event-id="${ev.id}">
-        ${posterBlock}
-        ${ev.desc ? `<div class="event-desc">${escHtml(ev.desc)}</div>` : ''}
-        ${ev.coinName ? `<div class="event-coin-label">🪙 Kumpulkan ${escHtml(ev.coinName)}</div>` : ''}
-        <div class="quest-frame" style="--quest-border-color: ${ev.borderColor || '#1e3a8a'}">
-          <div class="quest-frame-inner">
+        <img class="event-bg" src="${ev.backgroundUrl}" alt="">
+        <div class="quest-frame-wrap">
+          <div class="quest-frame-bg" style="--border-mask: ${maskVar}; background-image: url('${ev.questBgUrl}');"></div>
+          <div class="quest-scroll">
+            <div class="event-title-label">${escHtml(ev.title)}</div>
+            ${ev.desc ? `<div class="event-desc">${escHtml(ev.desc)}</div>` : ''}
+            ${ev.coinName ? `<div class="event-coin-label">🪙 Kumpulkan ${escHtml(ev.coinName)}</div>` : ''}
             ${questCards}
           </div>
+          <img class="quest-frame-border" src="${ev.borderShapeUrl}" alt="">
         </div>
       </div>`;
   }
@@ -332,6 +362,7 @@
       tabsEl.style.display = 'none';
       tabsEl.innerHTML = '';
       document.getElementById('headerTitle').textContent = 'Event I.O.E Hub';
+      stageEl.className = '';
       stageEl.innerHTML = `
         <div class="empty-state">
           <div class="icon">🌠</div>
@@ -352,10 +383,10 @@
 
     const claimedMap = await fetchClaimedStatus(events);
 
+    stageEl.className = '';
     stageEl.innerHTML = events.map((ev, i) => renderEventPanel(ev, i, claimedMap)).join('');
 
     document.getElementById('headerTitle').textContent = events[0].title;
-    activeEventId = events[0].id;
   }
 
   async function loadEvents() {
