@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event — I.O.E Hub</title>
+<script src="js/ioe-auth.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex; flex-direction: column;
+    min-height: 100%;
+  }
+  header {
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  header .logo { font-size: 1rem; }
+  header h1 {
+    font-size: 0.9rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .event-tabs {
+    display: flex; gap: 6px; overflow-x: auto;
+    padding: 8px 12px; flex-shrink: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .event-tabs::-webkit-scrollbar { display: none; }
+  .event-tab {
+    flex-shrink: 0;
+    padding: 6px 12px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 600;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #a0aec0; cursor: pointer;
+    white-space: nowrap;
+  }
+  .event-tab.active {
+    background: rgba(123,92,255,0.2);
+    border-color: rgba(123,92,255,0.5);
+    color: #fff;
+  }
+  .event-stage { flex: 1; position: relative; }
+  .empty-state { text-align: center; padding: 60px 20px; color: #718096; }
+  .empty-state .icon { font-size: 2.6rem; margin-bottom: 10px; }
+  .loading { text-align: center; padding: 60px 20px; color: #718096; }
+
+  .event-panel { display: none; padding: 16px; }
+  .event-panel.active { display: block; }
+
+  /* Poster event, dua layout tergantung template */
+  .event-poster-wrap {
+    position: relative;
+    border-radius: 16px; overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .event-poster-wrap.template-a img.poster { width: 100%; display: block; }
+  .event-poster-wrap.template-b {
+    display: flex; align-items: flex-end; gap: 0;
+  }
+  .event-poster-wrap.template-b img.poster { flex: 1; width: 100%; display: block; }
+  .event-poster-wrap.template-b img.character {
+    position: absolute; left: 0; bottom: 0;
+    max-height: 92%; max-width: 42%;
+    object-fit: contain;
+    pointer-events: none;
+  }
+
+  /* Border quest — bentuk tetap, warna dinamis lewat CSS variable */
+  .quest-frame {
+    --quest-border-color: #1e3a8a;
+    background: linear-gradient(180deg, var(--quest-border-color), color-mix(in srgb, var(--quest-border-color) 60%, #000));
+    border-radius: 18px;
+    border: 2px solid rgba(255,255,255,0.15);
+    padding: 4px;
+  }
+  .quest-frame-inner {
+    background: rgba(0,0,0,0.35);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .quest-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 12px;
+  }
+  .quest-card-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .quest-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #d94141; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 700; flex-shrink: 0;
+  }
+  .quest-title { font-size: 0.85rem; font-weight: 600; color: #fff; }
+  .quest-input {
+    width: 100%; padding: 10px 12px; margin-bottom: 8px;
+    background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px; color: #fff; font-size: 0.8rem;
+  }
+  .quest-btn-row { display: flex; gap: 8px; }
+  .quest-btn {
+    flex: 1; padding: 10px; border: none; border-radius: 8px;
+    background: linear-gradient(90deg,#2563eb,#1d4ed8);
+    color: #fff; font-weight: 700; font-size: 0.8rem; cursor: pointer;
+  }
+  .quest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .quest-btn.claimed { background: rgba(0,229,197,0.25); color: #00e5c0; }
+  .quest-status { font-size: 0.72rem; margin-top: 6px; min-height: 14px; }
+
+  .event-desc { font-size: 0.78rem; color: #a0aec0; margin-bottom: 14px; text-align: center; }
+  .event-coin-label {
+    text-align: center; font-size: 0.75rem; color: #ffd23f;
+    margin-bottom: 10px; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🌌</span>
+  <h1 id="headerTitle">Event I.O.E Hub</h1>
+</header>
+
+<div id="eventTabs" class="event-tabs" style="display:none;"></div>
+
+<div class="event-stage">
+  <div id="eventStage" class="loading">Memuat event...</div>
+</div>
+
+<script type="module">
+  // ── Config Firebase khusus Event (sama seperti nav.js superadmin) ──
+  const EVENT_FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyCvIFCwWaH7r8i-8AeqTK2jE5YjMcBhJsg",
+    authDomain:        "storage-event-a5d18.firebaseapp.com",
+    databaseURL:       "https://storage-event-a5d18-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:         "storage-event-a5d18",
+    messagingSenderId: "432915436521",
+    appId:             "1:432915436521:web:384ff16175eb45e46c3178"
+  };
+
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const { getDatabase, ref, get, remove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+
+  const app = initializeApp(EVENT_FIREBASE_CONFIG);
+  const db = getDatabase(app);
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ── Ambil identitas member yang sedang login, pakai getIoeSession() dari
+  //    js/ioe-auth.js (di-include lewat <script> biasa di <head>, jadi
+  //    fungsinya sudah tersedia secara global di sini). ──
+  function getCurrentMember() {
+    const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+    if (!session || !session.memberId || !session.sessionToken) return null;
+    return { memberId: session.memberId, sessionToken: session.sessionToken };
+  }
+
+  let activeEventId = null;
+  window._eventsCache = [];
+  window._claimedCache = {}; // { eventId: { questId: true } }
+
+  function switchEvent(eventId) {
+    activeEventId = eventId;
+    document.querySelectorAll('.event-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.eventId === eventId);
+    });
+    document.querySelectorAll('.event-panel').forEach(p => {
+      p.classList.toggle('active', p.dataset.eventId === eventId);
+    });
+    const activeEv = window._eventsCache.find(e => e.id === eventId);
+    document.getElementById('headerTitle').textContent = activeEv ? activeEv.title : 'Event I.O.E Hub';
+  }
+  window.switchEvent = switchEvent;
+
+  function renderQuestCard(ev, quest, num, claimed) {
+    const isSubmitLink = quest.type === 'submit-link';
+    const alreadyClaimed = !!claimed[quest.id];
+
+    return `
+      <div class="quest-card" data-quest-id="${quest.id}">
+        <div class="quest-card-head">
+          <div class="quest-num">${num}</div>
+          <div class="quest-title">${escHtml(quest.title)}</div>
+        </div>
+        ${isSubmitLink ? `<input type="text" class="quest-input" id="quest-link-${quest.id}" placeholder="Tempel link video kamu di sini...">` : ''}
+        <div class="quest-btn-row">
+          <button
+            class="quest-btn ${alreadyClaimed ? 'claimed' : ''}"
+            id="quest-btn-${quest.id}"
+            ${alreadyClaimed ? 'disabled' : ''}
+            onclick="claimQuest('${ev.id}', '${quest.id}', ${quest.rewardCoin}, '${quest.type}')"
+          >${alreadyClaimed ? '✅ Selesai' : (isSubmitLink ? 'Cek & Klaim' : 'Kunjungi & Klaim')}</button>
+        </div>
+        <div class="quest-status" id="quest-status-${quest.id}"></div>
+      </div>
+    `;
+  }
+
+  async function claimQuest(eventId, questId, rewardCoin, type) {
+    const member = getCurrentMember();
+    const statusEl = document.getElementById(`quest-status-${questId}`);
+    const btnEl = document.getElementById(`quest-btn-${questId}`);
+
+    if (!member) {
+      statusEl.textContent = '⚠️ Silakan login dulu untuk klaim reward.';
+      statusEl.style.color = '#ff6b6b';
+      return;
+    }
+
+    // Untuk quest submit-link, minimal pastikan kolom tidak kosong.
+    // (Validasi link itu sendiri valid/tidaknya bisa ditambah belakangan.)
+    if (type === 'submit-link') {
+      const linkInput = document.getElementById(`quest-link-${questId}`);
+      if (!linkInput || !linkInput.value.trim()) {
+        statusEl.textContent = '⚠️ Tempel link video dulu sebelum klaim.';
+        statusEl.style.color = '#ff6b6b';
+        return;
+      }
+    }
+
+    btnEl.disabled = true;
+    btnEl.textContent = 'Memproses...';
+    statusEl.textContent = '';
+
+    try {
+      const res = await fetch('/api/shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'claim-quest',
+          memberId: member.memberId,
+          sessionToken: member.sessionToken,
+          eventId, questId, rewardCoin,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal klaim reward');
+
+      btnEl.classList.add('claimed');
+      btnEl.textContent = '✅ Selesai';
+      statusEl.textContent = `🎉 +${rewardCoin} koin diterima!`;
+      statusEl.style.color = '#00e5c0';
+    } catch (err) {
+      console.error('Gagal klaim quest:', err);
+      btnEl.disabled = false;
+      btnEl.textContent = type === 'submit-link' ? 'Cek & Klaim' : 'Kunjungi & Klaim';
+      statusEl.textContent = `❌ ${err.message || err}`;
+      statusEl.style.color = '#ff6b6b';
+    }
+  }
+  window.claimQuest = claimQuest;
+
+  function renderEventPanel(ev, index, claimedMap) {
+    const quests = ev.quests ? Object.values(ev.quests) : [];
+    const claimed = claimedMap[ev.id] || {};
+
+    const posterBlock = ev.template === 'B'
+      ? `<div class="event-poster-wrap template-b">
+           <img class="poster" src="${ev.posterUrl}" alt="${escHtml(ev.title)}">
+           ${ev.characterUrl ? `<img class="character" src="${ev.characterUrl}" alt="karakter">` : ''}
+         </div>`
+      : `<div class="event-poster-wrap template-a">
+           <img class="poster" src="${ev.posterUrl}" alt="${escHtml(ev.title)}">
+         </div>`;
+
+    const questCards = quests.length > 0
+      ? quests.map((q, i) => renderQuestCard(ev, q, i + 1, claimed)).join('')
+      : '<div class="quest-card">Belum ada quest untuk event ini.</div>';
+
+    return `
+      <div class="event-panel${index === 0 ? ' active' : ''}" data-event-id="${ev.id}">
+        ${posterBlock}
+        ${ev.desc ? `<div class="event-desc">${escHtml(ev.desc)}</div>` : ''}
+        ${ev.coinName ? `<div class="event-coin-label">🪙 Kumpulkan ${escHtml(ev.coinName)}</div>` : ''}
+        <div class="quest-frame" style="--quest-border-color: ${ev.borderColor || '#1e3a8a'}">
+          <div class="quest-frame-inner">
+            ${questCards}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function fetchClaimedStatus(events) {
+    const member = getCurrentMember();
+    const claimedMap = {};
+    if (!member) return claimedMap;
+
+    for (const ev of events) {
+      const quests = ev.quests ? Object.values(ev.quests) : [];
+      if (quests.length === 0) continue;
+      try {
+        const res = await fetch('/api/shop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'check-quest-claimed',
+            memberId: member.memberId,
+            sessionToken: member.sessionToken,
+            eventId: ev.id,
+            questIds: quests.map(q => q.id),
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) claimedMap[ev.id] = data.claimed || {};
+      } catch (e) {
+        console.error('Gagal cek status klaim untuk event', ev.id, e);
+      }
+    }
+    return claimedMap;
+  }
+
+  async function renderEvents(events) {
+    window._eventsCache = events;
+    const stageEl = document.getElementById('eventStage');
+    const tabsEl = document.getElementById('eventTabs');
+
+    if (events.length === 0) {
+      tabsEl.style.display = 'none';
+      tabsEl.innerHTML = '';
+      document.getElementById('headerTitle').textContent = 'Event I.O.E Hub';
+      stageEl.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🌠</div>
+          <p>Belum ada event yang berlangsung.<br>Pantengin terus ya!</p>
+        </div>`;
+      return;
+    }
+
+    if (events.length > 1) {
+      tabsEl.style.display = 'flex';
+      tabsEl.innerHTML = events.map((ev, i) => `
+        <button class="event-tab${i === 0 ? ' active' : ''}" data-event-id="${ev.id}" onclick="switchEvent('${ev.id}')">${escHtml(ev.title)}</button>
+      `).join('');
+    } else {
+      tabsEl.style.display = 'none';
+      tabsEl.innerHTML = '';
+    }
+
+    const claimedMap = await fetchClaimedStatus(events);
+
+    stageEl.innerHTML = events.map((ev, i) => renderEventPanel(ev, i, claimedMap)).join('');
+
+    document.getElementById('headerTitle').textContent = events[0].title;
+    activeEventId = events[0].id;
+  }
+
+  async function loadEvents() {
+    try {
+      const snap = await get(ref(db, 'events'));
+      const data = snap.val();
+
+      if (!data) { renderEvents([]); return; }
+
+      const now = Date.now();
+      const all = Object.values(data);
+
+      for (const ev of all) {
+        if (ev.expiresAt && ev.expiresAt < now) {
+          await remove(ref(db, `events/${ev.id}`));
+        }
+      }
+
+      const active = all.filter(ev => !ev.expiresAt || ev.expiresAt >= now);
+      active.sort((a, b) => b.createdAt - a.createdAt);
+      renderEvents(active);
+    } catch (err) {
+      console.error('Gagal memuat event:', err);
+      document.getElementById('eventStage').innerHTML =
+        '<div class="empty-state">⚠️ Gagal memuat event. Coba refresh halaman.</div>';
+    }
+  }
+
+  loadEvents();
+</script>
+
+</body>
+</html>
