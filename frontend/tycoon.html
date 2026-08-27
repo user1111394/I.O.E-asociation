@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ore Tycoon — I.O.E Hub</title>
+<script src="js/ioe-auth.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1a1f3a 0%, #0a0a12 60%);
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 30px;
+  }
+  header {
+    padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10,10,18,0.85);
+    backdrop-filter: blur(6px);
+  }
+  header h1 {
+    font-size: 1rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .coin-badge {
+    font-size: 0.8rem; font-weight: 700; color: #ffd23f;
+    background: rgba(255,210,63,0.12);
+    border: 1px solid rgba(255,210,63,0.3);
+    padding: 5px 10px; border-radius: 20px;
+  }
+
+  .collect-all-bar {
+    padding: 12px 14px;
+  }
+  .collect-all-btn {
+    width: 100%; padding: 12px; border: none; border-radius: 12px;
+    background: linear-gradient(90deg,#00c2ff,#7b5cff);
+    color: #fff; font-weight: 800; font-size: 0.85rem; cursor: pointer;
+  }
+  .collect-all-btn:disabled { opacity: 0.5; }
+
+  .machine-grid {
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 0 14px;
+  }
+  .machine-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 12px;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .machine-card.locked { opacity: 0.55; }
+  .machine-canvas-wrap {
+    width: 84px; height: 84px; flex-shrink: 0;
+    border-radius: 12px; overflow: hidden;
+    background: radial-gradient(circle, rgba(255,255,255,0.06), transparent);
+  }
+  .machine-info { flex: 1; min-width: 0; }
+  .machine-name { font-size: 0.85rem; font-weight: 700; color: #fff; }
+  .machine-tier-label { font-size: 0.65rem; color: #718096; margin-bottom: 6px; }
+  .machine-progress-bar {
+    height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08);
+    overflow: hidden; margin-bottom: 6px;
+  }
+  .machine-progress-fill {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg,#00e5c0,#00c2ff);
+    transition: width 0.3s;
+  }
+  .machine-stats { font-size: 0.65rem; color: #a0aec0; }
+  .machine-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .machine-btn {
+    padding: 7px 10px; border: none; border-radius: 8px;
+    font-size: 0.68rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .btn-collect { background: rgba(0,229,197,0.2); color: #00e5c0; border: 1px solid rgba(0,229,197,0.4); }
+  .btn-collect:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-upgrade { background: rgba(123,92,255,0.2); color: #a78bfa; border: 1px solid rgba(123,92,255,0.4); }
+  .btn-unlock { background: linear-gradient(90deg,#ff5aa0,#7b5cff); color: #fff; }
+
+  .inventory-section { padding: 16px 14px 0; }
+  .inventory-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 10px; }
+  .inventory-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ore-chip {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px; padding: 6px 12px; font-size: 0.72rem;
+  }
+  .ore-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  .welcome-back-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    padding: 20px;
+  }
+  .welcome-back-overlay.show { display: flex; }
+  .welcome-back-card {
+    background: linear-gradient(160deg, #1a1f3a, #0a0a12);
+    border: 1px solid rgba(123,92,255,0.4);
+    border-radius: 16px; padding: 20px; max-width: 320px; width: 100%;
+    text-align: center;
+  }
+  .welcome-back-card h2 { font-size: 1.1rem; margin-bottom: 6px; }
+  .welcome-back-card .away-time { font-size: 0.78rem; color: #a0aec0; margin-bottom: 14px; }
+  .welcome-back-list { text-align: left; font-size: 0.75rem; margin-bottom: 16px; }
+  .welcome-back-list div { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .welcome-back-btn {
+    width: 100%; padding: 11px; border: none; border-radius: 10px;
+    background: linear-gradient(90deg,#00c2ff,#7b5cff);
+    color: #fff; font-weight: 800; cursor: pointer;
+  }
+
+  .loading-state { text-align: center; padding: 60px 20px; color: #718096; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⛏️ Ore Tycoon</h1>
+  <div class="coin-badge" id="coinBadge">🪙 —</div>
+</header>
+
+<div class="collect-all-bar">
+  <button class="collect-all-btn" id="collectAllBtn" onclick="collectOre()">Collect All</button>
+</div>
+
+<div id="machineGrid" class="machine-grid">
+  <div class="loading-state">Memuat tambang...</div>
+</div>
+
+<div class="inventory-section">
+  <div class="inventory-title">📦 Inventory Ore</div>
+  <div class="inventory-grid" id="inventoryGrid"></div>
+</div>
+
+<div class="welcome-back-overlay" id="welcomeBackOverlay">
+  <div class="welcome-back-card">
+    <h2>🎉 Selamat Datang Kembali!</h2>
+    <div class="away-time" id="awayTimeText"></div>
+    <div class="welcome-back-list" id="welcomeBackList"></div>
+    <button class="welcome-back-btn" onclick="closeWelcomeBack()">Collect All</button>
+  </div>
+</div>
+
+<script>
+  // ── Warna per jenis ore, dipakai buat inventory chip DAN warna dasar
+  // model 3D mesin (biar konsisten temanya) ──
+  const ORE_COLORS = {
+    coal: '#1A1A1A', copper: '#2E8B57', iron: '#8B3A3A', silver: '#C0C0C0',
+    gold: '#FFD700', platinum: '#E5E4E2', crystal: '#9370DB', mythril: '#4169E1',
+    uranium: '#00FF00', darkmatter: '#4A0080',
+  };
+  const ORE_LABELS = {
+    coal: 'Coal', copper: 'Copper', iron: 'Iron', silver: 'Silver', gold: 'Gold',
+    platinum: 'Platinum', crystal: 'Crystal', mythril: 'Mythril', uranium: 'Uranium', darkmatter: 'Dark Matter',
+  };
+
+  let currentState = null;
+  let machineTiers = null;
+  let threeInstances = {}; // { tier: { renderer, scene, camera, mesh } }
+
+  function getCurrentMember() {
+    const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+    if (!session || !session.memberId || !session.sessionToken) return null;
+    return { memberId: session.memberId, sessionToken: session.sessionToken };
+  }
+
+  async function callTycoonApi(action, extra = {}) {
+    const member = getCurrentMember();
+    if (!member) throw new Error('Silakan login dulu');
+    const res = await fetch('/api/tycoon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, memberId: member.memberId, sessionToken: member.sessionToken, ...extra }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memproses permintaan');
+    return data;
+  }
+
+  // ── Bikin model 3D sederhana per tier pakai primitif Three.js.
+  //    Makin tinggi tier, makin banyak elemen + makin "berkilau". ──
+  function buildMachineMesh(tier, color) {
+    const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.5 });
+    const accentMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 0.6 });
+
+    // Badan utama: box
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1, 1.2), mat);
+    group.add(body);
+
+    // Bor/silinder depan
+    const drill = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.8, 8), accentMat);
+    drill.rotation.z = Math.PI / 2;
+    drill.position.set(0.9, 0, 0);
+    group.add(drill);
+
+    // Tier tinggi dapat tambahan "roda gigi" (torus) dan makin banyak aksen
+    if (tier >= 3) {
+      const gear = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.08, 8, 16), accentMat);
+      gear.position.set(-0.5, 0.3, 0.65);
+      group.add(gear);
+    }
+    if (tier >= 6) {
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), accentMat);
+      orb.position.set(0, 0.7, 0);
+      group.add(orb);
+    }
+    if (tier >= 9) {
+      // aura melayang buat tier tinggi (uranium/dark matter)
+      const aura = new THREE.Mesh(
+        new THREE.SphereGeometry(0.9, 12, 12),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12 })
+      );
+      group.add(aura);
+    }
+
+    return group;
+  }
+
+  function initMachineCanvas(tier, canvasEl, oreColorHex) {
+    const width = 84, height = 84;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
+    camera.position.set(2, 1.6, 2.4);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true, antialias: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(3, 4, 2);
+    scene.add(dirLight);
+
+    const mesh = buildMachineMesh(tier, oreColorHex);
+    scene.add(mesh);
+
+    threeInstances[tier] = { renderer, scene, camera, mesh };
+
+    function animate() {
+      requestAnimationFrame(animate);
+      mesh.rotation.y += 0.012;
+      renderer.render(scene, camera);
+    }
+    animate();
+  }
+
+  function formatOreAmount(n) {
+    return Math.floor(n).toLocaleString('id-ID');
+  }
+
+  function renderMachines() {
+    const grid = document.getElementById('machineGrid');
+    const tiers = Object.keys(machineTiers).map(Number).sort((a, b) => a - b);
+
+    grid.innerHTML = tiers.map(tier => {
+      const info = machineTiers[tier];
+      const m = currentState.machines[tier];
+      const oreColor = ORE_COLORS[info.oreType] || '#888';
+
+      if (!m || !m.unlocked) {
+        const canUnlock = tier === 1 || currentState.machines[tier - 1]?.unlocked;
+        return `
+          <div class="machine-card locked">
+            <div class="machine-canvas-wrap"><canvas id="canvas-${tier}" width="84" height="84"></canvas></div>
+            <div class="machine-info">
+              <div class="machine-name">${info.name}</div>
+              <div class="machine-tier-label">Tier ${tier} · Terkunci</div>
+              <div class="machine-stats">Butuh 🪙 ${info.unlockCost.toLocaleString('id-ID')}</div>
+            </div>
+            <div class="machine-actions">
+              <button class="machine-btn btn-unlock" ${canUnlock ? '' : 'disabled'} onclick="unlockMachine(${tier})">Unlock</button>
+            </div>
+          </div>`;
+      }
+
+      const rate = info.oreRatePerHour * (1 + 0.10 * (m.speedLevel - 1));
+      const cap = Math.floor(info.baseCapacity * (1 + 0.20 * (m.capacityLevel - 1)));
+      const pct = Math.min(100, (m.oreStored / cap) * 100);
+
+      return `
+        <div class="machine-card">
+          <div class="machine-canvas-wrap"><canvas id="canvas-${tier}" width="84" height="84"></canvas></div>
+          <div class="machine-info">
+            <div class="machine-name">${info.name}</div>
+            <div class="machine-tier-label">Tier ${tier} · Lv Speed ${m.speedLevel} · Lv Cap ${m.capacityLevel}</div>
+            <div class="machine-progress-bar"><div class="machine-progress-fill" style="width:${pct}%; background: linear-gradient(90deg, ${oreColor}, #00c2ff);"></div></div>
+            <div class="machine-stats">${formatOreAmount(m.oreStored)} / ${cap} ${ORE_LABELS[info.oreType]} · ${rate.toFixed(1)}/jam</div>
+          </div>
+          <div class="machine-actions">
+            <button class="machine-btn btn-collect" ${m.oreStored < 1 ? 'disabled' : ''} onclick="collectOre(${tier})">Collect</button>
+            <button class="machine-btn btn-upgrade" onclick="showUpgradeChoice(${tier})">Upgrade</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Render Three.js SETELAH innerHTML ter-attach ke DOM
+    tiers.forEach(tier => {
+      const canvasEl = document.getElementById(`canvas-${tier}`);
+      if (!canvasEl) return;
+      const info = machineTiers[tier];
+      initMachineCanvas(tier, canvasEl, ORE_COLORS[info.oreType] || '#888888');
+    });
+  }
+
+  function renderInventory() {
+    const grid = document.getElementById('inventoryGrid');
+    const inv = currentState.oreInventory || {};
+    const entries = Object.entries(inv).filter(([, v]) => v > 0);
+
+    if (entries.length === 0) {
+      grid.innerHTML = '<p style="color:#718096; font-size:0.75rem;">Belum ada ore terkumpul.</p>';
+      return;
+    }
+
+    grid.innerHTML = entries.map(([oreType, amount]) => `
+      <div class="ore-chip">
+        <span class="ore-dot" style="background:${ORE_COLORS[oreType] || '#888'}"></span>
+        ${ORE_LABELS[oreType] || oreType}: ${formatOreAmount(amount)}
+      </div>
+    `).join('');
+  }
+
+  async function refreshCoinBadge() {
+    // Saldo koin ditampilkan lewat action shop yang sudah ada (get-balance),
+    // supaya tidak duplikasi logic saldo di dua tempat.
+    const member = getCurrentMember();
+    if (!member) return;
+    try {
+      const res = await fetch('/api/shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get-balance', memberId: member.memberId, sessionToken: member.sessionToken }),
+      });
+      const data = await res.json();
+      if (res.ok) document.getElementById('coinBadge').textContent = `🪙 ${(data.coins || 0).toLocaleString('id-ID')}`;
+    } catch (e) { console.error('Gagal ambil saldo koin:', e); }
+  }
+
+  async function loadTycoon(showWelcomeBack = true) {
+    try {
+      const before = currentState;
+      const data = await callTycoonApi('get-state');
+      currentState = data.state;
+      machineTiers = data.machineTiers;
+
+      if (showWelcomeBack && before) {
+        checkWelcomeBack(before, currentState);
+      }
+
+      renderMachines();
+      renderInventory();
+      refreshCoinBadge();
+    } catch (err) {
+      document.getElementById('machineGrid').innerHTML =
+        `<div class="loading-state">⚠️ ${err.message}</div>`;
+    }
+  }
+
+  function checkWelcomeBack(before, after) {
+    // Tampilkan popup kalau ada ore yang bertambah signifikan sejak
+    // kunjungan terakhir (dihitung dari selisih oreStored antar refresh).
+    const gains = [];
+    for (const tier of Object.keys(after.machines)) {
+      const b = before.machines[tier]?.oreStored || 0;
+      const a = after.machines[tier]?.oreStored || 0;
+      if (a > b + 0.5) {
+        gains.push({ tier, amount: a - b, oreType: machineTiers[tier].oreType });
+      }
+    }
+    if (gains.length === 0) return;
+
+    document.getElementById('welcomeBackList').innerHTML = gains.map(g =>
+      `<div>${machineTiers[g.tier].name} → +${formatOreAmount(g.amount)} ${ORE_LABELS[g.oreType]}</div>`
+    ).join('');
+    document.getElementById('awayTimeText').textContent = 'Mesin kamu terus bekerja selama kamu pergi!';
+    document.getElementById('welcomeBackOverlay').classList.add('show');
+  }
+
+  function closeWelcomeBack() {
+    document.getElementById('welcomeBackOverlay').classList.remove('show');
+    collectOre();
+  }
+
+  async function collectOre(tier) {
+    try {
+      const data = await callTycoonApi('collect-ore', tier ? { tier } : {});
+      currentState = data.state;
+      renderMachines();
+      renderInventory();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function unlockMachine(tier) {
+    if (!confirm(`Unlock ${machineTiers[tier].name} seharga 🪙 ${machineTiers[tier].unlockCost.toLocaleString('id-ID')}?`)) return;
+    try {
+      const data = await callTycoonApi('unlock-machine', { tier });
+      currentState = data.state;
+      renderMachines();
+      refreshCoinBadge();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function showUpgradeChoice(tier) {
+    const choice = confirm('OK = Upgrade Speed (+10% rate)\nCancel = Upgrade Capacity (+20% kapasitas)');
+    const upgradeType = choice ? 'speed' : 'capacity';
+    try {
+      const data = await callTycoonApi('upgrade-machine', { tier, upgradeType });
+      currentState = data.state;
+      renderMachines();
+      refreshCoinBadge();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+  window.collectOre = collectOre;
+  window.unlockMachine = unlockMachine;
+  window.showUpgradeChoice = showUpgradeChoice;
+  window.closeWelcomeBack = closeWelcomeBack;
+
+  loadTycoon(true);
+</script>
+
+</body>
+</html>
