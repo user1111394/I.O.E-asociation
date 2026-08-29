@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event — I.O.E Hub</title>
+<script src="js/ioe-auth.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0a0a12;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* ══ Layer 1: header tetap di atas segalanya ══ */
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(10,10,18,0.75);
+    backdrop-filter: blur(6px);
+  }
+  header .logo { font-size: 1rem; }
+  header h1 {
+    font-size: 0.9rem;
+    background: linear-gradient(90deg,#7b5cff,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .event-tabs {
+    position: fixed; top: 42px; left: 0; right: 0; z-index: 20;
+    display: flex; gap: 6px; overflow-x: auto;
+    padding: 8px 12px;
+    background: rgba(10,10,18,0.6);
+  }
+  .event-tabs::-webkit-scrollbar { display: none; }
+  .event-tab {
+    flex-shrink: 0;
+    padding: 6px 12px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 600;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #a0aec0; cursor: pointer;
+    white-space: nowrap;
+  }
+  .event-tab.active {
+    background: rgba(123,92,255,0.3);
+    border-color: rgba(123,92,255,0.6);
+    color: #fff;
+  }
+
+  .empty-state { text-align: center; padding: 90px 20px 20px; color: #718096; }
+  .empty-state .icon { font-size: 2.6rem; margin-bottom: 10px; }
+  .loading { text-align: center; padding: 90px 20px 20px; color: #718096; }
+
+  /* ══ Layer 2: panggung event, satu per event, ditumpuk penuh layar ══ */
+  .event-panel {
+    display: none;
+    position: fixed; inset: 0;
+    align-items: center; justify-content: center;
+  }
+  .event-panel.active { display: flex; }
+
+  /* Background.jpg — mengisi penuh layar, paling belakang */
+  .event-bg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+
+  /* Bingkai border + isi quest — TIDAK memenuhi layar, mengambang di
+     tengah, supaya Background.jpg tetap terlihat di pinggirnya.
+     width/height TIDAK di-hardcode dengan rasio tetap (dulu bikin
+     Border.png melar/gepeng karena object-fit:fill maksa gambar ikut
+     rasio wrapper yang salah) — sebagai gantinya JS mengisi
+     `aspect-ratio` inline sesuai rasio ASLI file Border.png yang
+     diupload, supaya border tidak pernah distorsi, dan quest-frame-bg
+     (inset:0 di wrapper yang sama) otomatis ikut pas sama persis. */
+  .quest-frame-wrap {
+    position: relative;
+    z-index: 1;
+    max-width: min(84vw, 420px);
+    max-height: min(72vh, 640px);
+    width: 100%;
+    margin-top: 48px; /* beri ruang untuk header */
+  }
+
+  /* Isi tengah (custom questBg) — di-mask mengikuti bentuk lubang Border.png,
+     supaya warna/gambar custom cuma mengisi area dalam bingkai, bukan kotak
+     persegi biasa */
+  .quest-frame-bg {
+    position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center;
+    -webkit-mask-image: var(--border-mask);
+    mask-image: var(--border-mask);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+
+  /* Isi quest yang bisa discroll — didudukkan SEDIKIT lebih kecil dari
+     quest-frame-bg supaya tidak menutupi hiasan bingkai di tepi, dan
+     scrollbar-nya disembunyikan supaya terasa seperti "layar" bukan
+     halaman web biasa */
+  .quest-scroll {
+    position: absolute;
+    inset: 12% 10%;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 4px 2px;
+  }
+  .quest-scroll::-webkit-scrollbar { display: none; }
+
+  /* Border.png — hiasan bingkai itu sendiri, di paling depan, klik-tembus
+     supaya tidak mengganggu interaksi quest di baliknya */
+  .quest-frame-border {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .quest-card {
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 12px;
+    flex-shrink: 0;
+  }
+  .quest-card-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .quest-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #d94141; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+  }
+  .quest-title { font-size: 0.8rem; font-weight: 600; color: #fff; }
+  .quest-input {
+    width: 100%; padding: 9px 10px; margin-bottom: 8px;
+    background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px; color: #fff; font-size: 0.75rem;
+  }
+  .quest-btn-row { display: flex; gap: 8px; }
+  .quest-btn {
+    flex: 1; padding: 9px; border: none; border-radius: 8px;
+    background: linear-gradient(90deg,#2563eb,#1d4ed8);
+    color: #fff; font-weight: 700; font-size: 0.75rem; cursor: pointer;
+  }
+  .quest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .quest-btn.claimed { background: rgba(0,229,197,0.3); color: #00e5c0; }
+  .quest-btn.pending { background: rgba(255,210,63,0.25); color: #ffd23f; }
+  .quest-btn.locked { background: rgba(255,255,255,0.06); color: #718096; }
+  .quest-status { font-size: 0.68rem; margin-top: 6px; min-height: 14px; }
+  .quest-file-label {
+    display: block; width: 100%; padding: 9px 10px; margin-bottom: 8px;
+    background: rgba(0,0,0,0.4); border: 1px dashed rgba(255,255,255,0.3);
+    border-radius: 8px; color: #a0aec0; font-size: 0.7rem; text-align: center;
+    cursor: pointer;
+  }
+
+  .event-title-label {
+    text-align: center; font-size: 0.8rem; font-weight: 700; color: #fff;
+    margin-bottom: 4px;
+  }
+  .event-desc { font-size: 0.7rem; color: #cbd5e0; margin-bottom: 8px; text-align: center; }
+  .event-coin-label {
+    text-align: center; font-size: 0.7rem; color: #ffd23f;
+    margin-bottom: 8px; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🌌</span>
+  <h1 id="headerTitle">Event I.O.E Hub</h1>
+</header>
+
+<div id="eventTabs" class="event-tabs" style="display:none;"></div>
+
+<div id="eventStage" class="loading">Memuat event...</div>
+
+<script type="module">
+  // ── Config Firebase khusus Event (sama seperti nav.js superadmin) ──
+  const EVENT_FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyCvIFCwWaH7r8i-8AeqTK2jE5YjMcBhJsg",
+    authDomain:        "storage-event-a5d18.firebaseapp.com",
+    databaseURL:       "https://storage-event-a5d18-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:         "storage-event-a5d18",
+    messagingSenderId: "432915436521",
+    appId:             "1:432915436521:web:384ff16175eb45e46c3178"
+  };
+
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const { getDatabase, ref, get, remove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+
+  const app = initializeApp(EVENT_FIREBASE_CONFIG);
+  const db = getDatabase(app);
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ── Ambil identitas member yang sedang login, pakai getIoeSession() dari
+  //    js/ioe-auth.js (sudah tersedia global lewat <script> di <head>). ──
+  function getCurrentMember() {
+    const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+    if (!session || !session.memberId || !session.sessionToken) return null;
+    return { memberId: session.memberId, sessionToken: session.sessionToken };
+  }
+
+  window._eventsCache = [];
+
+  function switchEvent(eventId) {
+    document.querySelectorAll('.event-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.eventId === eventId);
+    });
+    document.querySelectorAll('.event-panel').forEach(p => {
+      p.classList.toggle('active', p.dataset.eventId === eventId);
+    });
+    const activeEv = window._eventsCache.find(e => e.id === eventId);
+    document.getElementById('headerTitle').textContent = activeEv ? activeEv.title : 'Event I.O.E Hub';
+  }
+  window.switchEvent = switchEvent;
+
+  // Label tombol default per tipe quest, dipakai saat quest BELUM diklaim.
+  const QUEST_BUTTON_LABEL = {
+    'visit':         'Kunjungi & Klaim',
+    'submit-link':   'Cek & Klaim',
+    'like-video':    'Kirim Bukti',
+    'make-video':    'Buka TikTok & Klaim',
+    'invite-friend': 'Bagikan & Klaim',
+    'login-streak':  'Klaim',
+  };
+
+  // Hari ke berapa event ini SEKARANG, dihitung dari createdAt (hari event
+  // dipublikasikan admin = hari ke-1, sama untuk semua member — bukan
+  // dihitung dari kapan member pertama buka event, biar konsisten).
+  // Pakai floor(jam / 24) + 1 supaya "hari ke-2" mulai persis 24 jam
+  // setelah event dipublikasikan, bukan ikut pergantian tanggal kalender
+  // (yang bisa curang/rugi tergantung jam berapa event dipublikasikan).
+  function getEventDayNumber(ev) {
+    if (!ev.createdAt) return 1;
+    const elapsedMs = Date.now() - ev.createdAt;
+    const elapsedDays = Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
+    return Math.max(1, elapsedDays + 1);
+  }
+
+  function renderQuestCard(ev, quest, num, claimed) {
+    const status = claimed[quest.id]; // 'approved' | 'pending' | undefined
+    const isApproved = status === 'approved';
+    const isPending = status === 'pending';
+
+    const unlockDay = quest.unlockDay || 1;
+    const currentDay = getEventDayNumber(ev);
+    // Terkunci HANYA kalau belum pernah diklaim/pending — quest yang sudah
+    // approved/pending harus tetap tampil status finalnya walau unlockDay
+    // berubah admin di tengah jalan (edge case, tapi lebih aman).
+    const isLocked = !isApproved && !isPending && currentDay < unlockDay;
+
+    // Field input tambahan sesuai tipe quest — cuma tampil kalau belum
+    // approved/pending DAN sudah waktunya terbuka, supaya card yang masih
+    // terkunci tidak menampilkan input yang belum bisa dipakai.
+    let extraField = '';
+    if (!isApproved && !isPending && !isLocked) {
+      if (quest.type === 'submit-link') {
+        extraField = `<input type="text" class="quest-input" id="quest-link-${quest.id}" placeholder="Tempel link video kamu di sini...">`;
+      } else if (quest.type === 'like-video') {
+        extraField = `
+          ${quest.targetLink ? `<a href="${quest.targetLink}" target="_blank" rel="noopener" class="quest-input" style="display:block; text-decoration:none; color:#00c2ff; text-align:center;">▶️ Buka video yang harus di-like</a>` : ''}
+          <label class="quest-file-label" id="quest-filelabel-${quest.id}">📎 Pilih screenshot bukti like</label>
+          <input type="file" accept="image/*" id="quest-file-${quest.id}" style="display:none;" onchange="handleProofFileChange('${quest.id}')">
+        `;
+      } else if (quest.type === 'visit' && quest.targetLink) {
+        extraField = `<a href="${quest.targetLink}" target="_blank" rel="noopener" class="quest-input" style="display:block; text-decoration:none; color:#00c2ff; text-align:center;">🔗 Buka profile</a>`;
+      } else if (quest.type === 'invite-friend' && ev.inviteLink) {
+        extraField = `
+          <div class="quest-input" style="word-break:break-all; font-size:0.68rem; color:#a0aec0;">${ev.inviteLink}</div>
+          <button type="button" onclick="copyInviteLink('${ev.inviteLink}', '${quest.id}')" class="quest-input" style="cursor:pointer; color:#00c2ff; background:rgba(0,194,255,0.1); border-color:rgba(0,194,255,0.3);">📋 Salin Link & Bagikan ke WA</button>
+        `;
+      } else if (quest.type === 'make-video') {
+        extraField = `<a href="https://www.tiktok.com/upload" target="_blank" rel="noopener" class="quest-input" style="display:block; text-decoration:none; color:#00c2ff; text-align:center;">🎬 Buka TikTok</a>`;
+      }
+    }
+
+    let statusLabel;
+    if (isApproved) statusLabel = '✅ Selesai';
+    else if (isPending) statusLabel = '⏳ Menunggu Review';
+    else if (isLocked) statusLabel = `🔒 Buka di hari ke-${unlockDay}`;
+    else statusLabel = QUEST_BUTTON_LABEL[quest.type] || 'Klaim';
+
+    const btnClass = isApproved ? 'claimed' : (isPending ? 'pending' : (isLocked ? 'locked' : ''));
+    const disabled = (isApproved || isPending || isLocked) ? 'disabled' : '';
+
+    return `
+      <div class="quest-card" data-quest-id="${quest.id}">
+        <div class="quest-card-head">
+          <div class="quest-num">${num}</div>
+          <div class="quest-title">${escHtml(quest.title)}</div>
+        </div>
+        ${extraField}
+        <div class="quest-btn-row">
+          <button
+            class="quest-btn ${btnClass}"
+            id="quest-btn-${quest.id}"
+            ${disabled}
+            onclick="claimQuest('${ev.id}', '${quest.id}', ${quest.rewardCoin}, '${quest.type}')"
+          >${statusLabel}</button>
+        </div>
+        <div class="quest-status" id="quest-status-${quest.id}"></div>
+      </div>
+    `;
+  }
+
+  // Simpan file screenshot yang dipilih member per quest, supaya bisa
+  // diupload ke Cloudinary saat tombol Klaim ditekan (bukan langsung saat
+  // dipilih, supaya member masih bisa ganti file sebelum submit).
+  window._questProofFiles = {};
+
+  function copyInviteLink(link, questId) {
+    navigator.clipboard.writeText(link).then(() => {
+      const statusEl = document.getElementById(`quest-status-${questId}`);
+      if (statusEl) {
+        statusEl.textContent = '✅ Link disalin! Bagikan ke temanmu lewat WhatsApp.';
+        statusEl.style.color = '#00c2ff';
+      }
+    }).catch(() => {
+      const statusEl = document.getElementById(`quest-status-${questId}`);
+      if (statusEl) {
+        statusEl.textContent = '⚠️ Gagal menyalin otomatis, salin manual link di atas.';
+        statusEl.style.color = '#ff6b6b';
+      }
+    });
+  }
+  window.copyInviteLink = copyInviteLink;
+
+  function handleProofFileChange(questId) {
+    const input = document.getElementById(`quest-file-${questId}`);
+    const label = document.getElementById(`quest-filelabel-${questId}`);
+    const file = input.files && input.files[0];
+    if (!file) return;
+    window._questProofFiles[questId] = file;
+    if (label) label.textContent = `📎 ${file.name}`;
+  }
+  window.handleProofFileChange = handleProofFileChange;
+
+  // Upload screenshot bukti ke Cloudinary (unsigned) — pakai preset
+  // event_poster_unsigned yang sama dengan upload poster event, supaya
+  // tidak perlu bikin preset baru di Cloudinary.
+  async function uploadProofImage(file) {
+    const cloudForm = new FormData();
+    cloudForm.append('file', file);
+    cloudForm.append('upload_preset', 'event_poster_unsigned');
+    const cloudRes = await fetch('https://api.cloudinary.com/v1_1/mclectmg/auto/upload', {
+      method: 'POST',
+      body: cloudForm,
+    });
+    const cloudData = await cloudRes.json();
+    if (!cloudRes.ok) throw new Error(cloudData.error?.message || 'Upload screenshot gagal');
+    return cloudData.secure_url;
+  }
+
+  async function claimQuest(eventId, questId, rewardCoin, type) {
+    const member = getCurrentMember();
+    const statusEl = document.getElementById(`quest-status-${questId}`);
+    const btnEl = document.getElementById(`quest-btn-${questId}`);
+    const originalLabel = btnEl.textContent;
+
+    if (!member) {
+      statusEl.textContent = '⚠️ Silakan login dulu untuk klaim reward.';
+      statusEl.style.color = '#ff6b6b';
+      return;
+    }
+
+    // Cari data quest lengkap (untuk sourceLink) dari cache event yang sudah
+    // dimuat, supaya tidak perlu fetch ulang ke Firebase di sini.
+    const ev = window._eventsCache.find(e => e.id === eventId);
+    const quest = ev && ev.quests ? Object.values(ev.quests).find(q => q.id === questId) : null;
+
+    let submittedLink = '';
+    let proofImageUrl = '';
+
+    if (type === 'submit-link') {
+      const linkInput = document.getElementById(`quest-link-${questId}`);
+      if (!linkInput || !linkInput.value.trim()) {
+        statusEl.textContent = '⚠️ Tempel link video dulu sebelum klaim.';
+        statusEl.style.color = '#ff6b6b';
+        return;
+      }
+      submittedLink = linkInput.value.trim();
+    }
+
+    if (type === 'like-video') {
+      const file = window._questProofFiles[questId];
+      if (!file) {
+        statusEl.textContent = '⚠️ Pilih screenshot bukti dulu sebelum kirim.';
+        statusEl.style.color = '#ff6b6b';
+        return;
+      }
+      btnEl.disabled = true;
+      btnEl.textContent = 'Mengupload bukti...';
+      statusEl.textContent = '';
+      try {
+        proofImageUrl = await uploadProofImage(file);
+      } catch (err) {
+        console.error('Gagal upload bukti:', err);
+        btnEl.disabled = false;
+        btnEl.textContent = originalLabel;
+        statusEl.textContent = `❌ ${err.message || err}`;
+        statusEl.style.color = '#ff6b6b';
+        return;
+      }
+    }
+
+    btnEl.disabled = true;
+    btnEl.textContent = 'Memproses...';
+    statusEl.textContent = '';
+
+    try {
+      const res = await fetch('/api/shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'claim-quest',
+          memberId: member.memberId,
+          sessionToken: member.sessionToken,
+          eventId, questId, rewardCoin,
+          questType: type,
+          submittedLink,
+          sourceLink: quest ? quest.sourceLink : '',
+          proofImageUrl,
+          eventCreatedAt: ev ? ev.createdAt : null,
+          unlockDay: quest ? (quest.unlockDay || 1) : 1,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal klaim reward');
+
+      if (data.status === 'pending') {
+        btnEl.classList.add('pending');
+        btnEl.textContent = '⏳ Menunggu Review';
+        statusEl.textContent = 'Terkirim! Menunggu admin cek buktinya.';
+        statusEl.style.color = '#ffd23f';
+      } else {
+        btnEl.classList.add('claimed');
+        btnEl.textContent = '✅ Selesai';
+        statusEl.textContent = `🎉 +${rewardCoin} koin diterima!`;
+        statusEl.style.color = '#00e5c0';
+      }
+    } catch (err) {
+      console.error('Gagal klaim quest:', err);
+      btnEl.disabled = false;
+      btnEl.textContent = originalLabel;
+      statusEl.textContent = `❌ ${err.message || err}`;
+      statusEl.style.color = '#ff6b6b';
+    }
+  }
+  window.claimQuest = claimQuest;
+
+  function renderEventPanel(ev, index, claimedMap) {
+    const quests = ev.quests ? Object.values(ev.quests) : [];
+    const claimed = claimedMap[ev.id] || {};
+
+    const questCards = quests.length > 0
+      ? quests.map((q, i) => renderQuestCard(ev, q, i + 1, claimed)).join('')
+      : '<div class="quest-card">Belum ada quest untuk event ini.</div>';
+
+    // borderShapeUrl dipakai DUA kali:
+    //  1. sebagai mask-image (CSS var --border-mask) supaya questBgUrl cuma
+    //     mengisi area dalam lubang bingkai, bukan kotak penuh
+    //  2. sebagai <img> biasa di paling depan, jadi hiasan bingkainya sendiri
+    const maskVar = `url('${ev.borderShapeUrl}')`;
+
+    return `
+      <div class="event-panel${index === 0 ? ' active' : ''}" data-event-id="${ev.id}">
+        <img class="event-bg" src="${ev.backgroundUrl}" alt="">
+        <div class="quest-frame-wrap" id="frame-wrap-${ev.id}">
+          <div class="quest-frame-bg" style="--border-mask: ${maskVar}; background-image: url('${ev.questBgUrl}');"></div>
+          <div class="quest-scroll">
+            <div class="event-title-label">${escHtml(ev.title)}</div>
+            ${ev.desc ? `<div class="event-desc">${escHtml(ev.desc)}</div>` : ''}
+            ${ev.coinName ? `<div class="event-coin-label">🪙 Kumpulkan ${escHtml(ev.coinName)}</div>` : ''}
+            ${questCards}
+          </div>
+          <img class="quest-frame-border" src="${ev.borderShapeUrl}" alt="" onload="applyBorderAspectRatio('${ev.id}', this)" onerror="this.onerror=null;">
+        </div>
+      </div>`;
+  }
+
+  // Border.png bisa punya rasio aspek apapun tergantung desainnya (9:16,
+  // custom, dll). Supaya wrapper tidak memaksa gambar melar/gepeng, begitu
+  // gambar border selesai dimuat, ambil naturalWidth/naturalHeight-nya
+  // (dimensi ASLI file) dan terapkan sebagai aspect-ratio ke wrapper —
+  // quest-frame-bg ikut pas otomatis karena sama-sama inset:0 di wrapper
+  // yang sama. Kalau gambar gagal load / dimensinya 0, biarkan CSS
+  // max-width/max-height default yang berlaku (fallback aman).
+  function applyBorderAspectRatio(eventId, imgEl) {
+    const wrap = document.getElementById(`frame-wrap-${eventId}`);
+    if (!wrap || !imgEl.naturalWidth || !imgEl.naturalHeight) return;
+    wrap.style.aspectRatio = `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`;
+  }
+  window.applyBorderAspectRatio = applyBorderAspectRatio;
+
+  // Gambar yang sudah ada di cache browser bisa saja punya `complete: true`
+  // SEBELUM onload sempat didaftarkan (race condition render innerHTML),
+  // jadi event onload tidak akan pernah terpicu untuk gambar itu. Sapu
+  // ulang semua .quest-frame-border setelah render untuk jaga-jaga.
+  function reapplyCachedBorderAspectRatios() {
+    document.querySelectorAll('.quest-frame-border').forEach(imgEl => {
+      if (imgEl.complete && imgEl.naturalWidth) {
+        const wrap = imgEl.closest('.quest-frame-wrap');
+        if (wrap) wrap.style.aspectRatio = `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`;
+      }
+    });
+  }
+  window.reapplyCachedBorderAspectRatios = reapplyCachedBorderAspectRatios;
+
+  async function fetchClaimedStatus(events) {
+    const member = getCurrentMember();
+    const claimedMap = {};
+    if (!member) return claimedMap;
+
+    for (const ev of events) {
+      const quests = ev.quests ? Object.values(ev.quests) : [];
+      if (quests.length === 0) continue;
+      try {
+        const res = await fetch('/api/shop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'check-quest-claimed',
+            memberId: member.memberId,
+            sessionToken: member.sessionToken,
+            eventId: ev.id,
+            questIds: quests.map(q => q.id),
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) claimedMap[ev.id] = data.claimed || {};
+      } catch (e) {
+        console.error('Gagal cek status klaim untuk event', ev.id, e);
+      }
+    }
+    return claimedMap;
+  }
+
+  async function renderEvents(events) {
+    window._eventsCache = events;
+    const stageEl = document.getElementById('eventStage');
+    const tabsEl = document.getElementById('eventTabs');
+
+    if (events.length === 0) {
+      tabsEl.style.display = 'none';
+      tabsEl.innerHTML = '';
+      document.getElementById('headerTitle').textContent = 'Event I.O.E Hub';
+      stageEl.className = '';
+      stageEl.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🌠</div>
+          <p>Belum ada event yang berlangsung.<br>Pantengin terus ya!</p>
+        </div>`;
+      return;
+    }
+
+    if (events.length > 1) {
+      tabsEl.style.display = 'flex';
+      tabsEl.innerHTML = events.map((ev, i) => `
+        <button class="event-tab${i === 0 ? ' active' : ''}" data-event-id="${ev.id}" onclick="switchEvent('${ev.id}')">${escHtml(ev.title)}</button>
+      `).join('');
+    } else {
+      tabsEl.style.display = 'none';
+      tabsEl.innerHTML = '';
+    }
+
+    const claimedMap = await fetchClaimedStatus(events);
+
+    stageEl.className = '';
+    stageEl.innerHTML = events.map((ev, i) => renderEventPanel(ev, i, claimedMap)).join('');
+    reapplyCachedBorderAspectRatios();
+
+    document.getElementById('headerTitle').textContent = events[0].title;
+  }
+
+  async function loadEvents() {
+    try {
+      const snap = await get(ref(db, 'events'));
+      const data = snap.val();
+
+      if (!data) { renderEvents([]); return; }
+
+      const now = Date.now();
+      const all = Object.values(data);
+
+      for (const ev of all) {
+        if (ev.expiresAt && ev.expiresAt < now) {
+          await remove(ref(db, `events/${ev.id}`));
+        }
+      }
+
+      const active = all.filter(ev => !ev.expiresAt || ev.expiresAt >= now);
+      active.sort((a, b) => b.createdAt - a.createdAt);
+      renderEvents(active);
+    } catch (err) {
+      console.error('Gagal memuat event:', err);
+      document.getElementById('eventStage').innerHTML =
+        '<div class="empty-state">⚠️ Gagal memuat event. Coba refresh halaman.</div>';
+    }
+  }
+
+  loadEvents();
+</script>
+
+</body>
+</html>
