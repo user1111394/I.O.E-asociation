@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Astro Explorer — I.O.E Hub</title>
+<script src="js/ioe-auth.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #05050a;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  #worldCanvas {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(180deg, rgba(5,5,10,0.85), transparent);
+  }
+  header h1 {
+    font-size: 1rem;
+    background: linear-gradient(90deg,#a0aec0,#00c2ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .exit-btn {
+    font-size: 0.75rem; font-weight: 700; color: #cbd5e0;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 12px; border-radius: 20px; cursor: pointer;
+  }
+
+  /* ── HUD: jumlah sumber daya terkumpul ── */
+  .resource-hud {
+    position: fixed; top: 54px; left: 14px; z-index: 10;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .resource-chip {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.15);
+    padding: 5px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    backdrop-filter: blur(4px);
+  }
+
+  /* ── Joystick virtual ── */
+  .joystick-zone {
+    position: fixed; bottom: 30px; left: 24px; z-index: 20;
+    width: 110px; height: 110px;
+    touch-action: none;
+  }
+  .joystick-base {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);
+  }
+  .joystick-knob {
+    position: absolute; width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(0,194,255,0.4); border: 1px solid rgba(0,194,255,0.7);
+    top: 32px; left: 32px;
+    transition: top 0.05s, left 0.05s;
+  }
+
+  /* ── Tombol keluar/selesai explore ── */
+  .finish-explore-btn {
+    position: fixed; bottom: 34px; right: 24px; z-index: 20;
+    padding: 12px 18px; border: none; border-radius: 14px;
+    background: linear-gradient(90deg,#00c2ff,#7b5cff);
+    color: #fff; font-weight: 800; font-size: 0.78rem; cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0,194,255,0.3);
+  }
+
+  /* ── Overlay pickup notif ── */
+  .pickup-toast {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+    z-index: 30; pointer-events: none;
+    background: rgba(0,0,0,0.7); border: 1px solid rgba(255,210,63,0.5);
+    padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; color: #ffd23f;
+    opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  }
+  .pickup-toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+  /* ── Overlay hasil explore (setelah tombol selesai ditekan) ── */
+  .result-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    padding: 20px;
+  }
+  .result-overlay.show { display: flex; }
+  .result-card {
+    background: linear-gradient(160deg, #1a1f3a, #0a0a12);
+    border: 1px solid rgba(123,92,255,0.4);
+    border-radius: 16px; padding: 22px; max-width: 320px; width: 100%;
+    text-align: center;
+  }
+  .result-card h2 { font-size: 1.1rem; margin-bottom: 10px; }
+  .result-list { font-size: 0.85rem; margin-bottom: 18px; line-height: 1.8; }
+  .result-btn {
+    width: 100%; padding: 11px; border: none; border-radius: 10px;
+    background: linear-gradient(90deg,#00c2ff,#7b5cff);
+    color: #fff; font-weight: 800; cursor: pointer;
+  }
+
+  .loading-overlay {
+    position: fixed; inset: 0; background: #05050a;
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+    color: #718096; font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">Mendarat di Bulan...</div>
+
+<canvas id="worldCanvas"></canvas>
+
+<header>
+  <h1>🌙 Bulan — Explore</h1>
+  <button class="exit-btn" onclick="exitToHub()">✕ Keluar</button>
+</header>
+
+<div class="resource-hud">
+  <div class="resource-chip">💠 Moon Crystal: <span id="hudCrystal">0</span></div>
+  <div class="resource-chip">🌙 Lunar Dust: <span id="hudDust">0</span></div>
+</div>
+
+<div class="joystick-zone" id="joystickZone">
+  <div class="joystick-base"></div>
+  <div class="joystick-knob" id="joystickKnob"></div>
+</div>
+
+<button class="finish-explore-btn" onclick="finishExplore()">✅ Selesai Explore</button>
+
+<div class="pickup-toast" id="pickupToast"></div>
+
+<div class="result-overlay" id="resultOverlay">
+  <div class="result-card">
+    <h2>🎉 Eksplorasi Selesai!</h2>
+    <div class="result-list" id="resultList"></div>
+    <button class="result-btn" onclick="exitToHub()">Kembali ke Hub</button>
+  </div>
+</div>
+
+<script>
+  // ══════════════════════════════════════════
+  // AUTH & API
+  // ══════════════════════════════════════════
+  function getCurrentMember() {
+    const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+    if (!session || !session.memberId || !session.sessionToken) return null;
+    return { memberId: session.memberId, sessionToken: session.sessionToken };
+  }
+
+  async function callTycoonApi(action, extra = {}) {
+    const member = getCurrentMember();
+    if (!member) throw new Error('Silakan login dulu');
+    const res = await fetch('/api/tycoon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, memberId: member.memberId, sessionToken: member.sessionToken, ...extra }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memproses permintaan');
+    return data;
+  }
+
+  function exitToHub() {
+    // game.html adalah halaman daftar game (belum dibuat saat ini, akan
+    // menyusul) yang jadi pintu masuk ke tycoon.html/craft.html/astro.html.
+    window.location.href = 'game.html';
+  }
+  window.exitToHub = exitToHub;
+
+  // ══════════════════════════════════════════
+  // THREE.JS SETUP — pola & dispose SAMA PERSIS seperti tycoon.html
+  // (lihat komentar disposeWorldView di sana untuk alasan lengkap kenapa
+  // dispose ini wajib ada, terutama karena halaman ini rencananya juga
+  // akan dibuka dari iframe/navigasi berulang di I.O.E Hub).
+  // ══════════════════════════════════════════
+  let scene, camera, renderer;
+  let rover, roverVelocity = { x: 0, z: 0 };
+  let pickups = []; // { mesh, type, collected }
+  let collectedCrystal = 0, collectedDust = 0;
+  let disposed = false;
+
+  const MAP_RADIUS = 45; // radius area permukaan Bulan yang bisa dijelajahi
+  const ROVER_SPEED = 0.12;
+  const PICKUP_RADIUS = 1.8; // jarak rover ke pickup supaya ke-collect
+
+  function initScene() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x05050a);
+    scene.fog = new THREE.Fog(0x05050a, 25, 70);
+
+    const canvas = document.getElementById('worldCanvas');
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(0, 8, 10);
+
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const ambient = new THREE.AmbientLight(0x8888aa, 0.6);
+    scene.add(ambient);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.1);
+    sunLight.position.set(20, 30, 10);
+    scene.add(sunLight);
+
+    buildMoonSurface();
+    buildStarfield();
+    buildRover();
+    scatterPickups();
+
+    window.addEventListener('resize', onResize);
+    setupJoystick();
+    window.addEventListener('pagehide', disposeScene);
+    window.addEventListener('beforeunload', disposeScene);
+
+    document.getElementById('loadingOverlay').style.display = 'none';
+    animate();
+  }
+
+  function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  // Permukaan Bulan — abu-abu, bergelombang halus dengan kawah (bukan
+  // datar polos), pakai PlaneGeometry dengan subdivisi asli (BUKAN
+  // CircleGeometry — lihat catatan bug fatal soal ini di tycoon.html:
+  // CircleGeometry cuma punya 1 vertex pusat + 1 cincin tepi, bikin
+  // permukaan robek kalau diberi variasi tinggi).
+  // Rumus tinggi permukaan Bulan. PENTING: fungsi ini menerima koordinat
+  // LOKAL geometri (sebelum rotasi), x dan y — BUKAN koordinat dunia x,z
+  // langsung. Dipakai BERSAMA oleh buildMoonSurface() (generate geometri)
+  // dan getWorldSurfaceHeightAt() (posisi rover/pickup di dunia), supaya
+  // keduanya SELALU sinkron dari sumber rumus yang sama.
+  function getSurfaceHeightAt(localX, localY) {
+    let height = Math.sin(localX * 0.15) * Math.cos(localY * 0.12) * 0.4;
+    height += craterHeight(localX, localY);
+    return height;
+  }
+
+  // FIX BUG FATAL (tanah tidak bergelombang / kawah di posisi salah /
+  // rover "melayang" di atas kawah): PlaneGeometry dengan rotation.x =
+  // -Math.PI/2 MENGUBAH TANDA sumbu kedua. Transformasi sebenarnya:
+  // lokal (x, y, tinggi) -> dunia (x, tinggi, -y). Artinya dunia-Z yang
+  // benar adalah NEGATIF dari y lokal, bukan y lokal langsung.
+  //
+  // Sebelumnya rover/pickup memanggil getSurfaceHeightAt(worldX, worldZ)
+  // langsung tanpa konversi tanda ini — jadi tinggi yang mereka baca
+  // adalah tinggi geometri di TITIK CERMINAN dari posisi mereka yang
+  // sebenarnya (kawah "terbaca" di sisi berlawanan map). Rover yang
+  // secara visual berada tepat di atas kawah akan dianggap sistem berada
+  // di tanah datar (karena mengecek titik cerminannya yang kebetulan
+  // datar) — itulah kenapa rover terlihat "melayang" tepat di kawah.
+  //
+  // getWorldSurfaceHeightAt() melakukan konversi dunia->lokal yang benar
+  // (worldZ dinegasikan balik jadi localY) sebelum memanggil rumus tinggi,
+  // supaya rover/pickup SELALU membaca tinggi geometri yang benar-benar
+  // ada tepat di bawah mereka secara visual.
+  function getWorldSurfaceHeightAt(worldX, worldZ) {
+    return getSurfaceHeightAt(worldX, -worldZ);
+  }
+
+  function buildMoonSurface() {
+    const size = MAP_RADIUS * 2.2;
+    const segments = 80;
+    const geo = new THREE.PlaneGeometry(size, size, segments, segments);
+    const pos = geo.attributes.position;
+
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i);
+      pos.setZ(i, getSurfaceHeightAt(x, y));
+    }
+    geo.computeVertexNormals();
+
+    // Tekstur permukaan digenerate lewat canvas (bukan file gambar
+    // eksternal) — bintik-bintik acak gelap/terang meniru tampilan
+    // regolith (debu & serpihan batuan) permukaan Bulan asli, supaya
+    // tidak terlihat sebagai warna solid flat tanpa detail.
+    const moonTexture = createMoonSurfaceTexture();
+    const mat = new THREE.MeshStandardMaterial({ map: moonTexture, color: 0x9a9a9e, roughness: 1, flatShading: true });
+    const ground = new THREE.Mesh(geo, mat);
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+  }
+
+  function createMoonSurfaceTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#9a9a9e';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Bercak besar (variasi warna area luas, seperti mare/highland Bulan)
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * 512, y = Math.random() * 512;
+      const r = 20 + Math.random() * 60;
+      const shade = 130 + Math.random() * 50;
+      ctx.fillStyle = `rgba(${shade},${shade},${shade + 4},0.15)`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Bintik kecil padat (tekstur butiran regolith)
+    for (let i = 0; i < 3000; i++) {
+      const x = Math.random() * 512, y = Math.random() * 512;
+      const shade = 100 + Math.random() * 90;
+      ctx.fillStyle = `rgba(${shade},${shade},${shade},0.5)`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(6, 6); // ulang beberapa kali supaya detail tidak terlihat buram meregang di area luas
+    return texture;
+  }
+
+  // Kawah dibuat dari beberapa fungsi cekungan radial yang diseed tetap
+  // (posisi sama tiap sesi) supaya permukaan konsisten dan tidak berubah
+  // tiap reload, memudahkan penempatan pickup supaya tidak nyangkut di
+  // dalam kawah dalam.
+  //
+  // PENTING: localX/localY di sini adalah koordinat LOKAL GEOMETRI
+  // (ruang yang sama dipakai getSurfaceHeightAt/buildMoonSurface),
+  // BUKAN koordinat dunia. Sebelumnya field disimpan sebagai "x"/"z"
+  // yang secara tidak sengaja tercampur dengan makna koordinat dunia di
+  // tempat lain — inilah akar bug "kawah di posisi salah" (rover
+  // mengambang tepat di kawah visual, tapi turun di tanah datar): rover
+  // membaca ketinggian di titik CERMINAN dari kawah asli karena dua
+  // ruang koordinat (lokal vs dunia) tercampur tanpa konversi konsisten.
+  // Sekarang HANYA ada SATU titik konversi dunia->lokal di seluruh file:
+  // getWorldSurfaceHeightAt() di bawah — semua perhitungan lain (termasuk
+  // craterHeight ini) murni bekerja di ruang lokal.
+  const CRATERS = [];
+  (function seedCraters() {
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + i * 0.7;
+      const dist = 8 + (i % 4) * 8;
+      CRATERS.push({
+        localX: Math.cos(angle) * dist,
+        localY: Math.sin(angle) * dist,
+        radius: 2.5 + (i % 3) * 1.5,
+        depth: 0.8 + (i % 3) * 0.4,
+      });
+    }
+  })();
+  function craterHeight(localX, localY) {
+    let h = 0;
+    for (const c of CRATERS) {
+      const d = Math.sqrt((localX - c.localX) ** 2 + (localY - c.localY) ** 2);
+      if (d < c.radius) {
+        h -= c.depth * (1 - d / c.radius);
+      }
+    }
+    return h;
+  }
+
+  function buildStarfield() {
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 600;
+    const positions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const r = 80 + Math.random() * 60;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI * 0.5; // separuh atas saja (langit)
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.cos(phi) + 10;
+      positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.4, sizeAttenuation: true });
+    scene.add(new THREE.Points(starGeo, starMat));
+  }
+
+  // Lunar Rover — bentuk sederhana: chassis kotak + 4 roda + antena.
+  function buildRover() {
+    const group = new THREE.Group();
+
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d8, metalness: 0.3, roughness: 0.6 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2.2), bodyMat);
+    body.position.y = 0.6;
+    group.add(body);
+
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+    const wheelPositions = [
+      [-0.9, 0.35, 0.8], [0.9, 0.35, 0.8],
+      [-0.9, 0.35, -0.8], [0.9, 0.35, -0.8],
+    ];
+    wheelPositions.forEach(([wx, wy, wz]) => {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.3, 12), wheelMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(wx, wy, wz);
+      group.add(wheel);
+    });
+
+    // FIX (depan-belakang rover terbalik): Math.atan2(moveX, moveZ) di
+    // updateRoverPosition menghadapkan sumbu LOKAL +Z model ke arah gerak.
+    // Sebelumnya antena (yang secara desain seharusnya di BELAKANG,
+    // meniru rover NASA sungguhan) dipasang di z=-0.6 — artinya sisi TANPA
+    // antena ada di +Z, yaitu sisi yang justru dihadapkan ke arah gerak.
+    // Hasilnya: saat rover "maju", sisi berantena (belakang) yang malah
+    // menghadap ke depan — persis bug "depan mundur, belakang maju" yang
+    // dilaporkan. Diperbaiki dengan memindah antena ke z=+0.6 (belakang
+    // yang benar, berlawanan dari arah hadap +Z).
+    const antennaMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.5 });
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 6), antennaMat);
+    antenna.position.set(0.4, 1.4, 0.6);
+    group.add(antenna);
+
+    group.position.set(0, 0, 0);
+    scene.add(group);
+    rover = group;
+  }
+
+  // Sebar Moon Crystal & Lunar Dust sebagai objek 3D di permukaan — jauh
+  // dari titik start rover (radius > 4) supaya tidak langsung ke-collect
+  // begitu scene dimuat, dan dalam radius map supaya semua bisa dijangkau.
+  function scatterPickups() {
+    const crystalMat = new THREE.MeshStandardMaterial({ color: 0x7b5cff, emissive: 0x7b5cff, emissiveIntensity: 0.5, metalness: 0.3, roughness: 0.2 });
+    const dustMat = new THREE.MeshStandardMaterial({ color: 0xc9c9d8, emissive: 0x8888aa, emissiveIntensity: 0.25, roughness: 0.6 });
+
+    // FIX (kristal kelihatan seperti "segitiga terpotong"): OctahedronGeometry
+    // polos (8 sisi datar, tanpa subdivisi) dari sudut/pencahayaan tertentu
+    // bisa terlihat seperti cuma separuh bentuk — sisi yang membelakangi
+    // cahaya menyatu jadi siluet gelap datar, kesannya seperti terpotong.
+    // Diganti jadi bentuk "gem/berlian" — gabungan CylinderGeometry dengan
+    // radiusTop kecil (bukan 0) membentuk facet atas-bawah yang lebih
+    // banyak sisi (8 segmen), sehingga selalu terlihat sebagai bentuk
+    // 3D utuh dari sudut manapun, bukan siluet datar.
+    function createGemGeometry(size) {
+      return new THREE.CylinderGeometry(size * 0.15, size, size * 1.3, 8, 1);
+    }
+
+    for (let i = 0; i < 14; i++) {
+      const angle = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = 6 + Math.random() * (MAP_RADIUS - 8);
+      const x = Math.cos(angle) * dist, z = Math.sin(angle) * dist;
+
+      const isCrystal = i % 2 === 0;
+      const mesh = isCrystal
+        ? new THREE.Mesh(createGemGeometry(0.55), crystalMat)
+        : new THREE.Mesh(new THREE.DodecahedronGeometry(0.4), dustMat);
+      // Sama seperti rover, pickup mengikuti tinggi permukaan asli di
+      // titik itu (bukan y tetap) — supaya tidak melayang/tenggelam kalau
+      // kebetulan jatuh di dekat kawah.
+      const surfaceY = getWorldSurfaceHeightAt(x, z);
+      // Gem (cylinder ramping) butuh offset beda dari dodecahedron biasa:
+      // titik terendahnya ada di setengah tinggi total, bukan radius bulat.
+      const halfHeight = isCrystal ? 0.55 * 1.3 * 0.5 : 0.4;
+      mesh.position.set(x, surfaceY + halfHeight, z);
+      scene.add(mesh);
+      pickups.push({ mesh, type: isCrystal ? 'moonCrystal' : 'lunarDust', collected: false });
+    }
+  }
+
+  // ══════════════════════════════════════════
+  // JOYSTICK VIRTUAL — kontrol gerak rover.
+  // Sengaja pakai touch/pointer events manual (bukan library) supaya
+  // ringan dan tidak menambah dependency untuk kontrol sederhana ini.
+  // ══════════════════════════════════════════
+  let joystickActive = false;
+  let joystickDir = { x: 0, y: 0 }; // -1..1 masing-masing sumbu
+
+  function setupJoystick() {
+    const zone = document.getElementById('joystickZone');
+    const knob = document.getElementById('joystickKnob');
+    const maxDist = 32; // batas geser knob dari pusat (px)
+
+    function handleMove(clientX, clientY) {
+      const rect = zone.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      let dx = clientX - centerX, dy = clientY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxDist) {
+        dx = (dx / dist) * maxDist;
+        dy = (dy / dist) * maxDist;
+      }
+      knob.style.left = `${32 + dx}px`;
+      knob.style.top = `${32 + dy}px`;
+      joystickDir.x = dx / maxDist;
+      joystickDir.y = dy / maxDist;
+    }
+
+    function resetKnob() {
+      knob.style.left = '32px';
+      knob.style.top = '32px';
+      joystickDir.x = 0;
+      joystickDir.y = 0;
+      joystickActive = false;
+    }
+
+    zone.addEventListener('touchstart', e => { joystickActive = true; handleMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+    zone.addEventListener('touchmove', e => { if (joystickActive) handleMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+    zone.addEventListener('touchend', resetKnob);
+    zone.addEventListener('touchcancel', resetKnob);
+
+    // Dukungan mouse juga, untuk testing di desktop.
+    zone.addEventListener('mousedown', e => { joystickActive = true; handleMove(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', e => { if (joystickActive) handleMove(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', resetKnob);
+  }
+
+  // ══════════════════════════════════════════
+  // GAME LOOP
+  // ══════════════════════════════════════════
+  // FIX (rover mengambang): roda rover didesain di posisi lokal y=0.35
+  // dengan radius 0.35 — artinya bagian BAWAH roda sudah persis di
+  // lokal y=0 (0.35 - 0.35 = 0). Jadi group.position.y HARUS SAMA
+  // dengan tinggi tanah, TANPA offset tambahan (offset sebelumnya 0.35
+  // salah — itu menambah tinggi ekstra yang bikin roda melayang di atas
+  // tanah persis setinggi jari-jarinya sendiri).
+  const ROVER_GROUND_OFFSET = 0;
+
+  const ROVER_TURN_SPEED = 0.04; // radian per frame saat joystick digeser penuh ke samping
+
+  function updateRoverPosition() {
+    // KONTROL BARU (tank-style / setir): joystick kiri-kanan MEMUTAR arah
+    // hadap rover, atas/bawah = maju/mundur SEARAH HADAP rover saat itu.
+    // Ini menggantikan kontrol lama yang relatif terhadap kamera —
+    // sekarang gerak SAMA SEKALI TIDAK bergantung pada arah kamera, jadi
+    // tidak akan pernah "kebalik" lagi walau kamera/pandangan berubah.
+    // Ini juga alasan kenapa rover "tidak bisa menghadap ke belakang":
+    // rotasinya cuma berubah bertahap dari putaran joystick, bukan
+    // di-set langsung ke arah gerak seperti kontrol lama.
+    if (joystickDir.x !== 0) {
+      rover.rotation.y -= joystickDir.x * ROVER_TURN_SPEED;
+    }
+
+    if (joystickDir.y !== 0) {
+      // joystickDir.y negatif = dorong ke atas = maju
+      const moveAmount = -joystickDir.y * ROVER_SPEED;
+      const moveX = Math.sin(rover.rotation.y) * moveAmount;
+      const moveZ = Math.cos(rover.rotation.y) * moveAmount;
+
+      const nextX = rover.position.x + moveX;
+      const nextZ = rover.position.z + moveZ;
+
+      // Batasi rover tetap di dalam radius map, supaya tidak jalan ke luar
+      // area yang sudah dibuat (di luar situ tidak ada permukaan ter-render).
+      const nextDist = Math.sqrt(nextX * nextX + nextZ * nextZ);
+      if (nextDist < MAP_RADIUS - 2) {
+        rover.position.x = nextX;
+        rover.position.z = nextZ;
+      }
+    }
+
+    // FIX (rover mengambang di kawah): tinggi rover dihitung ULANG setiap
+    // frame — bukan cuma saat bergerak — memakai rumus permukaan YANG SAMA
+    // PERSIS dipakai untuk membuat geometri tanah, supaya rover selalu
+    // menempel pas di permukaan asli, termasuk saat masuk/keluar kawah.
+    const groundHeight = getWorldSurfaceHeightAt(rover.position.x, rover.position.z);
+    rover.position.y = groundHeight + ROVER_GROUND_OFFSET;
+  }
+
+  // ── Kamera: chase-cam dengan offset yang bisa diputar via swipe ──
+  // FIX (kamera tidak bisa digeser): sebelumnya offset kamera FIXED
+  // (0,6,8) dan update-nya ada DI DALAM blok "if joystick bergerak" —
+  // jadi begitu rover diam, kamera benar-benar beku, tidak merespons
+  // input apapun. Sekarang offset kamera punya SUDUT yang bisa diputar
+  // bebas lewat swipe (cameraYaw), dan update kamera dipindah ke fungsi
+  // sendiri yang dipanggil TIAP FRAME di animate() — terlepas dari rover
+  // bergerak atau diam.
+  let cameraYaw = 0; // radian, 0 = di belakang rover
+  const CAMERA_DISTANCE = 8;
+  const CAMERA_HEIGHT = 6;
+
+  // cameraPitch = sudut kemiringan vertikal kamera (radian). 0 = sejajar
+  // horizon, positif = melihat dari atas ke bawah. Dibatasi supaya kamera
+  // tidak sampai terbalik (>90°) atau menembus tanah dari bawah (<sudut
+  // minim), memakai koordinat spherical standar untuk orbit kamera.
+  let cameraPitch = 0.5; // radian, nilai awal: sedikit menunduk (mirip chase-cam biasa)
+  const MIN_PITCH = 0.15; // hampir sejajar tanah, tidak sampai menembus horizon
+  const MAX_PITCH = 1.3;  // hampir lurus ke bawah, tidak sampai terbalik
+
+  // ── Kamera FIRST-PERSON: menempel di posisi rover, menghadap sama
+  // persis arah rover (rover.rotation.y). Menggantikan chase-cam
+  // third-person yang butuh kontrol swipe terpisah — first-person tidak
+  // perlu itu sama sekali, karena "ke mana kamera menghadap" = "ke mana
+  // rover menghadap", satu hal yang sama, dikontrol oleh joystick putar
+  // yang sudah ada (lihat updateRoverPosition). ──
+  const EYE_HEIGHT = 1.5; // tinggi mata di atas chassis rover
+
+  function updateCamera() {
+    const eyeX = rover.position.x;
+    const eyeY = rover.position.y + EYE_HEIGHT;
+    const eyeZ = rover.position.z;
+    camera.position.set(eyeX, eyeY, eyeZ);
+
+    // Arah pandang sama persis dengan arah hadap rover (rotation.y),
+    // sedikit di depan posisi rover supaya lookAt punya target yang jelas.
+    const lookX = eyeX + Math.sin(rover.rotation.y);
+    const lookZ = eyeZ + Math.cos(rover.rotation.y);
+    camera.lookAt(lookX, eyeY, lookZ);
+  }
+
+  function checkPickupCollisions() {
+    pickups.forEach(p => {
+      if (p.collected) return;
+      const dx = rover.position.x - p.mesh.position.x;
+      const dz = rover.position.z - p.mesh.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < PICKUP_RADIUS) {
+        p.collected = true;
+        scene.remove(p.mesh);
+        if (p.type === 'moonCrystal') collectedCrystal++;
+        else collectedDust++;
+        updateHud();
+        showPickupToast(p.type);
+      }
+    });
+  }
+
+  function updateHud() {
+    document.getElementById('hudCrystal').textContent = collectedCrystal;
+    document.getElementById('hudDust').textContent = collectedDust;
+  }
+
+  let toastTimeout = null;
+  function showPickupToast(type) {
+    const toast = document.getElementById('pickupToast');
+    toast.textContent = type === 'moonCrystal' ? '💠 +1 Moon Crystal' : '🌙 +1 Lunar Dust';
+    toast.classList.add('show');
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toast.classList.remove('show'), 900);
+  }
+
+  function animate() {
+    if (disposed) return;
+    requestAnimationFrame(animate);
+    updateRoverPosition();
+    updateCamera();
+    checkPickupCollisions();
+    renderer.render(scene, camera);
+  }
+
+  // ══════════════════════════════════════════
+  // SELESAI EXPLORE — panggil backend explore-planet (reward FINAL tetap
+  // ditentukan server secara random, lihat catatan di komentar atas file
+  // ini). Jumlah pickup yang dikumpulkan di map ditampilkan sebagai
+  // ringkasan pengalaman bermain, TAPI bukan angka yang dikirim/dipercaya
+  // sebagai reward — reward asli datang dari response server.
+  // ══════════════════════════════════════════
+  async function finishExplore() {
+    try {
+      const data = await callTycoonApi('explore-planet', { planetId: 'moon' });
+      const rewardLabels = { moonCrystal: 'Moon Crystal', lunarDust: 'Lunar Dust' };
+      const rewardEmoji = { moonCrystal: '💠', lunarDust: '🌙' };
+      const listHtml = Object.entries(data.rewards)
+        .map(([res, amt]) => `<div>${rewardEmoji[res] || '✨'} +${amt} ${rewardLabels[res] || res}</div>`)
+        .join('');
+      document.getElementById('resultList').innerHTML = listHtml;
+      document.getElementById('resultOverlay').classList.add('show');
+    } catch (err) {
+      alert(`Gagal menyelesaikan eksplorasi: ${err.message}`);
+    }
+  }
+  window.finishExplore = finishExplore;
+
+  // ══════════════════════════════════════════
+  // DISPOSE — sama persis pola tycoon.html, lihat komentar lengkap di sana.
+  // ══════════════════════════════════════════
+  function disposeScene() {
+    if (disposed || !renderer) return;
+    disposed = true;
+    scene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach(m => m.dispose());
+      }
+    });
+    const glExt = renderer.getContext().getExtension('WEBGL_lose_context');
+    if (glExt) glExt.loseContext();
+    renderer.dispose();
+  }
+
+  // ══════════════════════════════════════════
+  // INIT — pastikan sudah login sebelum boleh explore (butuh sesi untuk
+  // panggil explore-planet nanti), baru inisialisasi scene 3D.
+  // ══════════════════════════════════════════
+  (function init() {
+    const member = getCurrentMember();
+    if (!member) {
+      document.getElementById('loadingOverlay').textContent = '⚠️ Silakan login dulu untuk explore.';
+      return;
+    }
+    initScene();
+  })();
+</script>
+</body>
+</html>
