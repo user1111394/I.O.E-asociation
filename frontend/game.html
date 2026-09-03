@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Games — I.O.E Hub</title>
+<link rel="stylesheet" href="css/global.css">
+<style>
+  .game-grid {
+    display: grid; grid-template-columns: 1fr; gap: 14px;
+  }
+  .game-card {
+    display: flex; align-items: center; gap: 14px;
+    text-decoration: none;
+  }
+  .game-icon {
+    font-size: 1.8rem; width: 50px; height: 50px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,194,255,0.08); border-radius: var(--radius);
+  }
+  .game-info { flex: 1; min-width: 0; }
+  .game-name {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+    font-size: 0.95rem; color: #fff; margin-bottom: 3px;
+  }
+  .game-desc {
+    font-family: 'Inter', sans-serif; font-size: 0.75rem;
+    color: var(--text-muted); line-height: 1.4;
+  }
+  .game-arrow { font-size: 1rem; color: var(--primary); flex-shrink: 0; }
+
+  .planet-section-label {
+    font-family: 'Orbitron', sans-serif; font-size: 0.7rem; font-weight: 700;
+    color: var(--text-muted); letter-spacing: 0.12em; text-transform: uppercase;
+    margin: 28px 0 12px;
+  }
+
+  .planet-card.locked { opacity: 0.6; }
+  .planet-status-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .planet-status-badge {
+    font-size: 0.62rem; font-family: 'Orbitron', sans-serif; font-weight: 700;
+    padding: 2px 9px; border-radius: 20px; letter-spacing: 0.04em;
+  }
+  .planet-status-badge.ready { background: rgba(0,229,192,0.15); color: #00e5c0; border: 1px solid rgba(0,229,192,0.35); }
+  .planet-status-badge.locked { background: rgba(255,255,255,0.08); color: var(--text-muted); border: 1px solid var(--border); }
+
+  .loading-msg {
+    text-align: center; padding: 30px 20px; color: var(--text-muted); font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="astro-bg"><div class="astro-orb orb-1"></div><div class="astro-orb orb-2"></div><div class="astro-orb orb-3"></div></div>
+
+<div class="page-wrap">
+  <section class="section">
+    <div class="section-title">I.O.E Hub</div>
+    <div class="section-sub">🎮 Games</div>
+
+    <div class="planet-section-label">Ore Tycoon</div>
+    <div class="game-grid">
+      <a href="tycoon.html" class="ioe-card game-card">
+        <div class="game-icon">⛏️</div>
+        <div class="game-info">
+          <div class="game-name">Ore Tycoon</div>
+          <div class="game-desc">Tambang ore, unlock & upgrade mesin, kumpulkan Ore Coin</div>
+        </div>
+        <span class="game-arrow">→</span>
+      </a>
+      <a href="craft.html" class="ioe-card game-card">
+        <div class="game-icon">🛠️</div>
+        <div class="game-info">
+          <div class="game-name">Refinery & Craft</div>
+          <div class="game-desc">Olah ore jadi ingot, jual ke market, craft satelit/roket/kendaraan</div>
+        </div>
+        <span class="game-arrow">→</span>
+      </a>
+    </div>
+
+    <div class="planet-section-label">Space Program — Explore Planet</div>
+    <div class="game-grid" id="planetGrid">
+      <div class="loading-msg">Memuat status eksplorasi...</div>
+    </div>
+  </section>
+</div>
+
+<script src="js/ioe-auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+buildNav('game.html');
+
+// ══════════════════════════════════════════
+// Ikon & file explore per planet — dipetakan manual karena backend
+// (tycoon.js) tidak menyimpan nama file/ikon, cuma data gameplay
+// (nama, biaya, requires, dst). Urutan render mengikuti field 'order'
+// yang dikirim backend, bukan urutan object di sini.
+// ══════════════════════════════════════════
+const PLANET_META = {
+  moon:     { icon: '🌙', file: 'astro.html' },
+  mars:     { icon: '🔴', file: 'mars.html' },
+  jupiter:  { icon: '🌀', file: 'jupiter.html' },
+  saturn:   { icon: '💍', file: 'saturn.html' },
+  neptune:  { icon: '🧊', file: 'neptune.html' },
+  planetx:  { icon: '🕳️', file: 'planetx.html' },
+};
+
+function getCurrentMember() {
+  const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+  if (!session || !session.memberId || !session.sessionToken) return null;
+  return { memberId: session.memberId, sessionToken: session.sessionToken };
+}
+
+async function loadPlanetStatus() {
+  const grid = document.getElementById('planetGrid');
+  const member = getCurrentMember();
+
+  if (!member) {
+    grid.innerHTML = '<div class="loading-msg">⚠️ Login dulu untuk melihat status eksplorasi planet.</div>';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/tycoon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-state', memberId: member.memberId, sessionToken: member.sessionToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memuat status');
+
+    renderPlanetGrid(data);
+  } catch (err) {
+    console.error('Gagal memuat status planet:', err);
+    grid.innerHTML = `<div class="loading-msg">❌ ${err.message}</div>`;
+  }
+}
+
+function renderPlanetGrid(data) {
+  const grid = document.getElementById('planetGrid');
+  const planets = data.planets || {};
+  const spaceProgram = (data.state && data.state.spaceProgram) || {};
+
+  const planetIds = Object.keys(planets).sort((a, b) => planets[a].order - planets[b].order);
+
+  grid.innerHTML = planetIds.map(pid => {
+    const planet = planets[pid];
+    const meta = PLANET_META[pid] || { icon: '🪐', file: '#' };
+    const progress = spaceProgram[pid] || { satellite: false, rocket: false, vehicle: false };
+    const vehicleReady = !!progress.vehicle;
+
+    const statusBadge = vehicleReady
+      ? `<span class="planet-status-badge ready">✅ Siap Explore</span>`
+      : `<span class="planet-status-badge locked">🔒 Belum Craft ${escHtml(planet.vehicle.name)}</span>`;
+
+    // Kartu tetap bisa DIKLIK walau belum siap — masing-masing file
+    // explore (astro.html dkk) sudah punya gerbang cek sendiri dan akan
+    // menampilkan pesan yang sama kalau vehicle belum di-craft. Ini
+    // sengaja tidak diblokir di sini supaya member tetap bisa intip
+    // detail requirement dari pesan gerbang tersebut.
+    return `
+      <a href="${meta.file}" class="ioe-card game-card planet-card ${vehicleReady ? '' : 'locked'}">
+        <div class="game-icon">${meta.icon}</div>
+        <div class="game-info">
+          <div class="game-name">${escHtml(planet.name)}</div>
+          <div class="game-desc">${escHtml(planet.satellite.name)} → ${escHtml(planet.rocket.name)} → ${escHtml(planet.vehicle.name)}</div>
+          <div class="planet-status-row">${statusBadge}</div>
+        </div>
+        <span class="game-arrow">→</span>
+      </a>`;
+  }).join('');
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+loadPlanetStatus();
+</script>
+</body>
+</html>
