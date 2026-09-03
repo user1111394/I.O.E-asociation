@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neptune Explorer — I.O.E Hub</title>
+<script src="js/ioe-auth.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #05050a;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  #worldCanvas {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(180deg, rgba(5,5,10,0.85), transparent);
+  }
+  header h1 {
+    font-size: 1rem;
+    background: linear-gradient(90deg,#4a9dff,#1e50ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .exit-btn {
+    font-size: 0.75rem; font-weight: 700; color: #cbd5e0;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 12px; border-radius: 20px; cursor: pointer;
+  }
+
+  /* ── HUD: jumlah sumber daya terkumpul ── */
+  .resource-hud {
+    position: fixed; top: 54px; left: 14px; z-index: 10;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .resource-chip {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.15);
+    padding: 5px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    backdrop-filter: blur(4px);
+  }
+
+  /* ── Joystick virtual ── */
+  .joystick-zone {
+    position: fixed; bottom: 30px; left: 24px; z-index: 20;
+    width: 110px; height: 110px;
+    touch-action: none;
+  }
+  .joystick-base {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);
+  }
+  .joystick-knob {
+    position: absolute; width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(0,194,255,0.4); border: 1px solid rgba(0,194,255,0.7);
+    top: 32px; left: 32px;
+    transition: top 0.05s, left 0.05s;
+  }
+
+  /* ── Tombol keluar/selesai explore ── */
+  .finish-explore-btn {
+    position: fixed; bottom: 34px; right: 24px; z-index: 20;
+    padding: 12px 18px; border: none; border-radius: 14px;
+    background: linear-gradient(90deg,#1e90ff,#00008b);
+    color: #fff; font-weight: 800; font-size: 0.78rem; cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0,194,255,0.3);
+  }
+
+  /* ── Tombol naik/turun diver (khusus Neptunus — gerak 3D bebas,
+     bukan cuma di atas "tanah" seperti Bulan/Mars) ── */
+  .vertical-controls {
+    position: fixed; bottom: 110px; right: 24px; z-index: 20;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .vertical-btn {
+    width: 56px; height: 56px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1); color: #fff; font-size: 1.3rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; user-select: none;
+  }
+  .vertical-btn:active { background: rgba(0,194,255,0.35); }
+
+  /* ── Depth indicator (mengganti fungsi "ada di kawah/tanah" karena
+     tidak ada tanah di Saturnus — pemain perlu tahu seberapa jauh dia
+     dari titik masuk) ── */
+  .depth-hud {
+    position: fixed; top: 54px; right: 14px; z-index: 10;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.15);
+    padding: 5px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    backdrop-filter: blur(4px);
+  }
+
+  /* ── Overlay pickup notif ── */
+  .pickup-toast {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+    z-index: 30; pointer-events: none;
+    background: rgba(0,0,0,0.7); border: 1px solid rgba(255,210,63,0.5);
+    padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; color: #ffd23f;
+    opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  }
+  .pickup-toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+  /* ── Overlay hasil explore (setelah tombol selesai ditekan) ── */
+  .result-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    padding: 20px;
+  }
+  .result-overlay.show { display: flex; }
+  .result-card {
+    background: linear-gradient(160deg, #1a1f3a, #0a0a12);
+    border: 1px solid rgba(123,92,255,0.4);
+    border-radius: 16px; padding: 22px; max-width: 320px; width: 100%;
+    text-align: center;
+  }
+  .result-card h2 { font-size: 1.1rem; margin-bottom: 10px; }
+  .result-list { font-size: 0.85rem; margin-bottom: 18px; line-height: 1.8; }
+  .result-btn {
+    width: 100%; padding: 11px; border: none; border-radius: 10px;
+    background: linear-gradient(90deg,#1e90ff,#00008b);
+    color: #fff; font-weight: 800; cursor: pointer;
+  }
+
+  .loading-overlay {
+    position: fixed; inset: 0; background: #05050a;
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+    color: #718096; font-size: 0.85rem; text-align: center; padding: 24px; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">Menyelam ke lautan dalam Neptunus...</div>
+
+<canvas id="worldCanvas"></canvas>
+
+<header>
+  <h1>🧊 Neptunus — Explore</h1>
+  <button class="exit-btn" onclick="exitToHub()">✕ Keluar</button>
+</header>
+
+<div class="resource-hud">
+  <div class="resource-chip">🧊 Deep Ice: <span id="hudCrystal">0</span></div>
+  <div class="resource-chip">🔷 Cobalt Shard: <span id="hudDust">0</span></div>
+</div>
+
+<div class="depth-hud">📏 Kedalaman: <span id="hudDepth">0</span>m</div>
+
+<div class="joystick-zone" id="joystickZone">
+  <div class="joystick-base"></div>
+  <div class="joystick-knob" id="joystickKnob"></div>
+</div>
+
+<div class="vertical-controls">
+  <div class="vertical-btn" id="btnUp">▲</div>
+  <div class="vertical-btn" id="btnDown">▼</div>
+</div>
+
+<button class="finish-explore-btn" onclick="finishExplore()">✅ Selesai Explore</button>
+
+<div class="pickup-toast" id="pickupToast"></div>
+
+<div class="result-overlay" id="resultOverlay">
+  <div class="result-card">
+    <h2>🎉 Eksplorasi Selesai!</h2>
+    <div class="result-list" id="resultList"></div>
+    <button class="result-btn" onclick="exitToHub()">Kembali ke Hub</button>
+  </div>
+</div>
+
+<script>
+  // ══════════════════════════════════════════
+  // AUTH & API
+  // ══════════════════════════════════════════
+  function getCurrentMember() {
+    const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+    if (!session || !session.memberId || !session.sessionToken) return null;
+    return { memberId: session.memberId, sessionToken: session.sessionToken };
+  }
+
+  async function callTycoonApi(action, extra = {}) {
+    const member = getCurrentMember();
+    if (!member) throw new Error('Silakan login dulu');
+    const res = await fetch('/api/tycoon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, memberId: member.memberId, sessionToken: member.sessionToken, ...extra }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memproses permintaan');
+    return data;
+  }
+
+  function exitToHub() {
+    // game.html adalah halaman daftar game (belum dibuat saat ini, akan
+    // menyusul) yang jadi pintu masuk ke tycoon.html/craft.html/astro.html.
+    window.location.href = 'game.html';
+  }
+  window.exitToHub = exitToHub;
+
+  // ══════════════════════════════════════════
+  // THREE.JS SETUP — pola & dispose SAMA PERSIS seperti tycoon.html
+  // (lihat komentar disposeWorldView di sana untuk alasan lengkap kenapa
+  // dispose ini wajib ada, terutama karena halaman ini rencananya juga
+  // akan dibuka dari iframe/navigasi berulang di I.O.E Hub).
+  // ══════════════════════════════════════════
+  // ══════════════════════════════════════════
+  // THREE.JS SETUP — pola & dispose SAMA PERSIS seperti tycoon.html/
+  // mars.html (lihat komentar disposeWorldView di sana untuk alasan
+  // lengkap kenapa dispose ini wajib ada).
+  //
+  // BEDA BESAR DARI BULAN/MARS: Saturnus adalah planet gas raksasa, tidak
+  // punya permukaan padat. Neptunian Deep Diver (kapal selam besar,
+  // sudah menunjukkan ini) bergerak BEBAS di 3 sumbu di dalam "lautan
+  // awan" — bukan menyusuri tanah datar. Konsep tanah/kawah/gravitasi-ke-
+  // bawah TIDAK berlaku di sini sama sekali; sebagai gantinya area
+  // jelajah dibatasi bola raksasa (WORLD_RADIUS) ke segala arah.
+  // ══════════════════════════════════════════
+  let scene, camera, renderer;
+  let sub; // diver (Neptunian Deep Diver)
+  let pickups = []; // { mesh, type, collected }
+  let collectedCrystal = 0, collectedDust = 0;
+  let disposed = false;
+
+  const WORLD_RADIUS = 90; // radius bola pembatas area jelajah, ke segala arah (bukan cuma horizontal)
+  const SUB_SPEED = 0.14;
+  const SUB_TURN_SPEED = 0.04;
+  const SUB_VERTICAL_SPEED = 0.1;
+  const PICKUP_RADIUS = 2.2; // sedikit lebih besar dari Bulan/Mars — lebih sulit presisi karena gerak 3 dimensi
+
+  function initScene() {
+    scene = new THREE.Scene();
+    // Warna atmosfer Saturnus: krem-kuning pucat berlapis, khas foto
+    // asli planet Saturnus.
+    scene.background = new THREE.Color(0x0a1a4a);
+    // Fog dibuat lebih dekat & lebih pekat dibanding sebelumnya, supaya
+    // terasa seperti "render distance" (batas pandang jelas, bukan
+    // transisi halus jarak jauh) — cocok untuk suasana lautan awan tebal
+    // Saturnus yang berkabut.
+    scene.fog = new THREE.Fog(0x0a1a4a, 8, 55);
+
+    const canvas = document.getElementById('worldCanvas');
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
+
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const ambient = new THREE.AmbientLight(0x4a6a9a, 0.6);
+    scene.add(ambient);
+    const sunLight = new THREE.DirectionalLight(0xaaccff, 0.7);
+    sunLight.position.set(20, 30, 10);
+    scene.add(sunLight);
+
+    buildOceanLayers();
+    buildDiver();
+    scatterPickups();
+
+    window.addEventListener('resize', onResize);
+    setupJoystick();
+    setupVerticalButtons();
+    window.addEventListener('pagehide', disposeScene);
+    window.addEventListener('beforeunload', disposeScene);
+
+    document.getElementById('loadingOverlay').style.display = 'none';
+    animate();
+  }
+
+  function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  // ── Atmosfer & cincin Saturnus: alih-alih "tanah" datar, dibuat beberapa
+  //    lapisan bidang transparan bertekstur pita awan pada ketinggian
+  //    berbeda, mengelilingi diver — memberi referensi visual
+  //    kedalaman/gerak tanpa perlu tanah sungguhan. Ditambah partikel
+  //    ambient (bintik-bintik melayang) supaya gerak 3D terasa, bukan
+  //    hampa kosong. ──
+  function buildOceanLayers() {
+    // ── Neptunus dikenal sebagai "ice giant" dengan lautan dalam es-air
+    //    super panas di bawah atmosfernya. Alih-alih cincin (khas
+    //    Saturnus, tidak relevan di sini), dibuat lapisan es mengambang
+    //    tersebar acak — pecahan es besar yang jadi ciri visual lautan
+    //    dalam Neptunus. ──
+    const iceMat = new THREE.MeshStandardMaterial({ color: 0x6a9adf, transparent: true, opacity: 0.4, roughness: 0.3, metalness: 0.1 });
+    for (let i = 0; i < 25; i++) {
+      const angle = seededNeptuneRandom(i * 4.4) * Math.PI * 2;
+      const r = (0.2 + seededNeptuneRandom(i * 6.6) * 0.7) * WORLD_RADIUS;
+      const theta2 = seededNeptuneRandom(i * 8.8) * Math.PI * 2;
+      const phi2 = Math.acos(2 * seededNeptuneRandom(i * 10.1) - 1);
+      const x = r * Math.sin(phi2) * Math.cos(theta2);
+      const y = r * Math.cos(phi2);
+      const z = r * Math.sin(phi2) * Math.sin(theta2);
+
+      const size = 2 + seededNeptuneRandom(i * 3.3) * 4;
+      const iceChunk = new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0), iceMat);
+      iceChunk.position.set(x, y, z);
+      iceChunk.rotation.set(seededNeptuneRandom(i * 1.1) * Math.PI, seededNeptuneRandom(i * 2.2) * Math.PI, 0);
+      scene.add(iceChunk);
+    }
+
+    // Pita lapisan air/atmosfer — tetap dipertahankan (mirip planet gas
+    // lain) tapi warna biru tua-terang khas Neptunus.
+    const bandColors = [0x0a1a4a, 0x1e50ff, 0x00008b, 0x4a9dff, 0x0a2a6a];
+    for (let i = 0; i < 5; i++) {
+      const y = -60 + i * 30;
+      const geo = new THREE.PlaneGeometry(WORLD_RADIUS * 3, WORLD_RADIUS * 3);
+      const mat = new THREE.MeshBasicMaterial({
+        color: bandColors[i % bandColors.length],
+        transparent: true, opacity: 0.12, side: THREE.DoubleSide,
+      });
+      const band = new THREE.Mesh(geo, mat);
+      band.rotation.x = -Math.PI / 2;
+      band.position.y = y;
+      scene.add(band);
+    }
+
+    // Partikel ambient — bintik kecil tersebar di seluruh volume bola
+    // jelajah, meniru gelembung/partikel es halus di lautan dalam Neptunus.
+    const particleCount = 800;
+    const positions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+      // Sebar merata di dalam bola radius WORLD_RADIUS (bukan cuma
+      // permukaan bola) memakai distribusi volumetrik sederhana.
+      const r = Math.cbrt(Math.random()) * WORLD_RADIUS;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.cos(phi);
+      positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    const particleGeo = new THREE.BufferGeometry();
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const particleMat = new THREE.PointsMaterial({ color: 0xaad0ff, size: 0.3, sizeAttenuation: true, transparent: true, opacity: 0.6 });
+    scene.add(new THREE.Points(particleGeo, particleMat));
+  }
+
+  // Neptunian Deep Diver — kapal selam besar (beda dari
+  // ujung bulat memakai capsule buatan dari cylinder+sphere, karena
+  // CapsuleGeometry tidak tersedia di Three.js r128), sirip kemudi, dan
+  // jendela kokpit kecil.
+  function buildDiver() {
+    const group = new THREE.Group();
+
+    // "Kapal selam BESAR" sesuai deskripsi dokumen — dimensi dinaikkan
+    // dari Jovian Submarine (radius 0.7 -> 0.9, panjang 2.4 -> 3.2).
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e50ff, metalness: 0.5, roughness: 0.4 });
+    const bodyMain = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 3.2, 16), bodyMat);
+    bodyMain.rotation.z = Math.PI / 2;
+    group.add(bodyMain);
+
+    const noseCone = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), bodyMat);
+    noseCone.position.set(0, 0, 1.6);
+    group.add(noseCone);
+
+    const tailCone = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), bodyMat);
+    tailCone.position.set(0, 0, -1.6);
+    group.add(tailCone);
+
+    // Jendela kokpit — warna biru terang menyala, khas tema Neptunus.
+    const windowMat = new THREE.MeshStandardMaterial({ color: 0x1e90ff, metalness: 0.3, roughness: 0.1, emissive: 0x1e90ff, emissiveIntensity: 0.5, transparent: true, opacity: 0.8 });
+    const cockpitWindow = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 10), windowMat);
+    cockpitWindow.position.set(0, 0.6, 1.0);
+    group.add(cockpitWindow);
+
+    // Sirip kemudi — 4 sirip di buritan, lebih besar dari Jovian
+    // Submarine (kapal selam Neptunus "besar" sesuai dokumen).
+    const finMat = new THREE.MeshStandardMaterial({ color: 0x00008b, roughness: 0.6 });
+    const finPositions = [
+      [0, 1.0, -1.9, 0],
+      [0, -1.0, -1.9, 0],
+      [1.0, 0, -1.9, Math.PI / 2],
+      [-1.0, 0, -1.9, Math.PI / 2],
+    ];
+    finPositions.forEach(([fx, fy, fz, rot]) => {
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.06), finMat);
+      fin.position.set(fx, fy, fz);
+      fin.rotation.z = rot;
+      group.add(fin);
+    });
+
+
+    group.position.set(0, 0, 0);
+    // FIX (diver menghalangi pandangan first-person): kamera
+    // ditempatkan PERSIS di posisi diver (lihat updateCamera), jadi
+    // badan besarnya akan selalu menembus/menghalangi layar dari dalam
+    // kalau tetap terlihat. visible=false menyembunyikannya dari render
+    // sepenuhnya — sama seperti kebanyakan game first-person yang tidak
+    // menampilkan body kendaraan/karakter sendiri (cuma tangan/kokpit
+    // kalau ada). Rotasi & posisi tetap dihitung normal (dipakai untuk
+    // arah kamera & collision pickup), cuma tidak di-render ke layar.
+    group.visible = false;
+    scene.add(group);
+    sub = group;
+  }
+
+  // Sebar Ring Fragment & Titan Gas sebagai objek 3D mengambang bebas
+  // di dalam volume bola jelajah (bukan di "permukaan" — tidak ada
+  // permukaan di Saturnus). Warna diredam mendekati warna atmosfer
+  // supaya tetap butuh diteliti untuk ditemukan (kamuflase, sama seperti
+  // Bulan/Mars).
+  function scatterPickups() {
+    const gasMat = new THREE.MeshStandardMaterial({ color: 0x6a9adf, emissive: 0x2a4a8a, emissiveIntensity: 0.2, metalness: 0.1, roughness: 0.4, transparent: true, opacity: 0.75 });
+    const crystalMat = new THREE.MeshStandardMaterial({ color: 0x3a5aaa, emissive: 0x1a2a5a, emissiveIntensity: 0.15, roughness: 0.5 });
+
+    const pickupCount = 26;
+    for (let i = 0; i < pickupCount; i++) {
+      // Posisi ACAK DI DALAM VOLUME BOLA (bukan cuma di bidang datar
+      // seperti Bulan/Mars) — pakai distribusi volumetrik sama seperti
+      // partikel ambient, supaya pickup tersebar natural di seluruh
+      // ruang 3D yang bisa dijelajahi diver.
+      const r = (0.25 + seededNeptuneRandom(i * 3.3) * 0.65) * WORLD_RADIUS; // hindari terlalu dekat pusat & terlalu dekat batas terluar
+      const theta = seededNeptuneRandom(i * 5.5) * Math.PI * 2;
+      const phi = Math.acos(2 * seededNeptuneRandom(i * 7.7) - 1);
+      const x = r * Math.sin(phi) * Math.cos(theta);
+      const y = r * Math.cos(phi);
+      const z = r * Math.sin(phi) * Math.sin(theta);
+
+      const isGas = i % 2 === 0;
+      const mesh = isGas
+        ? new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), gasMat)
+        : new THREE.Mesh(new THREE.OctahedronGeometry(0.35, 1), crystalMat);
+      mesh.position.set(x, y, z);
+      scene.add(mesh);
+      pickups.push({ mesh, type: isGas ? 'deepIce' : 'cobaltShard', collected: false });
+    }
+  }
+
+  function seededNeptuneRandom(seed) {
+    const x = Math.sin(seed * 12.9898) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  // ══════════════════════════════════════════
+  // JOYSTICK VIRTUAL (kiri) — setir: kiri-kanan memutar diver,
+  // atas-bawah maju-mundur searah hadap. SAMA POLA seperti Bulan/Mars.
+  // ══════════════════════════════════════════
+  let joystickActive = false;
+  let joystickDir = { x: 0, y: 0 };
+
+  function setupJoystick() {
+    const zone = document.getElementById('joystickZone');
+    const knob = document.getElementById('joystickKnob');
+    const maxDist = 32;
+
+    function handleMove(clientX, clientY) {
+      const rect = zone.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      let dx = clientX - centerX, dy = clientY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxDist) {
+        dx = (dx / dist) * maxDist;
+        dy = (dy / dist) * maxDist;
+      }
+      knob.style.left = `${32 + dx}px`;
+      knob.style.top = `${32 + dy}px`;
+      joystickDir.x = dx / maxDist;
+      joystickDir.y = dy / maxDist;
+    }
+
+    function resetKnob() {
+      knob.style.left = '32px';
+      knob.style.top = '32px';
+      joystickDir.x = 0;
+      joystickDir.y = 0;
+      joystickActive = false;
+    }
+
+    zone.addEventListener('touchstart', e => { joystickActive = true; handleMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+    zone.addEventListener('touchmove', e => { if (joystickActive) handleMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+    zone.addEventListener('touchend', resetKnob);
+    zone.addEventListener('touchcancel', resetKnob);
+
+    zone.addEventListener('mousedown', e => { joystickActive = true; handleMove(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', e => { if (joystickActive) handleMove(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', resetKnob);
+  }
+
+  // ══════════════════════════════════════════
+  // TOMBOL NAIK/TURUN (kanan) — kontrol vertikal diver, terpisah
+  // dari joystick kiri (sesuai permintaan: "konsol bagian kiri dan
+  // tombol naik-turun bagian kanan").
+  // ══════════════════════════════════════════
+  let verticalDir = 0; // -1 = turun, 0 = diam, 1 = naik
+
+  function setupVerticalButtons() {
+    const btnUp = document.getElementById('btnUp');
+    const btnDown = document.getElementById('btnDown');
+
+    function bindHoldButton(el, value) {
+      const start = e => { verticalDir = value; e.preventDefault(); };
+      const stop = () => { if (verticalDir === value) verticalDir = 0; };
+      el.addEventListener('touchstart', start, { passive: false });
+      el.addEventListener('touchend', stop);
+      el.addEventListener('touchcancel', stop);
+      el.addEventListener('mousedown', start);
+      el.addEventListener('mouseup', stop);
+      el.addEventListener('mouseleave', stop);
+    }
+    bindHoldButton(btnUp, 1);
+    bindHoldButton(btnDown, -1);
+  }
+
+  // ══════════════════════════════════════════
+  // GAME LOOP — gerak diver di 3D penuh, dibatasi bola WORLD_RADIUS
+  // ke segala arah (bukan cuma radius horizontal seperti Bulan/Mars).
+  // ══════════════════════════════════════════
+  function updateSubPosition() {
+    if (joystickDir.x !== 0) {
+      sub.rotation.y -= joystickDir.x * SUB_TURN_SPEED;
+    }
+
+    let moveX = 0, moveY = 0, moveZ = 0;
+
+    if (joystickDir.y !== 0) {
+      const moveAmount = -joystickDir.y * SUB_SPEED;
+      moveX = Math.sin(sub.rotation.y) * moveAmount;
+      moveZ = Math.cos(sub.rotation.y) * moveAmount;
+    }
+
+    if (verticalDir !== 0) {
+      moveY = verticalDir * SUB_VERTICAL_SPEED;
+    }
+
+    if (moveX !== 0 || moveY !== 0 || moveZ !== 0) {
+      const nextX = sub.position.x + moveX;
+      const nextY = sub.position.y + moveY;
+      const nextZ = sub.position.z + moveZ;
+
+      // Batas jelajah: BOLA radius WORLD_RADIUS dari titik pusat (0,0,0),
+      // ke segala arah termasuk atas-bawah — bukan cuma radius horizontal
+      // seperti di Bulan/Mars, karena tidak ada "tanah" sebagai batas
+      // alami di sini.
+      const nextDist = Math.sqrt(nextX * nextX + nextY * nextY + nextZ * nextZ);
+      if (nextDist < WORLD_RADIUS - 3) {
+        sub.position.set(nextX, nextY, nextZ);
+      }
+    }
+
+    // Update HUD kedalaman: jarak dari titik pusat (0,0,0), dibulatkan.
+    const depth = Math.round(Math.sqrt(sub.position.x ** 2 + sub.position.y ** 2 + sub.position.z ** 2));
+    const depthEl = document.getElementById('hudDepth');
+    if (depthEl) depthEl.textContent = depth;
+  }
+
+  // ── Kamera first-person: menempel di posisi diver, menghadap
+  //    sama persis arah hadapnya (sub.rotation.y). Sama pola dengan
+  //    Bulan/Mars — first-person tidak butuh kontrol arah pandang
+  //    terpisah karena "arah pandang" = "arah hadap kendaraan". ──
+  const EYE_OFFSET = 0.3;
+
+  // ── Efek ROLL kamera saat belok (dipertahankan dari Saturn Flyer, beda dari
+  //    Jovian Submarine yang kameranya diam tegak) — meniru pesawat yang miring
+  //    ke salah satu sisi saat berbelok. currentRoll di-lerp menuju target
+  //    (bukan langsung di-set) supaya transisinya halus, tidak nyentak
+  //    tiba-tiba saat mulai/berhenti belok. ──
+  let currentRoll = 0;
+  const MAX_ROLL = 0.4; // radian, batas kemiringan maksimum (~23°)
+  const ROLL_SMOOTHING = 0.08;
+
+  function updateCamera() {
+    const eyeX = sub.position.x;
+    const eyeY = sub.position.y + EYE_OFFSET;
+    const eyeZ = sub.position.z;
+    camera.position.set(eyeX, eyeY, eyeZ);
+
+    const lookX = eyeX + Math.sin(sub.rotation.y);
+    const lookZ = eyeZ + Math.cos(sub.rotation.y);
+    camera.lookAt(lookX, eyeY, lookZ);
+
+    // Target roll proporsional dengan seberapa kuat joystick didorong ke
+    // samping (joystickDir.x) — makin tajam beloknya, makin miring.
+    // Tanda dibalik (-) supaya arah miring terasa natural: belok kanan
+    // (joystickDir.x positif) bikin kamera miring ke kanan, seperti
+    // pesawat sungguhan nge-bank ke arah belok.
+    const targetRoll = -joystickDir.x * MAX_ROLL;
+    currentRoll += (targetRoll - currentRoll) * ROLL_SMOOTHING;
+
+    // PENTING: rotasi roll diterapkan SETELAH camera.lookAt() di atas,
+    // karena lookAt() menghitung ULANG seluruh orientasi kamera (termasuk
+    // sumbu Z) — kalau roll di-set sebelum lookAt, akan langsung tertimpa
+    // dan hilang. rotateZ() memutar relatif terhadap orientasi kamera
+    // yang BARU SAJA dihitung lookAt(), bukan terhadap sumbu dunia.
+    camera.rotateZ(currentRoll);
+  }
+
+  function checkPickupCollisions() {
+    pickups.forEach(p => {
+      if (p.collected) return;
+      const dx = sub.position.x - p.mesh.position.x;
+      const dy = sub.position.y - p.mesh.position.y;
+      const dz = sub.position.z - p.mesh.position.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz); // jarak 3D penuh, bukan cuma horizontal (beda dari Bulan/Mars)
+      if (dist < PICKUP_RADIUS) {
+        p.collected = true;
+        scene.remove(p.mesh);
+        if (p.type === 'deepIce') collectedCrystal++;
+        else collectedDust++;
+        updateHud();
+        showPickupToast(p.type);
+      }
+    });
+  }
+
+  function updateHud() {
+    document.getElementById('hudCrystal').textContent = collectedCrystal;
+    document.getElementById('hudDust').textContent = collectedDust;
+  }
+
+  let toastTimeout = null;
+  function showPickupToast(type) {
+    const toast = document.getElementById('pickupToast');
+    toast.textContent = type === 'deepIce' ? '🧊 +1 Deep Ice' : '🔷 +1 Cobalt Shard';
+    toast.classList.add('show');
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toast.classList.remove('show'), 900);
+  }
+
+  function animate() {
+    if (disposed) return;
+    requestAnimationFrame(animate);
+    updateSubPosition();
+    updateCamera();
+    checkPickupCollisions();
+    renderer.render(scene, camera);
+  }
+
+  // ══════════════════════════════════════════
+  // SELESAI EXPLORE — panggil backend explore-planet (reward FINAL tetap
+  // ditentukan server secara random, sama seperti Bulan/Mars).
+  // ══════════════════════════════════════════
+  async function finishExplore() {
+    try {
+      const data = await callTycoonApi('explore-planet', { planetId: 'neptune' });
+      const rewardLabels = { deepIce: 'Deep Ice', cobaltShard: 'Cobalt Shard' };
+      const rewardEmoji = { deepIce: '🧊', cobaltShard: '🔷' };
+      const listHtml = Object.entries(data.rewards)
+        .map(([res, amt]) => `<div>${rewardEmoji[res] || '✨'} +${amt} ${rewardLabels[res] || res}</div>`)
+        .join('');
+      document.getElementById('resultList').innerHTML = listHtml;
+      document.getElementById('resultOverlay').classList.add('show');
+    } catch (err) {
+      alert(`Gagal menyelesaikan eksplorasi: ${err.message}`);
+    }
+  }
+  window.finishExplore = finishExplore;
+
+  // ══════════════════════════════════════════
+  // DISPOSE — sama persis pola tycoon.html/mars.html.
+  // ══════════════════════════════════════════
+  function disposeScene() {
+    if (disposed || !renderer) return;
+    disposed = true;
+    scene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach(m => m.dispose());
+      }
+    });
+    const glExt = renderer.getContext().getExtension('WEBGL_lose_context');
+    if (glExt) glExt.loseContext();
+    renderer.dispose();
+  }
+
+  // ══════════════════════════════════════════
+  // INIT — pastikan sudah login sebelum boleh explore (butuh sesi untuk
+  // panggil explore-planet nanti), baru inisialisasi scene 3D.
+  // ══════════════════════════════════════════
+  (async function init() {
+    const member = getCurrentMember();
+    if (!member) {
+      document.getElementById('loadingOverlay').textContent = '⚠️ Silakan login dulu untuk explore.';
+      return;
+    }
+
+    try {
+      const data = await callTycoonApi('get-state');
+      const progress = data.state.spaceProgram && data.state.spaceProgram['neptune'];
+      const vehicleReady = progress && progress.vehicle;
+
+      if (!vehicleReady) {
+        const planetName = (data.planets && data.planets['neptune'] && data.planets['neptune'].name) || 'neptune';
+        const vehicleName = (data.planets && data.planets['neptune'] && data.planets['neptune'].vehicle && data.planets['neptune'].vehicle.name) || 'kendaraan';
+        document.getElementById('loadingOverlay').innerHTML =
+          `🔒 Kamu belum punya ${vehicleName}.<br>Craft dulu di halaman Refinery & Craft sebelum explore ${planetName}.`;
+        return;
+      }
+    } catch (err) {
+      document.getElementById('loadingOverlay').textContent = `❌ Gagal memuat status: ${err.message}`;
+      return;
+    }
+
+    initScene();
+  })();
+</script>
+</body>
+</html>
