@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kebunku — I.O.E Hub</title>
+<script src="js/ioe-auth.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0f1408;
+    color: #e8f0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  #gardenCanvas {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    touch-action: none;
+  }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(180deg, rgba(15,20,8,0.85), transparent);
+  }
+  header h1 {
+    font-size: 1rem;
+    background: linear-gradient(90deg,#e8c878,#7ac850);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .exit-btn {
+    font-size: 0.75rem; font-weight: 700; color: #d8e8c8;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 12px; border-radius: 20px; cursor: pointer;
+  }
+
+  .status-hud {
+    position: fixed; top: 54px; left: 14px; z-index: 10;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .status-chip {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.15);
+    padding: 5px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+    backdrop-filter: blur(4px);
+  }
+  .status-chip.season-chip { border-color: rgba(232,200,120,0.5); color: #e8d898; }
+
+  .wild-btn {
+    position: fixed; top: 54px; right: 14px; z-index: 10;
+    font-size: 0.72rem; font-weight: 700; color: #0f1408;
+    background: linear-gradient(90deg,#a8d878,#4a9d4a);
+    border: none; padding: 7px 13px; border-radius: 20px; cursor: pointer;
+  }
+
+  .upgrade-hint {
+    position: fixed; bottom: 20px; left: 14px; right: 14px; z-index: 10;
+    display: flex; justify-content: center;
+  }
+  .upgrade-btn {
+    font-size: 0.75rem; font-weight: 700; color: #1a1408;
+    background: linear-gradient(90deg,#e8c878,#c8a858);
+    border: none; padding: 9px 18px; border-radius: 20px; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(200,168,88,0.35);
+  }
+
+  /* ── Panel aksi plot (modal bottom-sheet) ── */
+  .plot-panel-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    display: none; align-items: flex-end; justify-content: center; z-index: 50;
+  }
+  .plot-panel-overlay.show { display: flex; }
+  .plot-panel {
+    width: 100%; max-width: 480px;
+    background: linear-gradient(160deg, #1c2410, #0f1408);
+    border: 1px solid rgba(168,216,120,0.3);
+    border-radius: 20px 20px 0 0;
+    padding: 18px 18px 26px;
+    max-height: 75vh; overflow-y: auto;
+  }
+  .plot-panel h2 { font-size: 1rem; margin-bottom: 4px; }
+  .plot-panel .plot-sub { font-size: 0.75rem; color: #a8c898; margin-bottom: 14px; }
+  .plot-panel .close-btn {
+    float: right; background: rgba(255,255,255,0.1); border: none;
+    color: #d8e8c8; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+    font-size: 0.9rem;
+  }
+
+  .plot-info-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(255,255,255,0.05); border-radius: 10px;
+    padding: 8px 12px; margin-bottom: 8px; font-size: 0.78rem;
+  }
+  .plot-info-row .label { color: #a8c898; }
+  .plot-info-row .value { font-weight: 700; }
+
+  .action-btn {
+    width: 100%; padding: 12px; border: none; border-radius: 12px;
+    background: linear-gradient(90deg,#7ac850,#4a9d4a);
+    color: #fff; font-weight: 800; font-size: 0.85rem; cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .action-btn.secondary {
+    background: rgba(255,255,255,0.1); color: #d8e8c8;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .action-btn.danger {
+    background: linear-gradient(90deg,#d87850,#b85030);
+  }
+  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .seed-list, .fert-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .seed-item, .fert-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px; padding: 10px 12px; cursor: pointer;
+  }
+  .seed-item:active, .fert-item:active { background: rgba(122,200,80,0.2); }
+  .seed-item .name, .fert-item .name { font-size: 0.82rem; font-weight: 700; }
+  .seed-item .qty, .fert-item .cost { font-size: 0.72rem; color: #a8c898; }
+  .empty-hint { font-size: 0.78rem; color: #888; text-align: center; padding: 16px 0; }
+
+  .section-label { font-size: 0.72rem; font-weight: 700; color: #a8c898; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.03em; }
+
+  .pest-banner {
+    background: rgba(216,120,80,0.18); border: 1px solid rgba(216,120,80,0.4);
+    border-radius: 10px; padding: 8px 12px; font-size: 0.78rem; margin-bottom: 10px;
+    color: #f0b090;
+  }
+
+  .toast {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+    z-index: 80; pointer-events: none;
+    background: rgba(0,0,0,0.75); border: 1px solid rgba(122,200,80,0.5);
+    padding: 10px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: 700;
+    opacity: 0; transition: opacity 0.2s, transform 0.2s;
+    text-align: center; color: #b8e898;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .toast.error { color: #f0a878; border-color: rgba(240,120,80,0.5); }
+
+  .loading-overlay {
+    position: fixed; inset: 0; background: #0f1408;
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+    color: #a8c898; font-size: 0.85rem; text-align: center; padding: 24px; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">Memasuki kebun...</div>
+
+<canvas id="gardenCanvas"></canvas>
+
+<header>
+  <h1>🌱 Kebunku</h1>
+  <button class="exit-btn" onclick="exitToHub()">✕ Keluar</button>
+</header>
+
+<button class="wild-btn" onclick="goToWildHarvest()">🌿 Wild Harvest</button>
+
+<div class="status-hud">
+  <div class="status-chip season-chip" id="hudSeason">🍃 —</div>
+  <div class="status-chip">🌰 Seed Coin: <span id="hudSeedCoin">0</span></div>
+  <div class="status-chip" id="hudLevel">🏡 Level —</div>
+</div>
+
+<div class="upgrade-hint">
+  <button class="upgrade-btn" id="upgradeBtn" onclick="doUpgradeGarden()">⬆️ Upgrade Kebun</button>
+</div>
+
+<div class="plot-panel-overlay" id="plotPanelOverlay">
+  <div class="plot-panel">
+    <button class="close-btn" onclick="closePlotPanel()">✕</button>
+    <h2 id="plotPanelTitle">Plot</h2>
+    <div class="plot-sub" id="plotPanelSub"></div>
+    <div id="plotPanelBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function exitToHub() { window.location.href = 'game.html'; }
+function goToWildHarvest() { window.location.href = 'wildharvest.html'; }
+
+function getCurrentMember() {
+  const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+  if (!session || !session.memberId || !session.sessionToken) return null;
+  return { memberId: session.memberId, sessionToken: session.sessionToken };
+}
+
+async function callTycoonApi(action, extra = {}) {
+  const member = getCurrentMember();
+  if (!member) throw new Error('Silakan login dulu');
+  const res = await fetch('/api/tycoon', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, memberId: member.memberId, sessionToken: member.sessionToken, ...extra }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Gagal memproses permintaan');
+  return data;
+}
+
+let toastTimeout = null;
+function showToast(message, isError) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className = 'toast show' + (isError ? ' error' : '');
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+// ══════════════════════════════════════════
+// STATE GLOBAL DARI SERVER
+// ══════════════════════════════════════════
+let GARDEN_STATE = null;   // { level, plots: [...] }
+let SEASON = null;
+let PLANTS = null;
+let FERTILIZERS = null;
+let GARDEN_LEVELS = null;
+let PEST_TREATMENT_COST = 0;
+let seedCoins = 0;
+let seedInventory = {};
+let selectedPlotIndex = null;
+
+// ══════════════════════════════════════════
+// THREE.JS SCENE — kebun kecil, kamera orbit miring dari atas (bukan
+// first-person seperti Wild Harvest). Grid plot NxN berdasarkan
+// GARDEN_LEVELS[level].plots (harus persis kuadrat: 4,9,16,25,36).
+// ══════════════════════════════════════════
+let scene, camera, renderer, disposed = false;
+let raycaster, plotMeshes = []; // index sejajar dengan GARDEN_STATE.plots
+let plantMeshGroup = null; // group berisi mesh tanaman, dibangun ulang tiap refresh state
+
+const PLOT_SIZE = 3.2;
+const PLOT_GAP = 0.5;
+const PLOT_CELL = PLOT_SIZE + PLOT_GAP;
+
+// ── Kamera orbit: drag untuk memutar sekeliling kebun + pinch/scroll
+// untuk zoom. Target orbit selalu di tengah kebun (0,0,0). ──
+let orbitYaw = Math.PI / 4;     // sudut horizontal
+let orbitPitch = 0.75;          // sudut kemiringan dari atas (radian, makin besar makin dari atas)
+let orbitDistance = 16;
+const MIN_ORBIT_PITCH = 0.35;
+const MAX_ORBIT_PITCH = 1.4;
+const MIN_ORBIT_DISTANCE = 6;
+const MAX_ORBIT_DISTANCE = 34;
+
+function updateCameraFromOrbit() {
+  const x = orbitDistance * Math.sin(orbitPitch) * Math.cos(orbitYaw);
+  const z = orbitDistance * Math.sin(orbitPitch) * Math.sin(orbitYaw);
+  const y = orbitDistance * Math.cos(orbitPitch);
+  camera.position.set(x, y, z);
+  camera.lookAt(0, 0.5, 0);
+}
+
+function setupOrbitControls() {
+  const canvas = document.getElementById('gardenCanvas');
+  let dragging = false;
+  let lastX = 0, lastY = 0;
+  let didDrag = false; // dipakai untuk beda-in drag vs tap (biar tap plot tidak ke-trigger saat drag)
+
+  function start(x, y) { dragging = true; didDrag = false; lastX = x; lastY = y; }
+  function move(x, y) {
+    if (!dragging) return;
+    const dx = x - lastX, dy = y - lastY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
+    lastX = x; lastY = y;
+    orbitYaw += dx * 0.006;
+    orbitPitch = Math.max(MIN_ORBIT_PITCH, Math.min(MAX_ORBIT_PITCH, orbitPitch - dy * 0.006));
+    updateCameraFromOrbit();
+  }
+  function end(clientX, clientY) {
+    dragging = false;
+    if (!didDrag && clientX !== undefined) handleTap(clientX, clientY);
+  }
+
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) start(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  canvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 1) move(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  canvas.addEventListener('touchend', e => {
+    const t = e.changedTouches[0];
+    end(t ? t.clientX : undefined, t ? t.clientY : undefined);
+  });
+
+  canvas.addEventListener('mousedown', e => start(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+  window.addEventListener('mouseup', e => end(e.clientX, e.clientY));
+
+  // Zoom: wheel (desktop) + pinch (mobile, dua jari).
+  canvas.addEventListener('wheel', e => {
+    orbitDistance = Math.max(MIN_ORBIT_DISTANCE, Math.min(MAX_ORBIT_DISTANCE, orbitDistance + e.deltaY * 0.02));
+    updateCameraFromOrbit();
+    e.preventDefault();
+  }, { passive: false });
+
+  let lastPinchDist = null;
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) lastPinchDist = pinchDistance(e.touches);
+  }, { passive: true });
+  canvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      const d = pinchDistance(e.touches);
+      if (lastPinchDist !== null) {
+        orbitDistance = Math.max(MIN_ORBIT_DISTANCE, Math.min(MAX_ORBIT_DISTANCE, orbitDistance - (d - lastPinchDist) * 0.03));
+        updateCameraFromOrbit();
+      }
+      lastPinchDist = d;
+    }
+  }, { passive: true });
+  canvas.addEventListener('touchend', e => { if (e.touches.length < 2) lastPinchDist = null; });
+}
+function pinchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Tap di layar -> raycast ke plotMeshes -> buka panel aksi plot itu.
+function handleTap(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+  const intersects = raycaster.intersectObjects(plotMeshes, false);
+  if (intersects.length > 0) {
+    const plotIndex = intersects[0].object.userData.plotIndex;
+    openPlotPanel(plotIndex);
+  }
+}
+
+// ══════════════════════════════════════════
+// BANGUN KEBUN 3D dari GARDEN_STATE
+// ══════════════════════════════════════════
+function gridSizeForPlotCount(count) {
+  return Math.round(Math.sqrt(count)); // 4->2, 9->3, 16->4, 25->5, 36->6
+}
+
+function buildGardenGround() {
+  const gridSize = gridSizeForPlotCount(GARDEN_STATE.plots.length);
+  const totalSize = gridSize * PLOT_CELL + 4;
+  const geo = new THREE.PlaneGeometry(totalSize, totalSize);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x5a4a2e, roughness: 1 });
+  const ground = new THREE.Mesh(geo, mat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.05;
+  scene.add(ground);
+
+  // Pagar kayu sederhana di tepi kebun (kosmetik).
+  const fenceMat = new THREE.MeshStandardMaterial({ color: 0x8a6d3a, roughness: 0.9 });
+  const half = totalSize / 2;
+  const postCount = gridSize * 2 + 2;
+  for (let side = 0; side < 4; side++) {
+    for (let i = 0; i <= postCount; i++) {
+      const t = (i / postCount - 0.5) * totalSize;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.9, 5), fenceMat);
+      post.position.y = 0.4;
+      if (side === 0) post.position.set(t, 0.4, -half);
+      if (side === 1) post.position.set(t, 0.4, half);
+      if (side === 2) post.position.set(-half, 0.4, t);
+      if (side === 3) post.position.set(half, 0.4, t);
+      scene.add(post);
+    }
+  }
+}
+
+function plotWorldPosition(plotIndex) {
+  const gridSize = gridSizeForPlotCount(GARDEN_STATE.plots.length);
+  const row = Math.floor(plotIndex / gridSize);
+  const col = plotIndex % gridSize;
+  const offset = (gridSize - 1) / 2;
+  const x = (col - offset) * PLOT_CELL;
+  const z = (row - offset) * PLOT_CELL;
+  return { x, z };
+}
+
+const STAGE_PLANT_SCALE = { empty: 0, planted: 0.15, sprout: 0.4, growing: 0.7, mature: 1.0 };
+
+function buildPlantMesh(plot) {
+  const plant = PLANTS[plot.plantId];
+  const group = new THREE.Group();
+  const scale = STAGE_PLANT_SCALE[plot.stage] || 0.15;
+
+  // Warna batang/daun disesuaikan tier tanaman biar ada variasi visual
+  // sederhana (bukan model .FBX spesifik per tanaman seperti dokumen asli).
+  const tierColors = { common: 0x7ac850, uncommon: 0x5fa8d8, rare: 0xb888e0, legendary: 0xe8b83f, mythic: 0xe85f8f };
+  const color = tierColors[plant ? plant.tier : 'common'] || 0x7ac850;
+
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x3a7a3a, roughness: 0.9 });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.0 * scale, 6), stemMat);
+  stem.position.y = 0.5 * scale;
+  group.add(stem);
+
+  if (scale > 0.3) {
+    const bloomMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.15, flatShading: true });
+    const bloom = new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 * scale, 0), bloomMat);
+    bloom.position.y = 1.0 * scale;
+    group.add(bloom);
+  }
+
+  // Efek visual kalau kena hama: tint kemerahan menyelimuti tanaman.
+  if (plot.pest) {
+    const pestMat = new THREE.MeshStandardMaterial({ color: 0xd84040, transparent: true, opacity: 0.35 });
+    const pestOverlay = new THREE.Mesh(new THREE.SphereGeometry(0.5 * scale + 0.15, 6, 6), pestMat);
+    pestOverlay.position.y = 0.7 * scale;
+    group.add(pestOverlay);
+  }
+  // Efek visual kalau sudah dipupuk: partikel kecil emas melayang.
+  if (plot.fertilizer) {
+    const fertMat = new THREE.MeshStandardMaterial({ color: 0xe8c878, emissive: 0xe8c878, emissiveIntensity: 0.4 });
+    for (let i = 0; i < 3; i++) {
+      const speck = new THREE.Mesh(new THREE.SphereGeometry(0.05, 4, 4), fertMat);
+      const angle = (i / 3) * Math.PI * 2;
+      speck.position.set(Math.cos(angle) * 0.3, 0.3 + i * 0.15, Math.sin(angle) * 0.3);
+      group.add(speck);
+    }
+  }
+
+  return group;
+}
+
+function rebuildGardenPlots() {
+  // Hapus mesh lama.
+  for (const mesh of plotMeshes) scene.remove(mesh);
+  plotMeshes = [];
+  if (plantMeshGroup) scene.remove(plantMeshGroup);
+  plantMeshGroup = new THREE.Group();
+  scene.add(plantMeshGroup);
+
+  const soilMatEmpty = new THREE.MeshStandardMaterial({ color: 0x6b5030, roughness: 1 });
+  const soilMatPlanted = new THREE.MeshStandardMaterial({ color: 0x4a3820, roughness: 1 });
+  const soilMatPest = new THREE.MeshStandardMaterial({ color: 0x7a4030, roughness: 1 });
+
+  GARDEN_STATE.plots.forEach((plot, index) => {
+    const { x, z } = plotWorldPosition(index);
+    const mat = plot.pest ? soilMatPest : (plot.plantId ? soilMatPlanted : soilMatEmpty);
+    const plotMesh = new THREE.Mesh(new THREE.BoxGeometry(PLOT_SIZE, 0.3, PLOT_SIZE), mat);
+    plotMesh.position.set(x, 0.15, z);
+    plotMesh.userData = { plotIndex: index };
+    scene.add(plotMesh);
+    plotMeshes.push(plotMesh);
+
+    if (plot.plantId) {
+      const plantMesh = buildPlantMesh(plot);
+      plantMesh.position.set(x, 0.3, z);
+      plantMeshGroup.add(plantMesh);
+    }
+  });
+}
+
+// ══════════════════════════════════════════
+// PANEL AKSI PLOT
+// ══════════════════════════════════════════
+function openPlotPanel(plotIndex) {
+  selectedPlotIndex = plotIndex;
+  const plot = GARDEN_STATE.plots[plotIndex];
+  const overlay = document.getElementById('plotPanelOverlay');
+  const title = document.getElementById('plotPanelTitle');
+  const sub = document.getElementById('plotPanelSub');
+  const body = document.getElementById('plotPanelBody');
+
+  if (!plot.plantId) {
+    title.textContent = `Plot #${plotIndex + 1} — Kosong`;
+    sub.textContent = 'Pilih biji dari inventory untuk ditanam di sini.';
+    body.innerHTML = '';
+
+    const seedEntries = Object.entries(seedInventory).filter(([, qty]) => qty > 0);
+    if (seedEntries.length === 0) {
+      body.innerHTML = '<div class="empty-hint">Belum punya biji. Gali dulu di Wild Harvest.</div>';
+    } else {
+      const list = document.createElement('div');
+      list.className = 'seed-list';
+      for (const [plantId, qty] of seedEntries) {
+        const plant = PLANTS[plantId];
+        const item = document.createElement('div');
+        item.className = 'seed-item';
+        item.innerHTML = `<span class="name">${plant ? plant.name : plantId}</span><span class="qty">x${qty}</span>`;
+        item.onclick = () => doPlantSeed(plotIndex, plantId);
+        list.appendChild(item);
+      }
+      body.appendChild(list);
+    }
+  } else {
+    const plant = PLANTS[plot.plantId];
+    title.textContent = `Plot #${plotIndex + 1} — ${plant ? plant.name : plot.plantId}`;
+    sub.textContent = `Tahap: ${stageLabel(plot.stage)} • Progress: ${Math.round(plot.progress * 100)}%`;
+    body.innerHTML = '';
+
+    if (plot.pest) {
+      const banner = document.createElement('div');
+      banner.className = 'pest-banner';
+      banner.textContent = `⚠️ Kena hama (${plot.pest})! Pertumbuhan berhenti sampai diobati.`;
+      body.appendChild(banner);
+
+      const treatBtn = document.createElement('button');
+      treatBtn.className = 'action-btn danger';
+      treatBtn.textContent = `🧪 Obati Hama (${PEST_TREATMENT_COST} Seed Coin)`;
+      treatBtn.disabled = seedCoins < PEST_TREATMENT_COST;
+      treatBtn.onclick = () => doTreatPest(plotIndex);
+      body.appendChild(treatBtn);
+    }
+
+    if (plot.stage === 'mature') {
+      const harvestBtn = document.createElement('button');
+      harvestBtn.className = 'action-btn';
+      harvestBtn.textContent = '🌾 Panen';
+      harvestBtn.onclick = () => doHarvest(plotIndex);
+      body.appendChild(harvestBtn);
+    } else {
+      const waterBtn = document.createElement('button');
+      waterBtn.className = 'action-btn secondary';
+      waterBtn.textContent = plot.wateredAt ? '💧 Sudah disiram' : '💧 Siram';
+      waterBtn.onclick = () => doWaterPlant(plotIndex);
+      body.appendChild(waterBtn);
+
+      if (!plot.fertilizer) {
+        const label = document.createElement('div');
+        label.className = 'section-label';
+        label.textContent = 'Pasang Pupuk';
+        body.appendChild(label);
+
+        const fertList = document.createElement('div');
+        fertList.className = 'fert-list';
+        for (const [fertId, fert] of Object.entries(FERTILIZERS)) {
+          const item = document.createElement('div');
+          item.className = 'fert-item';
+          item.innerHTML = `<span class="name">${fert.name}</span><span class="cost">${fert.cost} 🌰</span>`;
+          if (seedCoins < fert.cost) item.style.opacity = '0.5';
+          item.onclick = () => doFertilize(plotIndex, fertId);
+          fertList.appendChild(item);
+        }
+        body.appendChild(fertList);
+      } else {
+        const info = document.createElement('div');
+        info.className = 'plot-info-row';
+        info.innerHTML = `<span class="label">Pupuk terpasang</span><span class="value">${FERTILIZERS[plot.fertilizer].name}</span>`;
+        body.appendChild(info);
+      }
+    }
+  }
+
+  overlay.classList.add('show');
+}
+function closePlotPanel() {
+  document.getElementById('plotPanelOverlay').classList.remove('show');
+  selectedPlotIndex = null;
+}
+window.closePlotPanel = closePlotPanel;
+
+function stageLabel(stage) {
+  const labels = { planted: 'Baru ditanam', sprout: 'Tunas', growing: 'Tumbuh', mature: 'Matang', empty: 'Kosong' };
+  return labels[stage] || stage;
+}
+
+// ══════════════════════════════════════════
+// AKSI — panggil server, refresh state, refresh scene & panel
+// ══════════════════════════════════════════
+async function refreshAfterAction(data) {
+  if (data.state) GARDEN_STATE = data.state;
+  if (data.seedCoins !== undefined) seedCoins = data.seedCoins;
+  updateHud();
+  rebuildGardenPlots();
+}
+
+async function doPlantSeed(plotIndex, plantId) {
+  try {
+    const data = await callTycoonApi('plant-seed', { plotIndex, plantId });
+    seedInventory[plantId] = Math.max(0, (seedInventory[plantId] || 0) - 1);
+    await refreshAfterAction(data);
+    closePlotPanel();
+    showToast(`Berhasil menanam ${PLANTS[plantId] ? PLANTS[plantId].name : plantId}`);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+async function doWaterPlant(plotIndex) {
+  try {
+    const data = await callTycoonApi('water-plant', { plotIndex });
+    await refreshAfterAction(data);
+    showToast('Tanaman disiram 💧');
+    openPlotPanel(plotIndex);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+async function doFertilize(plotIndex, fertilizerId) {
+  try {
+    const data = await callTycoonApi('fertilize-plant', { plotIndex, fertilizerId });
+    await refreshAfterAction(data);
+    showToast('Pupuk terpasang 🌟');
+    openPlotPanel(plotIndex);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+async function doTreatPest(plotIndex) {
+  try {
+    const data = await callTycoonApi('treat-pest', { plotIndex });
+    await refreshAfterAction(data);
+    showToast('Hama berhasil diobati 🧪');
+    openPlotPanel(plotIndex);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+async function doHarvest(plotIndex) {
+  try {
+    const data = await callTycoonApi('harvest-plant', { plotIndex });
+    await refreshAfterAction(data);
+    closePlotPanel();
+    showToast(`Panen! +${data.earnedSeedCoins} Seed Coin`);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+async function doUpgradeGarden() {
+  try {
+    const data = await callTycoonApi('upgrade-garden');
+    await refreshAfterAction(data);
+    showToast('Kebun berhasil di-upgrade! 🏡');
+    updateUpgradeButton();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+window.doUpgradeGarden = doUpgradeGarden;
+
+// ══════════════════════════════════════════
+// HUD
+// ══════════════════════════════════════════
+function updateHud() {
+  document.getElementById('hudSeedCoin').textContent = seedCoins;
+  document.getElementById('hudLevel').textContent = `🏡 Level ${GARDEN_STATE.level} (${GARDEN_STATE.plots.length} plot)`;
+  const seasonLabels = { spring: '🌸 Semi', summer: '☀️ Panas', autumn: '🍂 Gugur', winter: '❄️ Dingin' };
+  document.getElementById('hudSeason').textContent = seasonLabels[SEASON.current] || SEASON.current;
+  updateUpgradeButton();
+}
+function updateUpgradeButton() {
+  const btn = document.getElementById('upgradeBtn');
+  const nextLevel = GARDEN_STATE.level + 1;
+  const nextLevelData = GARDEN_LEVELS[nextLevel];
+  if (!nextLevelData) {
+    btn.textContent = '🏡 Kebun Level Maksimal';
+    btn.disabled = true;
+  } else {
+    btn.textContent = `⬆️ Upgrade ke Level ${nextLevel} (${nextLevelData.upgradeCost} 🌰)`;
+    btn.disabled = seedCoins < nextLevelData.upgradeCost;
+  }
+}
+
+// ══════════════════════════════════════════
+// GAME LOOP & INIT
+// ══════════════════════════════════════════
+function animate() {
+  if (disposed) return;
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+function disposeScene() {
+  if (disposed || !renderer) return;
+  disposed = true;
+  scene.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach(m => m.dispose());
+    }
+  });
+  const glExt = renderer.getContext().getExtension('WEBGL_lose_context');
+  if (glExt) glExt.loseContext();
+  renderer.dispose();
+}
+window.addEventListener('beforeunload', disposeScene);
+
+function initScene() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9fd0e8);
+  scene.fog = new THREE.Fog(0x9fd0e8, 20, 60);
+
+  camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gardenCanvas'), antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  raycaster = new THREE.Raycaster();
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x5a4028, 0.9);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff4d8, 0.9);
+  sun.position.set(10, 20, 8);
+  scene.add(sun);
+
+  buildGardenGround();
+  rebuildGardenPlots();
+  updateCameraFromOrbit();
+  setupOrbitControls();
+  updateHud();
+
+  window.addEventListener('resize', () => {
+    if (disposed) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  document.getElementById('loadingOverlay').style.display = 'none';
+  animate();
+}
+
+(async function init() {
+  const member = getCurrentMember();
+  if (!member) {
+    document.getElementById('loadingOverlay').textContent = '⚠️ Silakan login dulu untuk membuka Kebunku.';
+    return;
+  }
+
+  try {
+    const data = await callTycoonApi('get-garden-state');
+    GARDEN_STATE = data.state;
+    SEASON = data.season;
+    PLANTS = data.plants;
+    FERTILIZERS = data.fertilizers;
+    GARDEN_LEVELS = data.gardenLevels;
+    PEST_TREATMENT_COST = data.pestTreatmentCost;
+    seedCoins = data.seedCoins;
+    seedInventory = data.seedInventory || {};
+  } catch (err) {
+    document.getElementById('loadingOverlay').textContent = `❌ Gagal memuat kebun: ${err.message}`;
+    return;
+  }
+
+  initScene();
+})();
+</script>
+</body>
+</html>
