@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gacha Spin — I.O.E Hub</title>
+<script src="js/ioe-auth.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(ellipse at top, #2a1848 0%, #0d0818 70%);
+    color: #f0e8ff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 {
+    font-size: 1.05rem;
+    background: linear-gradient(90deg,#ffd23f,#ff5aa0,#7b5cff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .exit-btn {
+    font-size: 0.75rem; font-weight: 700; color: #e8d8ff;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 12px; border-radius: 20px; cursor: pointer;
+  }
+
+  .coin-hud {
+    text-align: center; padding: 4px 16px 10px;
+    font-size: 0.85rem; font-weight: 700; color: #ffd23f;
+  }
+
+  .wheel-stage {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 10px 20px 30px;
+    gap: 22px;
+  }
+
+  .wheel-wrapper {
+    position: relative;
+    width: min(320px, 82vw);
+    height: min(320px, 82vw);
+  }
+  .wheel-pointer {
+    position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+    border-top: 24px solid #ffd23f;
+    z-index: 5;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+  }
+  #wheelSvg {
+    width: 100%; height: 100%;
+    filter: drop-shadow(0 6px 24px rgba(123,92,255,0.35));
+    transition: transform 4.5s cubic-bezier(0.12, 0.72, 0.15, 1);
+  }
+  .wheel-center-badge {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 58px; height: 58px; border-radius: 50%;
+    background: radial-gradient(circle, #ffd23f, #c8941a);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+    box-shadow: 0 0 18px rgba(255,210,63,0.6);
+    z-index: 4;
+  }
+
+  .spin-btn {
+    padding: 14px 40px; border: none; border-radius: 30px;
+    background: linear-gradient(90deg,#ff5aa0,#7b5cff);
+    color: #fff; font-weight: 800; font-size: 1rem; cursor: pointer;
+    box-shadow: 0 6px 24px rgba(123,92,255,0.45);
+  }
+  .spin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .spin-cost-label { font-size: 0.75rem; color: #c8b8e8; text-align: center; margin-top: -10px; }
+
+  .result-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+    padding: 20px;
+  }
+  .result-overlay.show { display: flex; }
+  .result-card {
+    background: linear-gradient(160deg, #2a1848, #14102a);
+    border: 1px solid rgba(255,210,63,0.4);
+    border-radius: 20px; padding: 28px 22px; max-width: 320px; width: 100%;
+    text-align: center;
+  }
+  .result-icon { font-size: 3rem; margin-bottom: 10px; }
+  .result-title { font-size: 1.1rem; font-weight: 800; margin-bottom: 6px; }
+  .result-sub { font-size: 0.82rem; color: #c8b8e8; margin-bottom: 20px; }
+  .result-close-btn {
+    width: 100%; padding: 12px; border: none; border-radius: 12px;
+    background: linear-gradient(90deg,#ffd23f,#ff9a3f);
+    color: #2a1808; font-weight: 800; cursor: pointer;
+  }
+
+  .loading-overlay {
+    position: fixed; inset: 0; background: #0d0818;
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+    color: #c8b8e8; font-size: 0.85rem; text-align: center; padding: 24px; line-height: 1.6;
+  }
+
+  .toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 80; pointer-events: none;
+    background: rgba(0,0,0,0.8); border: 1px solid rgba(255,90,160,0.5);
+    padding: 9px 16px; border-radius: 20px; font-size: 0.82rem; font-weight: 700;
+    opacity: 0; transition: opacity 0.2s;
+    color: #ff9ac8;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">Memuat roda gacha...</div>
+
+<header>
+  <h1>🎰 Gacha Spin</h1>
+  <button class="exit-btn" onclick="exitToHub()">✕ Keluar</button>
+</header>
+
+<div class="coin-hud">🪙 Koin: <span id="hudCoins">0</span></div>
+
+<div class="wheel-stage">
+  <div class="wheel-wrapper">
+    <div class="wheel-pointer"></div>
+    <svg id="wheelSvg" viewBox="0 0 300 300"></svg>
+    <div class="wheel-center-badge">🎁</div>
+  </div>
+
+  <button class="spin-btn" id="spinBtn" onclick="doSpin()">🎲 SPIN</button>
+  <div class="spin-cost-label" id="spinCostLabel"></div>
+</div>
+
+<div class="result-overlay" id="resultOverlay">
+  <div class="result-card">
+    <div class="result-icon" id="resultIcon">🎉</div>
+    <div class="result-title" id="resultTitle">Selamat!</div>
+    <div class="result-sub" id="resultSub"></div>
+    <button class="result-close-btn" onclick="closeResultOverlay()">Tutup</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function exitToHub() { window.location.href = 'game.html'; }
+
+function getCurrentMember() {
+  const session = (typeof getIoeSession === 'function') ? getIoeSession() : null;
+  if (!session || !session.memberId || !session.sessionToken) return null;
+  return { memberId: session.memberId, sessionToken: session.sessionToken };
+}
+
+async function callShopApi(action, extra = {}) {
+  const member = getCurrentMember();
+  const res = await fetch('/api/shop', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action,
+      ...(member ? { memberId: member.memberId, sessionToken: member.sessionToken } : {}),
+      ...extra,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Gagal memproses permintaan');
+  return data;
+}
+
+let toastTimeout = null;
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let GACHA_CONFIG = null; // { spinCost, slots: [{id,type,label,value,itemId,percentage}] }
+let coins = 0;
+let currentRotation = 0; // rotasi kumulatif roda (derajat), supaya animasi spin berikutnya lanjut dari posisi terakhir
+let isSpinning = false;
+
+const TYPE_COLORS = {
+  coin_global: '#ffd23f',
+  coin_garden: '#7ac850',
+  coin_ore: '#5fa8d8',
+  shop_item: '#ff5aa0',
+  thanks: '#b888e0',
+  zonk: '#5a5a6a',
+};
+const TYPE_ICONS = {
+  coin_global: '🪙', coin_garden: '🌰', coin_ore: '⛏️',
+  shop_item: '🎁', thanks: '💌', zonk: '💨',
+};
+
+// ══════════════════════════════════════════
+// GAMBAR RODA SVG — tiap slot jadi 1 potongan pie (arc), lebar sudut
+// sebanding dengan percentage-nya. Label + ikon ditaruh di tengah tiap
+// potongan, diputar mengikuti sudut potongan supaya terbaca dari luar.
+// ══════════════════════════════════════════
+function polarToCartesian(cx, cy, r, angleDeg) {
+  const rad = (angleDeg - 90) * Math.PI / 180; // -90 supaya 0 derajat di atas (jam 12), bukan di kanan
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function buildWheelSvg() {
+  const svg = document.getElementById('wheelSvg');
+  const cx = 150, cy = 150, r = 145;
+  let html = '';
+  let angleCursor = 0;
+
+  for (const slot of GACHA_CONFIG.slots) {
+    const sweep = (slot.percentage / 100) * 360;
+    const startAngle = angleCursor;
+    const endAngle = angleCursor + sweep;
+    const midAngle = (startAngle + endAngle) / 2;
+
+    const p1 = polarToCartesian(cx, cy, r, startAngle);
+    const p2 = polarToCartesian(cx, cy, r, endAngle);
+    const largeArc = sweep > 180 ? 1 : 0;
+    const color = TYPE_COLORS[slot.type] || '#888';
+
+    html += `<path d="M ${cx} ${cy} L ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} Z" fill="${color}" stroke="#1a1030" stroke-width="1.5"/>`;
+
+    // Label + ikon, diposisikan di 65% radius, diputar mengikuti sudut tengah.
+    const labelPos = polarToCartesian(cx, cy, r * 0.62, midAngle);
+    const icon = TYPE_ICONS[slot.type] || '❔';
+    html += `<g transform="translate(${labelPos.x.toFixed(2)},${labelPos.y.toFixed(2)}) rotate(${midAngle.toFixed(1)})">
+      <text text-anchor="middle" font-size="20" y="-4">${icon}</text>
+      <text text-anchor="middle" font-size="8" font-weight="700" fill="#1a1030" y="10">${escapeHtml(slot.label)}</text>
+    </g>`;
+
+    angleCursor = endAngle;
+  }
+
+  svg.innerHTML = html;
+}
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ══════════════════════════════════════════
+// SPIN — panggil server dulu (server yang nentuin hasil beneran),
+// BARU animasikan roda berhenti pas di slot yang menang (visual saja,
+// bukan yang nentuin hasil — anti-cheat, hasil selalu dari server).
+// ══════════════════════════════════════════
+function angleCursorForSlot(slotId) {
+  let cursor = 0;
+  for (const slot of GACHA_CONFIG.slots) {
+    const sweep = (slot.percentage / 100) * 360;
+    if (slot.id === slotId) return { start: cursor, end: cursor + sweep, mid: cursor + sweep / 2 };
+    cursor += sweep;
+  }
+  return { start: 0, end: 360, mid: 180 };
+}
+
+async function doSpin() {
+  if (isSpinning) return;
+  if (coins < GACHA_CONFIG.spinCost) {
+    showToast('Koin tidak cukup untuk spin');
+    return;
+  }
+
+  isSpinning = true;
+  const spinBtn = document.getElementById('spinBtn');
+  spinBtn.disabled = true;
+
+  try {
+    const data = await callShopApi('spin-gacha');
+    coins = data.coins;
+    updateHud();
+
+    // Animasikan roda berhenti di slot yang menang. Pointer ada di atas
+    // (posisi 0 derajat / jam 12), jadi roda perlu diputar sedemikian
+    // rupa sampai TITIK TENGAH slot pemenang berada tepat di posisi itu.
+    // Ditambah beberapa putaran penuh (5x360) supaya terasa "spin"
+    // meyakinkan, bukan cuma loncat pelan ke posisi akhir.
+    const { mid } = angleCursorForSlot(data.wonSlotId);
+    const targetRotation = currentRotation + (5 * 360) + (360 - mid);
+    currentRotation = targetRotation;
+
+    const svg = document.getElementById('wheelSvg');
+    svg.style.transform = `rotate(${targetRotation}deg)`;
+
+    // Tunggu animasi CSS selesai (4.5s, sesuai transition) baru tampilkan hasil.
+    await new Promise(resolve => setTimeout(resolve, 4600));
+    showResult(data.result);
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    isSpinning = false;
+    spinBtn.disabled = false;
+  }
+}
+window.doSpin = doSpin;
+
+function showResult(result) {
+  const overlay = document.getElementById('resultOverlay');
+  const icon = document.getElementById('resultIcon');
+  const title = document.getElementById('resultTitle');
+  const sub = document.getElementById('resultSub');
+
+  icon.textContent = TYPE_ICONS[result.type] || '🎉';
+
+  if (result.type === 'coin_global') {
+    title.textContent = 'Selamat!';
+    sub.textContent = `Kamu dapat ${result.value} Koin Global`;
+  } else if (result.type === 'coin_garden') {
+    title.textContent = 'Selamat!';
+    sub.textContent = `Kamu dapat ${result.value} Seed Coin`;
+  } else if (result.type === 'coin_ore') {
+    title.textContent = 'Selamat!';
+    sub.textContent = `Kamu dapat ${result.value} Ore Coin`;
+  } else if (result.type === 'shop_item') {
+    title.textContent = 'Selamat!';
+    sub.textContent = `Kamu dapat item: ${result.item ? result.item.nama : '???'}`;
+  } else if (result.type === 'thanks') {
+    title.textContent = 'Terima Kasih!';
+    sub.textContent = 'Sudah bermain gacha. Coba lagi lain kali!';
+  } else if (result.type === 'zonk') {
+    title.textContent = 'Zonk!';
+    sub.textContent = 'Belum beruntung kali ini. Semangat coba lagi!';
+  } else {
+    title.textContent = result.label || 'Hasil';
+    sub.textContent = '';
+  }
+
+  overlay.classList.add('show');
+}
+function closeResultOverlay() {
+  document.getElementById('resultOverlay').classList.remove('show');
+}
+window.closeResultOverlay = closeResultOverlay;
+
+// ══════════════════════════════════════════
+// HUD & INIT
+// ══════════════════════════════════════════
+function updateHud() {
+  document.getElementById('hudCoins').textContent = coins;
+  document.getElementById('spinCostLabel').textContent = `Biaya spin: ${GACHA_CONFIG.spinCost} Koin`;
+  document.getElementById('spinBtn').disabled = isSpinning || coins < GACHA_CONFIG.spinCost;
+}
+
+async function fetchCoins() {
+  const member = getCurrentMember();
+  if (!member) return 0;
+  try {
+    const data = await callShopApi('get-balance');
+    return data.coins || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+(async function init() {
+  const member = getCurrentMember();
+  if (!member) {
+    document.getElementById('loadingOverlay').textContent = '⚠️ Silakan login dulu untuk membuka Gacha Spin.';
+    return;
+  }
+
+  try {
+    const configData = await callShopApi('get-gacha-config');
+    GACHA_CONFIG = configData.config;
+    coins = await fetchCoins();
+  } catch (err) {
+    document.getElementById('loadingOverlay').textContent = `❌ Gagal memuat gacha: ${err.message}`;
+    return;
+  }
+
+  buildWheelSvg();
+  updateHud();
+  document.getElementById('loadingOverlay').style.display = 'none';
+})();
+</script>
+</body>
+</html>
