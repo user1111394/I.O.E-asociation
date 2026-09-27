@@ -189,6 +189,91 @@
   font-family:'Inter',sans-serif; font-size:0.8rem;
   color:var(--text-muted); line-height:1.6;
 }
+
+/* ── PETA LANGIT ── */
+.skymap-search {
+  width:100%; padding:12px 16px; margin-bottom:10px;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); color:#fff;
+  font-family:'Inter',sans-serif; font-size:0.85rem;
+}
+.skymap-search:focus { outline:none; border-color:var(--primary); }
+.skymap-search-results {
+  display:none; flex-direction:column; gap:6px; margin-bottom:12px;
+}
+.skymap-search-results.show { display:flex; }
+.skymap-result-item {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:10px 14px; cursor:pointer;
+  font-family:'Inter',sans-serif; font-size:0.8rem; color:#fff;
+}
+.skymap-result-item:active { border-color:var(--primary); }
+.skymap-result-item .result-sub { color:var(--text-muted); font-size:0.7rem; margin-top:2px; }
+
+.skymap-legend {
+  display:flex; gap:16px; margin-bottom:10px;
+  font-family:'Inter',sans-serif; font-size:0.72rem; color:var(--text-muted);
+}
+.skymap-legend span { display:flex; align-items:center; gap:6px; }
+.skymap-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+.skymap-dot-star { background:#fff; }
+.skymap-dot-planet { background:var(--primary); box-shadow:0 0 6px var(--primary); }
+
+.skymap-canvas-wrap {
+  position:relative; width:100%; aspect-ratio:4/3;
+  background:radial-gradient(ellipse at center, #0a1128 0%, #030510 100%);
+  border:1px solid var(--border); border-radius:var(--radius-lg);
+  overflow:hidden; touch-action:none;
+}
+#skymap-canvas { width:100%; height:100%; display:block; cursor:grab; }
+.skymap-hint {
+  font-family:'Inter',sans-serif; font-size:0.7rem; color:var(--text-muted);
+  text-align:center; margin-top:8px;
+}
+.skymap-info-panel {
+  display:none; margin-top:16px;
+  background:var(--bg-card); border:1px solid var(--border2);
+  border-radius:var(--radius-lg); padding:18px;
+  animation:fadeUp 0.3s ease;
+}
+.skymap-info-panel.show { display:block; }
+.skymap-info-panel h3 {
+  font-family:'Space Grotesk',sans-serif; font-size:1.05rem; font-weight:700;
+  color:#fff; margin-bottom:4px;
+}
+.skymap-info-panel .info-sub {
+  font-family:'Inter',sans-serif; font-size:0.72rem; color:var(--primary);
+  text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px;
+}
+.skymap-info-panel p {
+  font-family:'Inter',sans-serif; font-size:0.82rem; color:var(--text-muted);
+  line-height:1.65;
+}
+
+/* ── MODAL RENDER 3D PLANET ── */
+.planet3d-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.8);
+  display:none; align-items:center; justify-content:center; z-index:200;
+  padding:20px; backdrop-filter:blur(4px);
+}
+.planet3d-overlay.show { display:flex; }
+.planet3d-card {
+  background:var(--bg-card); border:1px solid var(--border2);
+  border-radius:var(--radius-lg); max-width:420px; width:100%;
+  overflow:hidden; position:relative;
+}
+.planet3d-close {
+  position:absolute; top:10px; right:10px; z-index:2;
+  width:32px; height:32px; border-radius:50%; border:none;
+  background:rgba(0,0,0,0.5); color:#fff; font-size:1rem; cursor:pointer;
+}
+.planet3d-canvas-wrap { width:100%; aspect-ratio:1/1; background:#000; }
+#planet3d-canvas { width:100%; height:100%; display:block; }
+.planet3d-info { padding:18px; }
+.planet3d-info h3 {
+  font-family:'Space Grotesk',sans-serif; font-size:1.15rem; font-weight:700;
+  color:#fff; margin-bottom:10px;
+}
 </style>
 </head>
 <body>
@@ -202,6 +287,7 @@
     <button class="edu-tab" onclick="switchTab('iss',this)">🛸 ISS Tracker</button>
     <button class="edu-tab" onclick="switchTab('planets',this)">🪐 Planet</button>
     <button class="edu-tab" onclick="switchTab('timeline',this)">⏳ Timeline</button>
+    <button class="edu-tab" onclick="switchTab('skymap',this)">🌌 Peta Langit</button>
   </div>
 
   <!-- ══ APOD ══ -->
@@ -271,9 +357,44 @@
     <div class="timeline" id="timeline-wrap"></div>
   </div>
 
+  <!-- ══ PETA LANGIT ══ -->
+  <div class="tab-panel" id="tab-skymap">
+    <div class="section-title">Peta Langit</div>
+    <div class="section-sub">15 Rasi Bintang Populer — Bisa Dilihat dari Indonesia</div>
+
+    <input type="text" id="skymap-search" class="skymap-search"
+      placeholder="🔍 Cari rasi bintang atau bintang (misal: Orion, Sirius)..."
+      oninput="onSkymapSearch(this.value)">
+    <div class="skymap-search-results" id="skymap-search-results"></div>
+
+    <div class="skymap-legend">
+      <span><span class="skymap-dot skymap-dot-star"></span> Bintang</span>
+      <span><span class="skymap-dot skymap-dot-planet"></span> Planet (klik untuk lihat 3D)</span>
+    </div>
+
+    <div class="skymap-canvas-wrap">
+      <canvas id="skymap-canvas"></canvas>
+    </div>
+    <div class="skymap-hint">💡 Geser untuk pan, cubit/scroll untuk zoom, ketuk objek untuk info</div>
+
+    <div class="skymap-info-panel" id="skymap-info-panel"></div>
+  </div>
+
+</div>
+
+<!-- MODAL RENDER 3D PLANET -->
+<div class="planet3d-overlay" id="planet3d-overlay">
+  <div class="planet3d-card">
+    <button class="planet3d-close" onclick="closePlanet3D()">✕</button>
+    <div class="planet3d-canvas-wrap">
+      <canvas id="planet3d-canvas"></canvas>
+    </div>
+    <div class="planet3d-info" id="planet3d-info"></div>
+  </div>
 </div>
 
 <script src="js/nav.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 buildNav('education.html');
 
@@ -517,6 +638,545 @@ TIMELINE.forEach((t, i) => {
   `;
   tlWrap.appendChild(item);
 });
+
+// ══════════════ PETA LANGIT ══════════════
+
+// ══════════════════════════════════════════
+// DATA RASI BINTANG — 15 rasi populer, dipilih relevan dilihat dari
+// Indonesia (dekat khatulistiwa, bisa lihat langit utara & selatan).
+// Koordinat RA (jam) & Dec (derajat) tiap bintang berdasarkan data
+// astronomi nyata (J2000 epoch, dibulatkan wajar untuk keperluan visual).
+// ══════════════════════════════════════════
+const CONSTELLATIONS = [
+  {
+    id: 'ursa-major', name: 'Ursa Major', nameId: 'Beruang Besar (Big Dipper)',
+    hemisphere: 'utara', season: 'Sepanjang tahun (utara)',
+    mythology: 'Dalam mitologi Yunani, Callisto diubah menjadi beruang oleh Hera yang cemburu, lalu ditempatkan Zeus di langit. Pola "gayung" 7 bintangnya adalah salah satu asterisma paling dikenal di dunia.',
+    stars: [
+      { name: 'Dubhe', ra: 11.06, dec: 61.75, mag: 1.8 },
+      { name: 'Merak', ra: 11.03, dec: 56.38, mag: 2.4 },
+      { name: 'Phecda', ra: 11.90, dec: 53.69, mag: 2.4 },
+      { name: 'Megrez', ra: 12.26, dec: 57.03, mag: 3.3 },
+      { name: 'Alioth', ra: 12.90, dec: 55.96, mag: 1.8 },
+      { name: 'Mizar', ra: 13.40, dec: 54.93, mag: 2.2 },
+      { name: 'Alkaid', ra: 13.79, dec: 49.31, mag: 1.9 },
+    ],
+    lines: [[0,1],[1,2],[2,3],[3,0],[3,4],[4,5],[5,6]],
+  },
+  {
+    id: 'orion', name: 'Orion', nameId: 'Pemburu (Orion)',
+    hemisphere: 'khatulistiwa', season: 'Desember - Maret',
+    mythology: 'Orion sang pemburu perkasa dalam mitologi Yunani. Sabuk Orion (3 bintang sejajar) sangat dikenal di Indonesia, kadang disebut "bintang tiga" atau dikaitkan dengan penanda musim tanam di budaya Nusantara.',
+    stars: [
+      { name: 'Betelgeuse', ra: 5.92, dec: 7.41, mag: 0.5 },
+      { name: 'Bellatrix', ra: 5.42, dec: 6.35, mag: 1.6 },
+      { name: 'Alnitak', ra: 5.68, dec: -1.94, mag: 1.7 },
+      { name: 'Alnilam', ra: 5.60, dec: -1.20, mag: 1.7 },
+      { name: 'Mintaka', ra: 5.53, dec: -0.30, mag: 2.2 },
+      { name: 'Saiph', ra: 5.80, dec: -9.67, mag: 2.1 },
+      { name: 'Rigel', ra: 5.24, dec: -8.20, mag: 0.1 },
+    ],
+    lines: [[0,1],[0,2],[1,4],[2,3],[3,4],[2,5],[4,6],[5,6]],
+  },
+  {
+    id: 'scorpius', name: 'Scorpius', nameId: 'Kalajengking (Scorpius)',
+    hemisphere: 'selatan', season: 'Juni - Agustus',
+    mythology: 'Kalajengking yang menyengat Orion hingga tewas dalam mitologi Yunani, makanya kedua rasi ini tidak pernah terlihat bersamaan di langit. Sangat jelas terlihat dari Indonesia karena posisinya dekat khatulistiwa selatan.',
+    stars: [
+      { name: 'Antares', ra: 16.49, dec: -26.43, mag: 1.1 },
+      { name: 'Dschubba', ra: 16.00, dec: -22.62, mag: 2.3 },
+      { name: 'Sargas', ra: 17.62, dec: -42.99, mag: 1.9 },
+      { name: 'Shaula', ra: 17.56, dec: -37.10, mag: 1.6 },
+      { name: 'Lesath', ra: 17.51, dec: -37.30, mag: 2.7 },
+    ],
+    lines: [[1,0],[0,2],[2,3],[3,4]],
+  },
+  {
+    id: 'crux', name: 'Crux', nameId: 'Salib Selatan (Crux)',
+    hemisphere: 'selatan', season: 'Sepanjang tahun (selatan)',
+    mythology: 'Rasi bintang terkecil dari 88 rasi resmi, tapi sangat penting untuk navigasi di belahan bumi selatan — dipakai pelaut dan pelayar Nusantara sejak dulu untuk menentukan arah selatan. Tampil di bendera Australia, Selandia Baru, Brasil, dan Papua Nugini.',
+    stars: [
+      { name: 'Acrux', ra: 12.44, dec: -63.10, mag: 0.8 },
+      { name: 'Gacrux', ra: 12.52, dec: -57.11, mag: 1.6 },
+      { name: 'Imai', ra: 12.25, dec: -58.75, mag: 1.3 },
+      { name: 'Mimosa', ra: 12.79, dec: -59.69, mag: 1.3 },
+    ],
+    lines: [[0,1],[2,3]],
+  },
+  {
+    id: 'ursa-minor', name: 'Ursa Minor', nameId: 'Beruang Kecil (Ursa Minor)',
+    hemisphere: 'utara', season: 'Sepanjang tahun (utara)',
+    mythology: 'Berisi Polaris, bintang utara yang nyaris tidak bergerak di langit karena dekat dengan kutub langit utara — dipakai sebagai penanda arah utara sejak zaman kuno.',
+    stars: [
+      { name: 'Polaris', ra: 2.53, dec: 89.26, mag: 2.0 },
+      { name: 'Kochab', ra: 14.85, dec: 74.16, mag: 2.1 },
+      { name: 'Pherkad', ra: 15.34, dec: 71.83, mag: 3.0 },
+    ],
+    lines: [[0,1],[1,2]],
+  },
+  {
+    id: 'cassiopeia', name: 'Cassiopeia', nameId: 'Cassiopeia',
+    hemisphere: 'utara', season: 'September - Februari',
+    mythology: 'Ratu sombong dalam mitologi Yunani yang dihukum duduk di kursi yang berputar mengelilingi kutub langit. Pola 5 bintangnya membentuk huruf "W" atau "M" yang khas.',
+    stars: [
+      { name: 'Segin', ra: 1.91, dec: 63.67, mag: 3.4 },
+      { name: 'Ruchbah', ra: 1.43, dec: 60.24, mag: 2.7 },
+      { name: 'Gamma Cas', ra: 0.95, dec: 60.72, mag: 2.2 },
+      { name: 'Schedar', ra: 0.68, dec: 56.54, mag: 2.2 },
+      { name: 'Caph', ra: 0.15, dec: 59.15, mag: 2.3 },
+    ],
+    lines: [[0,1],[1,2],[2,3],[3,4]],
+  },
+  {
+    id: 'leo', name: 'Leo', nameId: 'Singa (Leo)',
+    hemisphere: 'khatulistiwa', season: 'Februari - Mei',
+    mythology: 'Singa Nemea yang dikalahkan Hercules sebagai salah satu dari 12 tugasnya. Pola "sabit terbalik" di bagian kepala singa mudah dikenali.',
+    stars: [
+      { name: 'Regulus', ra: 10.14, dec: 11.97, mag: 1.4 },
+      { name: 'Denebola', ra: 11.82, dec: 14.57, mag: 2.1 },
+      { name: 'Algieba', ra: 10.33, dec: 19.84, mag: 2.0 },
+      { name: 'Zosma', ra: 11.24, dec: 20.52, mag: 2.6 },
+      { name: 'Chertan', ra: 11.24, dec: 15.43, mag: 3.3 },
+    ],
+    lines: [[0,2],[2,3],[3,1],[1,4],[4,0]],
+  },
+  {
+    id: 'cygnus', name: 'Cygnus', nameId: 'Angsa (Cygnus)',
+    hemisphere: 'utara', season: 'Juni - September',
+    mythology: 'Angsa yang terbang sepanjang Milky Way, sering disebut "Salib Utara" karena bentuknya. Deneb, bintang paling terangnya, adalah salah satu bintang paling terang yang diketahui secara intrinsik di galaksi kita.',
+    stars: [
+      { name: 'Deneb', ra: 20.69, dec: 45.28, mag: 1.3 },
+      { name: 'Sadr', ra: 20.37, dec: 40.26, mag: 2.2 },
+      { name: 'Gienah', ra: 20.77, dec: 33.97, mag: 2.5 },
+      { name: 'Delta Cyg', ra: 19.75, dec: 45.13, mag: 2.9 },
+      { name: 'Albireo', ra: 19.51, dec: 27.96, mag: 3.1 },
+    ],
+    lines: [[0,1],[1,2],[1,3],[1,4]],
+  },
+  {
+    id: 'taurus', name: 'Taurus', nameId: 'Banteng (Taurus)',
+    hemisphere: 'khatulistiwa', season: 'November - Februari',
+    mythology: 'Zeus yang berubah wujud jadi banteng putih untuk menculik Europa. Berisi gugus bintang terbuka Pleiades (Bintang Tujuh) yang sangat dikenal di budaya Nusantara sebagai penanda musim.',
+    stars: [
+      { name: 'Aldebaran', ra: 4.60, dec: 16.51, mag: 0.9 },
+      { name: 'Elnath', ra: 5.44, dec: 28.61, mag: 1.7 },
+      { name: 'Alcyone', ra: 3.79, dec: 24.10, mag: 2.9 },
+      { name: 'Zeta Tauri', ra: 5.63, dec: 21.14, mag: 3.0 },
+    ],
+    lines: [[2,0],[0,1],[0,3]],
+  },
+  {
+    id: 'gemini', name: 'Gemini', nameId: 'Kembar (Gemini)',
+    hemisphere: 'khatulistiwa', season: 'Desember - Maret',
+    mythology: 'Castor dan Pollux, saudara kembar dalam mitologi Yunani, satu abadi satu tidak, yang tidak mau berpisah bahkan setelah kematian.',
+    stars: [
+      { name: 'Castor', ra: 7.58, dec: 31.89, mag: 1.6 },
+      { name: 'Pollux', ra: 7.76, dec: 28.03, mag: 1.1 },
+      { name: 'Alhena', ra: 6.63, dec: 16.40, mag: 1.9 },
+    ],
+    lines: [[0,1],[1,2]],
+  },
+  {
+    id: 'canis-major', name: 'Canis Major', nameId: 'Anjing Besar (Canis Major)',
+    hemisphere: 'khatulistiwa', season: 'Desember - Maret',
+    mythology: 'Salah satu anjing pemburu Orion. Berisi Sirius, bintang paling terang di seluruh langit malam.',
+    stars: [
+      { name: 'Sirius', ra: 6.75, dec: -16.72, mag: -1.5 },
+      { name: 'Mirzam', ra: 6.38, dec: -17.96, mag: 2.0 },
+      { name: 'Wezen', ra: 7.14, dec: -26.39, mag: 1.8 },
+      { name: 'Adhara', ra: 6.98, dec: -28.97, mag: 1.5 },
+    ],
+    lines: [[1,0],[0,2],[2,3]],
+  },
+  {
+    id: 'sagittarius', name: 'Sagittarius', nameId: 'Pemanah (Sagittarius)',
+    hemisphere: 'selatan', season: 'Juni - September',
+    mythology: 'Centaurus pemanah, sering digambarkan membidik ke arah Scorpius. Pola "teko teh" pada bintang-bintangnya mengarah ke pusat galaksi Bima Sakti.',
+    stars: [
+      { name: 'Kaus Australis', ra: 18.40, dec: -34.38, mag: 1.9 },
+      { name: 'Nunki', ra: 18.92, dec: -26.30, mag: 2.0 },
+      { name: 'Kaus Media', ra: 18.35, dec: -29.83, mag: 2.7 },
+      { name: 'Ascella', ra: 19.04, dec: -29.88, mag: 2.6 },
+    ],
+    lines: [[0,2],[2,1],[1,3]],
+  },
+  {
+    id: 'lyra', name: 'Lyra', nameId: 'Kecapi (Lyra)',
+    hemisphere: 'utara', season: 'Juni - September',
+    mythology: 'Kecapi milik Orpheus, musisi legendaris Yunani. Berisi Vega, salah satu bintang paling terang dan pernah jadi bintang kutub utara ribuan tahun lalu.',
+    stars: [
+      { name: 'Vega', ra: 18.62, dec: 38.78, mag: 0.0 },
+      { name: 'Sheliak', ra: 18.83, dec: 33.36, mag: 3.5 },
+      { name: 'Sulafat', ra: 18.98, dec: 32.69, mag: 3.2 },
+    ],
+    lines: [[0,1],[1,2],[2,0]],
+  },
+  {
+    id: 'aquila', name: 'Aquila', nameId: 'Elang (Aquila)',
+    hemisphere: 'khatulistiwa', season: 'Juni - September',
+    mythology: 'Elang yang membawa petir Zeus. Berisi Altair, salah satu titik dari "Segitiga Musim Panas" bersama Vega dan Deneb.',
+    stars: [
+      { name: 'Altair', ra: 19.85, dec: 8.87, mag: 0.8 },
+      { name: 'Tarazed', ra: 19.77, dec: 10.61, mag: 2.7 },
+      { name: 'Alshain', ra: 19.92, dec: 6.41, mag: 3.7 },
+    ],
+    lines: [[1,0],[0,2]],
+  },
+  {
+    id: 'centaurus', name: 'Centaurus', nameId: 'Centaur (Centaurus)',
+    hemisphere: 'selatan', season: 'Maret - Juni',
+    mythology: 'Makhluk setengah manusia setengah kuda. Berisi Alpha Centauri, sistem bintang terdekat dengan Matahari kita (sekitar 4,37 tahun cahaya).',
+    stars: [
+      { name: 'Alpha Centauri', ra: 14.66, dec: -60.83, mag: -0.3 },
+      { name: 'Beta Centauri', ra: 14.06, dec: -60.37, mag: 0.6 },
+      { name: 'Menkent', ra: 14.11, dec: -36.37, mag: 2.1 },
+    ],
+    lines: [[0,1],[1,2]],
+  },
+];
+
+// Planet ditandai sebagai objek khusus di peta langit, posisi RA/Dec
+// APPROX tetap (bukan real-time akurat — planet asli bergerak, tapi untuk
+// versi awal ini posisinya statis representatif supaya cukup untuk demo
+// & edukasi dasar; akurasi posisi real-time bisa ditingkatkan nanti).
+// Nama dipakai bahasa Indonesia, HARUS SAMA PERSIS dengan field `name`
+// di array PLANETS (data planet yang sudah ada) supaya bisa dicocokkan.
+const SKY_PLANETS = [
+  { name: 'Merkurius', ra: 3.2, dec: 15 }, { name: 'Venus', ra: 5.8, dec: 22 },
+  { name: 'Mars', ra: 9.4, dec: 18 }, { name: 'Jupiter', ra: 14.1, dec: -12 },
+  { name: 'Saturnus', ra: 21.5, dec: -15 }, { name: 'Uranus', ra: 2.8, dec: 12 },
+  { name: 'Neptunus', ra: 23.9, dec: -3 },
+];
+
+let skymapCanvas, skymapCtx;
+let skymapOffsetX = 0, skymapOffsetY = 0, skymapZoom = 1;
+let skymapDragging = false, skymapLastX = 0, skymapLastY = 0;
+let skymapClickables = []; // { x, y, r, type: 'star'|'planet'|'constellation', data }
+
+function raDecToXY(ra, dec, w, h) {
+  const x = (w - (ra / 24) * w) * skymapZoom + skymapOffsetX;
+  const y = (h - ((dec + 90) / 180) * h) * skymapZoom + skymapOffsetY;
+  return { x, y };
+}
+
+function drawSkymap() {
+  if (!skymapCtx) return;
+  const w = skymapCanvas.width, h = skymapCanvas.height;
+  skymapCtx.clearRect(0, 0, w, h);
+  skymapClickables = [];
+
+  // Bintang latar acak (dekoratif, seeded biar konsisten tiap render)
+  for (let i = 0; i < 200; i++) {
+    const sx = (i * 37.13) % w;
+    const sy = (i * 59.71) % h;
+    const size = (i % 3 === 0) ? 1.4 : 0.7;
+    skymapCtx.fillStyle = 'rgba(255,255,255,0.35)';
+    skymapCtx.beginPath();
+    skymapCtx.arc(sx, sy, size, 0, Math.PI * 2);
+    skymapCtx.fill();
+  }
+
+  // Garis & bintang rasi
+  for (const c of CONSTELLATIONS) {
+    const pts = c.stars.map(s => raDecToXY(s.ra, s.dec, w, h));
+
+    skymapCtx.strokeStyle = 'rgba(124,158,255,0.35)';
+    skymapCtx.lineWidth = 1;
+    for (const [a, b] of c.lines) {
+      skymapCtx.beginPath();
+      skymapCtx.moveTo(pts[a].x, pts[a].y);
+      skymapCtx.lineTo(pts[b].x, pts[b].y);
+      skymapCtx.stroke();
+    }
+
+    c.stars.forEach((s, i) => {
+      const p = pts[i];
+      const size = Math.max(1.5, 4.5 - s.mag);
+      skymapCtx.fillStyle = '#fff';
+      skymapCtx.shadowColor = '#fff';
+      skymapCtx.shadowBlur = 4;
+      skymapCtx.beginPath();
+      skymapCtx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      skymapCtx.fill();
+      skymapCtx.shadowBlur = 0;
+      skymapClickables.push({ x: p.x, y: p.y, r: size + 6, type: 'star', data: { star: s, constellation: c } });
+    });
+
+    // Label nama rasi di titik tengah bintang-bintangnya
+    const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+    const cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+    skymapCtx.fillStyle = 'rgba(124,158,255,0.7)';
+    skymapCtx.font = `${11 * skymapZoom}px Inter, sans-serif`;
+    skymapCtx.textAlign = 'center';
+    skymapCtx.fillText(c.nameId, cx, cy - 14);
+  }
+
+  // Planet (ditandai beda, klik buka render 3D)
+  for (const pl of SKY_PLANETS) {
+    const p = raDecToXY(pl.ra, pl.dec, w, h);
+    skymapCtx.fillStyle = '#7c9eff';
+    skymapCtx.shadowColor = '#7c9eff';
+    skymapCtx.shadowBlur = 8;
+    skymapCtx.beginPath();
+    skymapCtx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+    skymapCtx.fill();
+    skymapCtx.shadowBlur = 0;
+    skymapCtx.fillStyle = '#7c9eff';
+    skymapCtx.font = `${10 * skymapZoom}px Inter, sans-serif`;
+    skymapCtx.fillText(pl.name, p.x, p.y - 10);
+    skymapClickables.push({ x: p.x, y: p.y, r: 12, type: 'planet', data: pl });
+  }
+}
+
+function resizeSkymapCanvas() {
+  const wrap = skymapCanvas.parentElement;
+  skymapCanvas.width = wrap.clientWidth;
+  skymapCanvas.height = wrap.clientHeight;
+  drawSkymap();
+}
+
+function setupSkymap() {
+  skymapCanvas = document.getElementById('skymap-canvas');
+  skymapCtx = skymapCanvas.getContext('2d');
+  resizeSkymapCanvas();
+  window.addEventListener('resize', resizeSkymapCanvas);
+
+  function handleTapAt(clientX, clientY) {
+    const rect = skymapCanvas.getBoundingClientRect();
+    const x = (clientX - rect.left) * (skymapCanvas.width / rect.width);
+    const y = (clientY - rect.top) * (skymapCanvas.height / rect.height);
+    let nearest = null, nearestDist = Infinity;
+    for (const c of skymapClickables) {
+      const d = Math.sqrt((x - c.x) ** 2 + (y - c.y) ** 2);
+      if (d < c.r && d < nearestDist) { nearest = c; nearestDist = d; }
+    }
+    if (nearest) {
+      if (nearest.type === 'star') showStarInfo(nearest.data.star, nearest.data.constellation);
+      else if (nearest.type === 'planet') openPlanet3D(nearest.data.name);
+    }
+  }
+
+  let didDrag = false;
+  skymapCanvas.addEventListener('mousedown', e => { skymapDragging = true; didDrag = false; skymapLastX = e.clientX; skymapLastY = e.clientY; skymapCanvas.style.cursor = 'grabbing'; });
+  window.addEventListener('mousemove', e => {
+    if (!skymapDragging) return;
+    const dx = e.clientX - skymapLastX, dy = e.clientY - skymapLastY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
+    skymapOffsetX += dx; skymapOffsetY += dy;
+    skymapLastX = e.clientX; skymapLastY = e.clientY;
+    drawSkymap();
+  });
+  window.addEventListener('mouseup', e => {
+    if (skymapDragging && !didDrag) handleTapAt(e.clientX, e.clientY);
+    skymapDragging = false;
+    skymapCanvas.style.cursor = 'grab';
+  });
+
+  skymapCanvas.addEventListener('touchstart', e => {
+    const t = e.touches[0]; skymapDragging = true; didDrag = false; skymapLastX = t.clientX; skymapLastY = t.clientY;
+  }, { passive: true });
+  skymapCanvas.addEventListener('touchmove', e => {
+    if (!skymapDragging || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = t.clientX - skymapLastX, dy = t.clientY - skymapLastY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
+    skymapOffsetX += dx; skymapOffsetY += dy;
+    skymapLastX = t.clientX; skymapLastY = t.clientY;
+    drawSkymap();
+  }, { passive: true });
+  skymapCanvas.addEventListener('touchend', e => {
+    const t = e.changedTouches[0];
+    if (skymapDragging && !didDrag && t) handleTapAt(t.clientX, t.clientY);
+    skymapDragging = false;
+  });
+
+  skymapCanvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    skymapZoom = Math.max(0.5, Math.min(3, skymapZoom - e.deltaY * 0.001));
+    drawSkymap();
+  }, { passive: false });
+
+  let lastPinchDist = null;
+  skymapCanvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }, { passive: true });
+  skymapCanvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      if (lastPinchDist !== null) skymapZoom = Math.max(0.5, Math.min(3, skymapZoom + (d - lastPinchDist) * 0.003));
+      lastPinchDist = d;
+      drawSkymap();
+    }
+  }, { passive: true });
+}
+
+function showStarInfo(star, constellation) {
+  const panel = document.getElementById('skymap-info-panel');
+  panel.innerHTML = `
+    <h3>⭐ ${star.name}</h3>
+    <div class="info-sub">Bagian dari rasi ${constellation.nameId}</div>
+    <p><strong>Magnitudo:</strong> ${star.mag} (semakin kecil/negatif = semakin terang)</p>
+    <p style="margin-top:10px;">${constellation.mythology}</p>
+    <p style="margin-top:8px;"><strong>Terlihat:</strong> ${constellation.season} • Belahan ${constellation.hemisphere}</p>
+  `;
+  panel.classList.add('show');
+}
+
+function onSkymapSearch(query) {
+  const resultsEl = document.getElementById('skymap-search-results');
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) { resultsEl.classList.remove('show'); resultsEl.innerHTML = ''; return; }
+
+  const results = [];
+  for (const c of CONSTELLATIONS) {
+    if (c.name.toLowerCase().includes(q) || c.nameId.toLowerCase().includes(q)) {
+      results.push({ type: 'constellation', label: c.nameId, sub: 'Rasi Bintang', data: c });
+    }
+    for (const s of c.stars) {
+      if (s.name.toLowerCase().includes(q)) {
+        results.push({ type: 'star', label: s.name, sub: `Bintang di rasi ${c.nameId}`, data: { star: s, constellation: c } });
+      }
+    }
+  }
+  for (const pl of SKY_PLANETS) {
+    if (pl.name.toLowerCase().includes(q)) {
+      results.push({ type: 'planet', label: pl.name, sub: 'Planet — klik untuk lihat 3D', data: pl });
+    }
+  }
+
+  if (results.length === 0) {
+    resultsEl.innerHTML = '<div class="skymap-result-item">Tidak ditemukan</div>';
+  } else {
+    resultsEl.innerHTML = results.slice(0, 8).map((r, i) =>
+      `<div class="skymap-result-item" onclick="onSearchResultClick(${i})"><div>${r.label}</div><div class="result-sub">${r.sub}</div></div>`
+    ).join('');
+    window._skymapSearchResults = results;
+  }
+  resultsEl.classList.add('show');
+}
+
+function onSearchResultClick(i) {
+  const r = window._skymapSearchResults[i];
+  document.getElementById('skymap-search-results').classList.remove('show');
+  document.getElementById('skymap-search').value = '';
+  if (r.type === 'star') {
+    showStarInfo(r.data.star, r.data.constellation);
+    centerSkymapOn(r.data.star.ra, r.data.star.dec);
+  } else if (r.type === 'planet') {
+    openPlanet3D(r.data.name);
+  } else if (r.type === 'constellation') {
+    const midRa = r.data.stars.reduce((a, s) => a + s.ra, 0) / r.data.stars.length;
+    const midDec = r.data.stars.reduce((a, s) => a + s.dec, 0) / r.data.stars.length;
+    centerSkymapOn(midRa, midDec);
+  }
+}
+
+function centerSkymapOn(ra, dec) {
+  const w = skymapCanvas.width, h = skymapCanvas.height;
+  const target = raDecToXY(ra, dec, w, h);
+  skymapOffsetX += w / 2 - target.x;
+  skymapOffsetY += h / 2 - target.y;
+  drawSkymap();
+}
+
+// ══════════════ RENDER 3D PLANET (Three.js) ══════════════
+let planet3dScene, planet3dCamera, planet3dRenderer, planet3dMesh, planet3dAnimId;
+
+function openPlanet3D(planetName) {
+  const planetData = PLANETS.find(p => p.name === planetName);
+  if (!planetData) return;
+
+  // facts adalah array pasangan [label, value] (bukan kalimat deskriptif),
+  // jadi ditampilkan sebagai daftar singkat, bukan diambil facts[0] mentah.
+  const factsHtml = (planetData.facts || []).slice(0, 4).map(
+    ([label, value]) => `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--border);">
+      <span style="color:var(--text-muted);">${label}</span><span style="color:#fff; font-weight:600;">${value}</span>
+    </div>`
+  ).join('');
+
+  document.getElementById('planet3d-overlay').classList.add('show');
+  document.getElementById('planet3d-info').innerHTML = `
+    <h3>${planetData.emoji || '🪐'} ${planetData.name}</h3>
+    <div style="font-family:'Inter',sans-serif; font-size:0.8rem;">${factsHtml}</div>
+  `;
+
+  if (planet3dRenderer) disposePlanet3D();
+
+  const wrap = document.querySelector('.planet3d-canvas-wrap');
+  planet3dScene = new THREE.Scene();
+  planet3dCamera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 100);
+  planet3dCamera.position.z = 3;
+  planet3dRenderer = new THREE.WebGLRenderer({ canvas: document.getElementById('planet3d-canvas'), antialias: true, alpha: true });
+  planet3dRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  planet3dRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+  planet3dScene.add(ambient);
+  const sun = new THREE.DirectionalLight(0xfff4d8, 1.2);
+  sun.position.set(3, 2, 4);
+  planet3dScene.add(sun);
+
+  // Warna planet berdasar nama Indonesia (data PLANETS tidak punya field
+  // warna eksplisit, jadi dipetakan manual di sini sesuai warna asli tiap
+  // planet).
+  const colorMap = {
+    'Merkurius': 0x9c9c9c, 'Venus': 0xe8c88a, 'Bumi': 0x3b82c4, 'Mars': 0xc1440e,
+    'Jupiter': 0xd9a066, 'Saturnus': 0xe0c48a, 'Uranus': 0x9fe0e8, 'Neptunus': 0x3f5fd1,
+  };
+  const color = colorMap[planetData.name] || 0x888888;
+
+  const geo = new THREE.SphereGeometry(1, 48, 48);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+  planet3dMesh = new THREE.Mesh(geo, mat);
+  planet3dScene.add(planet3dMesh);
+
+  // Cincin sederhana khusus Saturnus.
+  if (planetData.name === 'Saturnus') {
+    const ringGeo = new THREE.RingGeometry(1.3, 2.0, 48);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xcbb994, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI / 2.3;
+    planet3dScene.add(ring);
+  }
+
+  let dragging = false, lastX = 0;
+  const canvas = document.getElementById('planet3d-canvas');
+  canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; });
+  window.addEventListener('mousemove', e => { if (dragging) { planet3dMesh.rotation.y += (e.clientX - lastX) * 0.01; lastX = e.clientX; } });
+  window.addEventListener('mouseup', () => dragging = false);
+  canvas.addEventListener('touchstart', e => { dragging = true; lastX = e.touches[0].clientX; }, { passive: true });
+  canvas.addEventListener('touchmove', e => { if (dragging) { planet3dMesh.rotation.y += (e.touches[0].clientX - lastX) * 0.01; lastX = e.touches[0].clientX; } }, { passive: true });
+  canvas.addEventListener('touchend', () => dragging = false);
+
+  function animatePlanet3D() {
+    planet3dAnimId = requestAnimationFrame(animatePlanet3D);
+    planet3dMesh.rotation.y += 0.002; // rotasi idle pelan, ditambah drag manual user
+    planet3dRenderer.render(planet3dScene, planet3dCamera);
+  }
+  animatePlanet3D();
+}
+
+function disposePlanet3D() {
+  if (planet3dAnimId) cancelAnimationFrame(planet3dAnimId);
+  if (planet3dScene) {
+    planet3dScene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    });
+  }
+  if (planet3dRenderer) planet3dRenderer.dispose();
+  planet3dRenderer = null;
+}
+
+function closePlanet3D() {
+  document.getElementById('planet3d-overlay').classList.remove('show');
+  disposePlanet3D();
+}
+window.closePlanet3D = closePlanet3D;
+window.onSkymapSearch = onSkymapSearch;
+window.onSearchResultClick = onSearchResultClick;
+
+setupSkymap();
 </script>
 </body>
 </html>
