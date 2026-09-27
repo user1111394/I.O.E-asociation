@@ -849,13 +849,47 @@ const SKY_PLANETS = [
 ];
 
 let skymapCanvas, skymapCtx;
-let skymapOffsetX = 0, skymapOffsetY = 0, skymapZoom = 1;
+// Model kamera: pusat pandang disimpan sebagai koordinat langit (RA jam, Dec derajat),
+// bukan offset pixel. "Geser" = memutar arah kamera, "zoom" = mengubah FOV (sudut pandang).
+// Ini proyeksi gnomonic sederhana (mirip cara Stellarium menampilkan langit): cuma objek
+// yang berada dalam sudut FOV dari pusat pandang yang digambar, sisanya tidak dipaksa muat.
+let skymapCenterRA = 6, skymapCenterDec = 10; // titik awal: sekitar Orion, umum dilihat dari Indonesia
+let skymapFOV = 70; // derajat, makin kecil = makin zoom-in
+const SKYMAP_FOV_MIN = 20, SKYMAP_FOV_MAX = 130;
 let skymapDragging = false, skymapLastX = 0, skymapLastY = 0;
 let skymapClickables = []; // { x, y, r, type: 'star'|'planet'|'constellation', data }
 
+// Proyeksi gnomonic: mengubah RA/Dec objek jadi posisi pixel di layar berdasarkan
+// pusat pandang kamera saat ini. Mengembalikan null kalau objek di luar FOV (di "belakang" kamera
+// atau terlalu jauh dari pusat pandang), sehingga tidak digambar/numpuk di tepi layar.
 function raDecToXY(ra, dec, w, h) {
-  const x = (w - (ra / 24) * w) * skymapZoom + skymapOffsetX;
-  const y = (h - ((dec + 90) / 180) * h) * skymapZoom + skymapOffsetY;
+  const toRad = Math.PI / 180;
+  const raRad = (ra / 24) * 2 * Math.PI;
+  const decRad = dec * toRad;
+  const centerRaRad = (skymapCenterRA / 24) * 2 * Math.PI;
+  const centerDecRad = skymapCenterDec * toRad;
+
+  // Jarak sudut objek dari pusat pandang (cosine of angular separation)
+  const cosC = Math.sin(centerDecRad) * Math.sin(decRad) +
+               Math.cos(centerDecRad) * Math.cos(decRad) * Math.cos(raRad - centerRaRad);
+
+  // Objek di luar "belahan langit" yang sedang dilihat kamera (>90° dari pusat) -> tidak terlihat
+  if (cosC <= 0.02) return null;
+
+  // Proyeksi gnomonic ke bidang datar
+  const gx = (Math.cos(decRad) * Math.sin(raRad - centerRaRad)) / cosC;
+  const gy = (Math.cos(centerDecRad) * Math.sin(decRad) - Math.sin(centerDecRad) * Math.cos(decRad) * Math.cos(raRad - centerRaRad)) / cosC;
+
+  // Skala berdasar FOV: tan(FOV/2) menentukan seberapa "lebar" bidang gnomonic yang muat di layar
+  const scale = Math.min(w, h) / (2 * Math.tan((skymapFOV * toRad) / 2));
+
+  const x = w / 2 - gx * scale; // dibalik biar arah RA sesuai konvensi peta langit (timur ke kiri)
+  const y = h / 2 - gy * scale;
+
+  // Buang juga kalau hasil proyeksi jatuh jauh di luar kanvas (mencegah garis rasi "melintir"
+  // saat sebagian bintangnya nyaris di tepi FOV)
+  if (x < -w * 0.5 || x > w * 1.5 || y < -h * 0.5 || y > h * 1.5) return null;
+
   return { x, y };
 }
 
@@ -865,7 +899,7 @@ function drawSkymap() {
   skymapCtx.clearRect(0, 0, w, h);
   skymapClickables = [];
 
-  // Bintang latar acak (dekoratif, seeded biar konsisten tiap render)
+  // Bintang latar acak (dekoratif, seeded biar konsisten tiap render, tidak terpengaruh arah kamera)
   for (let i = 0; i < 200; i++) {
     const sx = (i * 37.13) % w;
     const sy = (i * 59.71) % h;
@@ -876,21 +910,31 @@ function drawSkymap() {
     skymapCtx.fill();
   }
 
-  // Garis & bintang rasi
+  const labelFontSize = Math.max(9, Math.min(13, 11 * (70 / skymapFOV)));
+
+  // Garis & bintang rasi — hanya digambar kalau berada dalam frame kamera saat ini
   for (const c of CONSTELLATIONS) {
     const pts = c.stars.map(s => raDecToXY(s.ra, s.dec, w, h));
+
+    // Lewati rasi ini sepenuhnya kalau semua bintangnya di luar frame (hemat kerja & mencegah
+    // garis nyasar menghubungkan titik yang null)
+    if (pts.every(p => p === null)) continue;
 
     skymapCtx.strokeStyle = 'rgba(124,158,255,0.35)';
     skymapCtx.lineWidth = 1;
     for (const [a, b] of c.lines) {
+      if (!pts[a] || !pts[b]) continue; // salah satu ujung garis di luar frame -> jangan gambar garisnya
       skymapCtx.beginPath();
       skymapCtx.moveTo(pts[a].x, pts[a].y);
       skymapCtx.lineTo(pts[b].x, pts[b].y);
       skymapCtx.stroke();
     }
 
+    let visibleCount = 0, cx = 0, cy = 0;
     c.stars.forEach((s, i) => {
       const p = pts[i];
+      if (!p) return;
+      visibleCount++; cx += p.x; cy += p.y;
       const size = Math.max(1.5, 4.5 - s.mag);
       skymapCtx.fillStyle = '#fff';
       skymapCtx.shadowColor = '#fff';
@@ -902,18 +946,21 @@ function drawSkymap() {
       skymapClickables.push({ x: p.x, y: p.y, r: size + 6, type: 'star', data: { star: s, constellation: c } });
     });
 
-    // Label nama rasi di titik tengah bintang-bintangnya
-    const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
-    const cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
-    skymapCtx.fillStyle = 'rgba(124,158,255,0.7)';
-    skymapCtx.font = `${11 * skymapZoom}px Inter, sans-serif`;
-    skymapCtx.textAlign = 'center';
-    skymapCtx.fillText(c.nameId, cx, cy - 14);
+    // Label nama rasi di titik tengah bintang-bintangnya yang SEDANG TERLIHAT saja
+    // (bukan rata-rata semua bintang termasuk yang di luar frame, biar posisi label tidak melenceng)
+    if (visibleCount > 0) {
+      cx /= visibleCount; cy /= visibleCount;
+      skymapCtx.fillStyle = 'rgba(124,158,255,0.8)';
+      skymapCtx.font = `${labelFontSize}px Inter, sans-serif`;
+      skymapCtx.textAlign = 'center';
+      skymapCtx.fillText(c.nameId, cx, cy - 14);
+    }
   }
 
-  // Planet (ditandai beda, klik buka render 3D)
+  // Planet (ditandai beda, klik buka render 3D) — sama, hanya kalau dalam frame
   for (const pl of SKY_PLANETS) {
     const p = raDecToXY(pl.ra, pl.dec, w, h);
+    if (!p) continue;
     skymapCtx.fillStyle = '#7c9eff';
     skymapCtx.shadowColor = '#7c9eff';
     skymapCtx.shadowBlur = 8;
@@ -922,7 +969,7 @@ function drawSkymap() {
     skymapCtx.fill();
     skymapCtx.shadowBlur = 0;
     skymapCtx.fillStyle = '#7c9eff';
-    skymapCtx.font = `${10 * skymapZoom}px Inter, sans-serif`;
+    skymapCtx.font = `${labelFontSize}px Inter, sans-serif`;
     skymapCtx.fillText(pl.name, p.x, p.y - 10);
     skymapClickables.push({ x: p.x, y: p.y, r: 12, type: 'planet', data: pl });
   }
@@ -956,13 +1003,27 @@ function setupSkymap() {
     }
   }
 
+  // Menggeser layar = memutar arah kamera. Kecepatan putar disesuaikan dengan FOV saat ini
+  // (makin zoom-in/FOV kecil, geseran tangan yang sama memutar kamera lebih sedikit derajat —
+  // sama seperti memutar teropong: makin zoom, makin "halus" gerakannya).
+  function panCamera(dx, dy, w, h) {
+    const degPerPxRA = skymapFOV / Math.min(w, h);
+    const degPerPxDec = skymapFOV / Math.min(w, h);
+    skymapCenterRA -= (dx * degPerPxRA) / 15; // konversi derajat -> jam (1 jam = 15°)
+    skymapCenterDec += dy * degPerPxDec;
+    // Wrap RA supaya tetap dalam 0-24 jam
+    skymapCenterRA = ((skymapCenterRA % 24) + 24) % 24;
+    // Batasi Dec supaya kamera tidak "kebalik" melewati kutub langit
+    skymapCenterDec = Math.max(-89, Math.min(89, skymapCenterDec));
+  }
+
   let didDrag = false;
   skymapCanvas.addEventListener('mousedown', e => { skymapDragging = true; didDrag = false; skymapLastX = e.clientX; skymapLastY = e.clientY; skymapCanvas.style.cursor = 'grabbing'; });
   window.addEventListener('mousemove', e => {
     if (!skymapDragging) return;
     const dx = e.clientX - skymapLastX, dy = e.clientY - skymapLastY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
-    skymapOffsetX += dx; skymapOffsetY += dy;
+    panCamera(dx, dy, skymapCanvas.width, skymapCanvas.height);
     skymapLastX = e.clientX; skymapLastY = e.clientY;
     drawSkymap();
   });
@@ -980,7 +1041,7 @@ function setupSkymap() {
     const t = e.touches[0];
     const dx = t.clientX - skymapLastX, dy = t.clientY - skymapLastY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
-    skymapOffsetX += dx; skymapOffsetY += dy;
+    panCamera(dx, dy, skymapCanvas.width, skymapCanvas.height);
     skymapLastX = t.clientX; skymapLastY = t.clientY;
     drawSkymap();
   }, { passive: true });
@@ -992,7 +1053,8 @@ function setupSkymap() {
 
   skymapCanvas.addEventListener('wheel', e => {
     e.preventDefault();
-    skymapZoom = Math.max(0.5, Math.min(3, skymapZoom - e.deltaY * 0.001));
+    // FOV mengecil = zoom in (kayak teropong, bukan skala gambar datar)
+    skymapFOV = Math.max(SKYMAP_FOV_MIN, Math.min(SKYMAP_FOV_MAX, skymapFOV + e.deltaY * 0.05));
     drawSkymap();
   }, { passive: false });
 
@@ -1003,7 +1065,7 @@ function setupSkymap() {
   skymapCanvas.addEventListener('touchmove', e => {
     if (e.touches.length === 2) {
       const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      if (lastPinchDist !== null) skymapZoom = Math.max(0.5, Math.min(3, skymapZoom + (d - lastPinchDist) * 0.003));
+      if (lastPinchDist !== null) skymapFOV = Math.max(SKYMAP_FOV_MIN, Math.min(SKYMAP_FOV_MAX, skymapFOV - (d - lastPinchDist) * 0.15));
       lastPinchDist = d;
       drawSkymap();
     }
@@ -1072,10 +1134,10 @@ function onSearchResultClick(i) {
 }
 
 function centerSkymapOn(ra, dec) {
-  const w = skymapCanvas.width, h = skymapCanvas.height;
-  const target = raDecToXY(ra, dec, w, h);
-  skymapOffsetX += w / 2 - target.x;
-  skymapOffsetY += h / 2 - target.y;
+  // Langsung arahkan kamera ke koordinat langit ini (bukan hitung offset pixel dari posisi lama,
+  // karena target lama mungkin di luar frame/null pada model proyeksi gnomonic).
+  skymapCenterRA = ((ra % 24) + 24) % 24;
+  skymapCenterDec = Math.max(-89, Math.min(89, dec));
   drawSkymap();
 }
 
