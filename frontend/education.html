@@ -287,6 +287,12 @@
   background:rgba(4,6,20,0.75); padding:5px 12px; border-radius:20px;
   max-width:85%; text-align:center;
 }
+.skymap-refresh-btn {
+  pointer-events:auto; font-family:'Inter',sans-serif; font-size:0.68rem;
+  color:#fff; background:rgba(4,6,20,0.7); border:1px solid var(--border);
+  border-radius:20px; padding:5px 14px; cursor:pointer;
+}
+.skymap-refresh-btn:active { border-color:var(--primary); }
 .skymap-info-panel {
   display:none; margin-top:16px;
   background:var(--bg-card); border:1px solid var(--border2);
@@ -454,9 +460,11 @@
       <div class="skymap-ar-status" id="skymap-ar-status">
         <span id="skymap-heading-label">--°</span>
         <span id="skymap-calib-warning" class="skymap-calib-warning" style="display:none;">⚠️ Kalibrasi kompas: goyangkan HP membentuk angka 8</span>
+        <button class="skymap-refresh-btn" id="skymap-refresh-btn" onclick="computeFrozenSky()" title="Perbarui posisi langit ke waktu sekarang">🔄 Perbarui posisi</button>
       </div>
     </div>
     <div class="skymap-hint" id="skymap-hint">💡 Arahkan HP ke langit, geser dikit buat kunci objek, ketuk objek untuk info</div>
+    <div class="skymap-hint" style="margin-top:2px;">📌 Posisi rasi &amp; planet dihitung sekali saat diaktifkan, supaya tampilannya stabil (tidak geser sendiri). Tekan "Perbarui posisi" kalau sudah lama dibuka.</div>
 
     <div class="skymap-info-panel" id="skymap-info-panel"></div>
   </div>
@@ -1044,22 +1052,26 @@ let deviceHeading = null; // azimuth kompas (0=utara, searah jarum jam), null ka
 let deviceAlt = 0; // altitude arah pandang (derajat dari horizon), dari kemiringan device
 let skymapFOV = 60; // derajat sudut pandang (field of view) kamera HP — representatif kamera umum
 let skymapClickables = []; // { x, y, r, type, data }
-let skymapPlanetCache = { date: null, positions: null }; // cache posisi planet biar gak hitung ulang tiap frame
 let skymapDragOffsetAz = 0, skymapDragOffsetAlt = 0; // penyesuaian manual kecil (gesekan halus) di atas heading sensor
 let arActive = false;
 
-// Menghitung ulang posisi RA/Dec semua planet, di-cache per detik (posisi planet
-// berubah sangat lambat, tidak perlu dihitung ulang tiap frame animasi).
-function getPlanetPositionsNow() {
+// Posisi langit DIBEKUKAN sekali saat AR diaktifkan (dihitung dari tanggal & jam saat itu),
+// BUKAN dihitung ulang tiap frame. Alasan: rotasi Bumi membuat Local Sidereal Time berubah
+// tiap detik, yang kalau dipakai real-time bikin rasi/planet "geser sendiri" di layar walau
+// HP diam persis di arah yang sama — padahal yang seharusnya menggerakkan tampilan cuma
+// gerakan HP (dari sensor kompas/giroskop), bukan waktu berjalan. Efeknya: posisi langit
+// akurat untuk saat kamu membuka fitur ini, dan tetap konsisten selama sesi itu berlangsung
+// (mirip "difoto" sekali, bukan simulasi planetarium yang terus berjalan).
+let skymapFrozenLST = null;
+let skymapFrozenPlanets = null; // [{ name, ra, dec }], dihitung sekali
+
+function computeFrozenSky() {
   const now = new Date();
-  const cacheKey = Math.floor(now.getTime() / 1000);
-  if (skymapPlanetCache.date === cacheKey) return skymapPlanetCache.positions;
-  const positions = ORBITAL_PLANET_NAMES.map(name => {
+  skymapFrozenLST = localSiderealTimeHours(now, userLon);
+  skymapFrozenPlanets = ORBITAL_PLANET_NAMES.map(name => {
     const { ra, dec } = planetRaDecNow(name, now);
     return { name, ra, dec };
   });
-  skymapPlanetCache = { date: cacheKey, positions };
-  return positions;
 }
 const ORBITAL_PLANET_NAMES = ['Merkurius', 'Venus', 'Mars', 'Jupiter', 'Saturnus', 'Uranus', 'Neptunus'];
 
@@ -1089,13 +1101,12 @@ function altAzToXY(alt, az, w, h) {
 }
 
 function drawSkymap() {
-  if (!skymapCtx || !arActive || deviceHeading === null || userLat === null) return;
+  if (!skymapCtx || !arActive || deviceHeading === null || userLat === null || skymapFrozenLST === null) return;
   const w = skymapCanvas.width, h = skymapCanvas.height;
   skymapCtx.clearRect(0, 0, w, h);
   skymapClickables = [];
 
-  const now = new Date();
-  const lst = localSiderealTimeHours(now, userLon);
+  const lst = skymapFrozenLST; // dibekukan saat AR diaktifkan — lihat computeFrozenSky()
   const labelFontSize = Math.max(9, Math.min(13, 11 * (60 / skymapFOV)));
 
   // Garis & bintang rasi — dikonversi RA/Dec -> Alt/Az (posisi tetap terhadap bintang,
@@ -1142,7 +1153,7 @@ function drawSkymap() {
   }
 
   // Planet — posisi RA/Dec dihitung real-time dari elemen orbit, lalu jalur konversi sama
-  const planetPositions = getPlanetPositionsNow();
+  const planetPositions = skymapFrozenPlanets || [];
   for (const pl of planetPositions) {
     const horiz = equatorialToHorizontal(pl.ra, pl.dec, userLat, lst);
     const p = altAzToXY(horiz.alt, horiz.az, w, h);
@@ -1220,6 +1231,7 @@ async function startSkyAR() {
     skymapVideo.srcObject = stream;
 
     setupOrientationListener();
+    computeFrozenSky(); // hitung LST & posisi planet SEKALI, dibekukan sepanjang sesi ini
     document.getElementById('skymap-permission-gate').classList.add('hidden');
     document.getElementById('skymap-ar-status').classList.add('show');
     document.getElementById('skymap-hint').textContent = '💡 Arahkan HP ke langit — geser dikit buat penyesuaian halus, ketuk objek untuk info';
@@ -1403,8 +1415,8 @@ function onSearchResultClick(i) {
 // hitung ke arah mana objek itu SEKARANG (Alt/Az) dan tampilkan sebagai petunjuk supaya
 // user tahu harus menghadap ke mana untuk menemukannya secara fisik.
 function pointDirectionTo(ra, dec) {
-  if (userLat === null) return; // AR belum aktif, tidak ada lokasi buat menghitung arah
-  const lst = localSiderealTimeHours(new Date(), userLon);
+  if (userLat === null || skymapFrozenLST === null) return; // AR belum aktif
+  const lst = skymapFrozenLST; // pakai LST beku yang sama dengan yang dipakai drawSkymap()
   const { alt, az } = equatorialToHorizontal(ra, dec, userLat, lst);
   const dirs = ['Utara', 'Timur Laut', 'Timur', 'Tenggara', 'Selatan', 'Barat Daya', 'Barat', 'Barat Laut'];
   const dirName = dirs[Math.round(((az % 360) + 360) % 360 / 45) % 8];
@@ -1513,6 +1525,8 @@ function closePlanet3D() {
 window.closePlanet3D = closePlanet3D;
 window.onSkymapSearch = onSkymapSearch;
 window.onSearchResultClick = onSearchResultClick;
+window.computeFrozenSky = computeFrozenSky;
+window.startSkyAR = startSkyAR;
 
 setupSkymap();
 </script>
