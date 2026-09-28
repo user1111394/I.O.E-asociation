@@ -63,7 +63,11 @@ async function generateImage(prompt) {
       });
       lastStatus = r.status;
       if (r.status === 429 || r.status === 401 || r.status === 403) {
-        console.error('[ai] Gemini key ditolak:', r.status);
+        // PENTING: baca body error-nya dulu sebelum lanjut ke key berikutnya. Kode HTTP saja tidak
+        // cukup untuk membedakan "kuota harian habis" vs "region tidak didukung" vs "billing belum aktif" —
+        // semuanya bisa muncul sebagai 429/403, dan hanya pesan di body yang membedakannya.
+        const errText = await r.text().catch(() => '(gagal membaca body error)');
+        console.error(`[ai] Gemini key ditolak (${r.status}):`, errText.slice(0, 500));
         continue; // coba key berikutnya
       }
       if (!r.ok) {
