@@ -163,6 +163,28 @@ body { overflow:hidden; }
   font-family:'Inter',sans-serif;
 }
 
+/* Tombol mode pencarian web */
+.cosmos-tools-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+#cosmos-searchBtn {
+  font-family:'Inter',sans-serif; font-size:0.72rem;
+  color:var(--text-muted); background:transparent;
+  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
+  padding:5px 12px; cursor:pointer; transition:all 0.18s;
+}
+#cosmos-searchBtn.on {
+  color:#04040f; background:var(--primary); border-color:var(--primary); font-weight:600;
+}
+.cosmos-tools-hint { font-family:'Inter',sans-serif; font-size:0.62rem; color:rgba(255,255,255,0.3); }
+
+/* Daftar sumber di bawah jawaban */
+.cosmos-sources {
+  margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);
+  font-family:'Inter',sans-serif; font-size:0.72rem; line-height:1.5;
+}
+.cosmos-sources-title { color:rgba(255,255,255,0.4); margin-bottom:4px; }
+.cosmos-sources a { color:var(--primary); text-decoration:none; word-break:break-word; }
+.cosmos-sources a:hover { text-decoration:underline; }
+
 @media(max-width:480px) { .cbubble { max-width:90%; font-size:0.87rem; } }
 </style>
 </head>
@@ -208,11 +230,15 @@ body { overflow:hidden; }
   </div>
 
   <div class="cosmos-footer">
+    <div class="cosmos-tools-row">
+      <button id="cosmos-searchBtn" type="button" onclick="toggleSearchMode()">🌐 Cari di web: MATI</button>
+      <span class="cosmos-tools-hint" id="cosmos-searchHint">Nyalakan untuk info terkini + sumber</span>
+    </div>
     <div class="cosmos-input-row">
       <textarea id="cosmos-inp" placeholder="Tanya tentang astronomi, sejarah, atau apa saja..." rows="1"></textarea>
       <button id="cosmos-sendBtn" onclick="cosmosSend()">➤</button>
     </div>
-    <div class="cosmos-note">Powered by Groq · Llama 3.1 · I.O.E Education AI</div>
+    <div class="cosmos-note">Powered by Groq · GPT-OSS 120B · I.O.E Education AI</div>
   </div>
 </div>
 
@@ -227,7 +253,38 @@ const AI_ENDPOINT = '/api/ai'; // Vercel serverless function
 
 let convo = [], busy = false, topic = '';
 let myDeviceId = '';
+let searchMode = false; // mode pencarian web (Tavily), default MATI karena kuota Tavily terbatas
 getDeviceId().then(id => { myDeviceId = id; });
+
+function toggleSearchMode() {
+  searchMode = !searchMode;
+  const btn = document.getElementById('cosmos-searchBtn');
+  btn.classList.toggle('on', searchMode);
+  btn.textContent = '🌐 Cari di web: ' + (searchMode ? 'NYALA' : 'MATI');
+  document.getElementById('cosmos-searchHint').textContent = searchMode
+    ? 'Cosmos akan mencari kalau perlu info terkini'
+    : 'Nyalakan untuk info terkini + sumber';
+}
+
+// Escape lengkap (termasuk tanda kutip) karena hasilnya dipakai di dalam atribut href.
+function escAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Judul & URL sumber berasal dari internet, jadi TIDAK dipercaya: hanya URL https:// yang dijadikan
+// tautan (menolak javascript:, data:, dll), dan semua teks di-escape sebelum masuk innerHTML.
+function renderSources(sources) {
+  if (!Array.isArray(sources) || sources.length === 0) return '';
+  const items = sources.slice(0, 6).map((s, i) => {
+    const url = String(s && s.url || '');
+    const title = String(s && s.title || url).slice(0, 120);
+    if (!/^https:\/\//i.test(url)) return '';
+    return `<div>[${i + 1}] <a href="${escAttr(url)}" target="_blank" rel="noopener noreferrer nofollow">${escAttr(title)}</a></div>`;
+  }).join('');
+  return items ? `<div class="cosmos-sources"><div class="cosmos-sources-title">🌐 Sumber</div>${items}</div>` : '';
+}
 
 function pickTopic(el) {
   document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
@@ -288,7 +345,7 @@ async function cosmosSend() {
     const res = await fetch(AI_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: convo, deviceId: myDeviceId })
+      body: JSON.stringify({ messages: convo, deviceId: myDeviceId, searchMode })
     });
     const data = await res.json();
 
@@ -313,7 +370,7 @@ async function cosmosSend() {
     if (!reply) throw new Error('Respons kosong');
     convo.push({ role: 'assistant', content: reply });
     hideTyping();
-    appendMsg('ai', '<p>' + md(reply) + '</p>');
+    appendMsg('ai', '<p>' + md(reply) + '</p>' + renderSources(data.sources));
 
     // Tampilkan sisa kuota kalau mendekati batas
     if (data.quota) {
