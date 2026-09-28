@@ -174,7 +174,19 @@ body { overflow:hidden; }
 #cosmos-searchBtn.on {
   color:#04040f; background:var(--primary); border-color:var(--primary); font-weight:600;
 }
+#cosmos-imageBtn {
+  font-family:'Inter',sans-serif; font-size:0.72rem;
+  color:var(--text-muted); background:transparent;
+  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
+  padding:5px 12px; cursor:pointer; transition:all 0.18s;
+}
+#cosmos-imageBtn.on {
+  color:#04040f; background:#ffb347; border-color:#ffb347; font-weight:600;
+}
 .cosmos-tools-hint { font-family:'Inter',sans-serif; font-size:0.62rem; color:rgba(255,255,255,0.3); }
+.cosmos-gen-image {
+  max-width:100%; border-radius:10px; margin-top:6px; display:block;
+}
 
 /* Daftar sumber di bawah jawaban */
 .cosmos-sources {
@@ -232,6 +244,7 @@ body { overflow:hidden; }
   <div class="cosmos-footer">
     <div class="cosmos-tools-row">
       <button id="cosmos-searchBtn" type="button" onclick="toggleSearchMode()">🌐 Cari di web: MATI</button>
+      <button id="cosmos-imageBtn" type="button" onclick="toggleImageMode()">🎨 Buat gambar: MATI</button>
       <span class="cosmos-tools-hint" id="cosmos-searchHint">Nyalakan untuk info terkini + sumber</span>
     </div>
     <div class="cosmos-input-row">
@@ -254,16 +267,37 @@ const AI_ENDPOINT = '/api/ai'; // Vercel serverless function
 let convo = [], busy = false, topic = '';
 let myDeviceId = '';
 let searchMode = false; // mode pencarian web (Tavily), default MATI karena kuota Tavily terbatas
+let imageMode = false;  // mode buat gambar (Gemini), default MATI, saling eksklusif dengan searchMode
 getDeviceId().then(id => { myDeviceId = id; });
 
 function toggleSearchMode() {
   searchMode = !searchMode;
+  if (searchMode && imageMode) { imageMode = false; syncImageBtn(); } // saling eksklusif: satu request cuma satu mode
   const btn = document.getElementById('cosmos-searchBtn');
   btn.classList.toggle('on', searchMode);
   btn.textContent = '🌐 Cari di web: ' + (searchMode ? 'NYALA' : 'MATI');
   document.getElementById('cosmos-searchHint').textContent = searchMode
     ? 'Cosmos akan mencari kalau perlu info terkini'
+    : (imageMode ? 'Mode gambar aktif — Cosmos akan membuat gambar, bukan menjawab teks' : 'Nyalakan untuk info terkini + sumber');
+}
+
+function toggleImageMode() {
+  imageMode = !imageMode;
+  if (imageMode && searchMode) { searchMode = false; syncSearchBtn(); } // saling eksklusif
+  syncImageBtn();
+}
+function syncImageBtn() {
+  const btn = document.getElementById('cosmos-imageBtn');
+  btn.classList.toggle('on', imageMode);
+  btn.textContent = '🎨 Buat gambar: ' + (imageMode ? 'NYALA' : 'MATI');
+  document.getElementById('cosmos-searchHint').textContent = imageMode
+    ? 'Mode gambar aktif — Cosmos akan membuat gambar, bukan menjawab teks'
     : 'Nyalakan untuk info terkini + sumber';
+}
+function syncSearchBtn() {
+  const btn = document.getElementById('cosmos-searchBtn');
+  btn.classList.toggle('on', searchMode);
+  btn.textContent = '🌐 Cari di web: ' + (searchMode ? 'NYALA' : 'MATI');
 }
 
 // Escape lengkap (termasuk tanda kutip) karena hasilnya dipakai di dalam atribut href.
@@ -273,6 +307,15 @@ function escAttr(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Data gambar berasal dari API eksternal (Gemini), jadi tetap divalidasi sebelum dipasang sebagai
+// src data-URI: mime harus salah satu yang dikenal, dan string base64 dicek pola karakternya supaya
+// tidak ada cara untuk menyelundupkan skema URI lain (misal "javascript:" disamarkan sebagai "data").
+function renderGeneratedImage(img) {
+  const okMime = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!img || !okMime.includes(img.mime) || typeof img.data !== 'string') return '';
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(img.data) || img.data.length < 100) return '';
+  return `<img class="cosmos-gen-image" src="data:${img.mime};base64,${img.data}" alt="Gambar dibuat AI">`;
+}
 // Judul & URL sumber berasal dari internet, jadi TIDAK dipercaya: hanya URL https:// yang dijadikan
 // tautan (menolak javascript:, data:, dll), dan semua teks di-escape sebelum masuk innerHTML.
 function renderSources(sources) {
@@ -339,6 +382,45 @@ async function cosmosSend() {
   busy = true; document.getElementById('cosmos-sendBtn').disabled = true;
   const prompt = topic ? `[Topik: ${topic}] ${raw}` : raw;
   appendMsg('user', escHtml(raw));
+
+  // MODE GAMBAR: alur terpisah dari chat teks. Prompt gambar TIDAK dimasukkan ke `convo`
+  // (riwayat percakapan teks Groq), karena hasilnya berupa data base64 besar yang tidak relevan
+  // sebagai konteks obrolan berikutnya dan akan memboroskan token pada chat selanjutnya.
+  if (imageMode) {
+    showTyping();
+    try {
+      const res = await fetch(AI_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], deviceId: myDeviceId, imageMode: true })
+      });
+      const data = await res.json();
+      hideTyping();
+
+      if (res.status === 429) {
+        appendMsg('ai',
+          `🎨 <strong>Kuota gambar harian kamu sudah habis</strong> (${data.imageQuota?.used}/${data.imageQuota?.limit}).<br>` +
+          `<small>${data.resetInfo || 'Reset otomatis jam 00:00 WIB.'}</small>`, 'err');
+      } else if (!res.ok) {
+        appendMsg('ai', '⚠️ ' + (data.error || 'Gagal membuat gambar.'), 'err');
+      } else {
+        const imgHtml = renderGeneratedImage(data.image);
+        appendMsg('ai', imgHtml || '⚠️ Gambar diterima tapi formatnya tidak valid.');
+        if (data.imageQuota) {
+          const sisa = data.imageQuota.limit - data.imageQuota.used;
+          appendMsg('ai', `<small style="color:rgba(255,255,255,0.35)">🎨 Sisa kuota gambar hari ini: ${sisa}/${data.imageQuota.limit}</small>`);
+        }
+      }
+    } catch (e) {
+      hideTyping();
+      appendMsg('ai', '⚠️ <strong>Gagal terhubung ke layanan gambar.</strong><br><small>' + e.message + '</small>', 'err');
+    }
+    busy = false;
+    document.getElementById('cosmos-sendBtn').disabled = false;
+    document.getElementById('cosmos-inp').focus();
+    return;
+  }
+
   convo.push({ role: 'user', content: prompt });
   showTyping();
   try {
