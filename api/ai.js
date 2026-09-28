@@ -5,7 +5,15 @@
 const QUOTA_REGULAR = 80;   // chat/hari untuk member biasa
 const QUOTA_PREMIUM = 150;  // chat/hari untuk member premium
 
+// Gambar dibatasi terpisah dari kuota chat karena tiap gambar memakai kuota Gemini yang terbatas.
+const IMAGE_QUOTA_REGULAR = 3;   // gambar/hari untuk member biasa
+const IMAGE_QUOTA_PREMIUM = 10;  // gambar/hari untuk member premium
+
 const MODEL = 'openai/gpt-oss-120b';
+
+// Model gambar Gemini (Nano Banana). "Lite" = paling murah & cepat, hanya 1K. Kalau kualitasnya kurang,
+// ganti ke 'gemini-3.1-flash-image' (lebih bagus, ada 2K/4K) — cukup ubah baris ini.
+const IMAGE_MODEL = 'gemini-3.1-flash-lite-image';
 
 function todayKey() {
   const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
@@ -22,6 +30,68 @@ async function callGroq(key, payload) {
     body: JSON.stringify(payload),
   });
   return response;
+}
+
+// Kumpulkan key Gemini dari GEMINI_API_KEY_1 s/d GEMINI_API_KEY_5. Yang kosong dilewati.
+function getGeminiKeys() {
+  const keys = [];
+  for (let i = 1; i <= 5; i++) {
+    const k = process.env[`GEMINI_API_KEY_${i}`];
+    if (k) keys.push(k);
+  }
+  return keys;
+}
+
+// Buat gambar lewat Gemini Interactions API. Mencoba key satu per satu (urutan acak) kalau kena
+// rate limit / key tidak valid. Mengembalikan { ok, mime, data } atau { ok:false, reason }.
+// `reason` sengaja generik supaya tidak membocorkan detail internal ke member.
+async function generateImage(prompt) {
+  const keys = getGeminiKeys().sort(() => Math.random() - 0.5);
+  if (keys.length === 0) return { ok: false, reason: 'not_configured' };
+
+  let lastStatus = 0;
+  for (const key of keys) {
+    try {
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+        method: 'POST',
+        headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: IMAGE_MODEL,
+          input: [{ type: 'text', text: prompt }],
+          response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: '1:1' },
+        }),
+      });
+      lastStatus = r.status;
+      if (r.status === 429 || r.status === 401 || r.status === 403) {
+        console.error('[ai] Gemini key ditolak:', r.status);
+        continue; // coba key berikutnya
+      }
+      if (!r.ok) {
+        const errText = await r.text().catch(() => '');
+        console.error('[ai] Gemini gagal:', r.status, errText.slice(0, 300));
+        return { ok: false, reason: r.status === 400 ? 'bad_request' : 'upstream_error' };
+      }
+      const data = await r.json();
+      // Sesuai dokumentasi: gambar ada di output_image.data (base64). Cadangan: telusuri steps.
+      let b64 = data?.output_image?.data;
+      if (!b64 && Array.isArray(data?.steps)) {
+        for (const step of data.steps) {
+          if (step?.type !== 'model_output') continue;
+          const img = (step.content || []).find(c => c?.type === 'image' && c?.data);
+          if (img) { b64 = img.data; break; }
+        }
+      }
+      if (!b64) {
+        console.error('[ai] Gemini tidak mengembalikan gambar (kemungkinan diblokir safety). Keys respons:', Object.keys(data || {}).join(','));
+        return { ok: false, reason: 'no_image' };
+      }
+      return { ok: true, mime: 'image/jpeg', data: b64 };
+    } catch (e) {
+      console.error('[ai] Gemini error jaringan:', e.message);
+      lastStatus = 0;
+    }
+  }
+  return { ok: false, reason: lastStatus === 429 ? 'rate_limited' : 'upstream_error' };
 }
 
 // Panggil Tavily. Hasil dipotong supaya tidak membengkakkan konteks model.
@@ -72,7 +142,7 @@ export default async function handler(req, res) {
   }
 
   const DB_URL = process.env.FIREBASE_DB_URL;
-  const { messages, deviceId, searchMode } = req.body;
+  const { messages, deviceId, searchMode, imageMode } = req.body;
   // Tavily hanya boleh dipakai kalau member SENGAJA menyalakan mode pencarian. Hanya 1 key Tavily,
   // jadi tanpa flag ini Cosmos menjawab dari pengetahuannya sendiri dan tidak menyentuh kuota Tavily.
   const useSearch = searchMode === true && !!process.env.TAVILY_API_KEY;
@@ -81,6 +151,75 @@ export default async function handler(req, res) {
   }
   if (!deviceId) {
     return res.status(400).json({ error: 'deviceId diperlukan' });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // MODE GAMBAR — dibuat oleh Gemini (bukan Groq). Hanya jalan kalau member menyalakan tombolnya.
+  // Kuota gambar terpisah dari kuota chat, dan pemakaian hanya dicatat kalau gambar BENAR-BENAR jadi.
+  // ═══════════════════════════════════════════════════════════════
+  if (imageMode === true) {
+    // Ambil prompt dari pesan member terakhir, buang awalan "[Topik: ...]" dari frontend
+    const lastUser = [...messages].reverse().find(m => m && m.role === 'user');
+    const imgPrompt = String(lastUser?.content || '').replace(/^\[Topik:[^\]]*\]\s*/, '').trim().slice(0, 800);
+    if (!imgPrompt) return res.status(400).json({ error: 'Deskripsi gambar kosong' });
+
+    // Cek kuota gambar. Berbeda dengan kuota chat (fail-open), di sini FAIL-CLOSED: kalau database tidak
+    // bisa dibaca, gambar ditolak, karena tanpa hitungan yang bisa dipercaya kuota Gemini bisa habis
+    // dihabiskan satu orang.
+    let imgUsed = 0, imgLimit = IMAGE_QUOTA_REGULAR, imgPremium = false;
+    if (!DB_URL) {
+      return res.status(503).json({ error: 'Fitur gambar belum siap (penyimpanan kuota belum terhubung).' });
+    }
+    const imgDay = todayKey();
+    try {
+      const memberRes = await fetch(`${DB_URL}/members/${deviceId}.json`);
+      const memberData = await memberRes.json();
+      imgPremium = !!(memberData && memberData.premium);
+      imgLimit = imgPremium ? IMAGE_QUOTA_PREMIUM : IMAGE_QUOTA_REGULAR;
+      const uRes = await fetch(`${DB_URL}/image_usage/${deviceId}/${imgDay}.json`);
+      const uData = await uRes.json();
+      imgUsed = typeof uData === 'number' ? uData : 0;
+    } catch (e) {
+      console.error('[ai] Gagal membaca kuota gambar:', e.message);
+      return res.status(503).json({ error: 'Tidak bisa memeriksa kuota gambar saat ini, coba lagi sebentar.' });
+    }
+    if (imgUsed >= imgLimit) {
+      return res.status(429).json({
+        error: 'Kuota gambar harian kamu sudah habis',
+        imageQuota: { used: imgUsed, limit: imgLimit, isPremium: imgPremium },
+        resetInfo: 'Kuota akan reset otomatis jam 00:00 WIB',
+      });
+    }
+
+    const img = await generateImage(imgPrompt);
+    if (!img.ok) {
+      // Pesan ke member sengaja umum; detail teknis hanya ada di Vercel Logs.
+      const msgByReason = {
+        not_configured: 'Fitur gambar belum dikonfigurasi.',
+        bad_request: 'Deskripsi gambar tidak bisa diproses. Coba ubah kalimatnya.',
+        no_image: 'Gambar tidak berhasil dibuat. Bisa jadi deskripsinya ditolak filter keamanan, coba deskripsi lain.',
+        rate_limited: 'Layanan gambar sedang penuh. Coba lagi beberapa menit lagi.',
+        upstream_error: 'Layanan gambar sedang bermasalah. Coba lagi nanti.',
+      };
+      return res.status(502).json({ error: msgByReason[img.reason] || msgByReason.upstream_error });
+    }
+
+    // Catat pemakaian HANYA setelah gambar jadi
+    const newImgUsed = imgUsed + 1;
+    try {
+      await fetch(`${DB_URL}/image_usage/${deviceId}/${imgDay}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newImgUsed),
+      });
+    } catch (e) {
+      console.error('[ai] Gagal mencatat pemakaian gambar:', e.message);
+    }
+
+    return res.status(200).json({
+      image: { mime: img.mime, data: img.data },
+      imageQuota: { used: newImgUsed, limit: imgLimit, isPremium: imgPremium },
+    });
   }
 
   let isPremium = false;
