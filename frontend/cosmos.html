@@ -244,7 +244,11 @@ body { overflow:hidden; }
   <div class="cosmos-footer">
     <div class="cosmos-tools-row">
       <button id="cosmos-searchBtn" type="button" onclick="toggleSearchMode()">🌐 Cari di web: MATI</button>
-      <button id="cosmos-imageBtn" type="button" onclick="toggleImageMode()">🎨 Buat gambar: MATI</button>
+      <!-- Tombol "Buat gambar" DITUNDA: Gemini image generation tidak punya Free Tier sama sekali
+           (limit resmi 0 request/hari tanpa billing aktif, dikonfirmasi lewat Vercel Logs).
+           Kode JS (toggleImageMode, renderGeneratedImage) dan backend (generateImage di ai.js)
+           dibiarkan utuh supaya gampang diaktifkan lagi nanti kalau billing sudah disiapkan —
+           tinggal kembalikan baris <button id="cosmos-imageBtn"> ini. -->
       <span class="cosmos-tools-hint" id="cosmos-searchHint">Nyalakan untuk info terkini + sumber</span>
     </div>
     <div class="cosmos-input-row">
@@ -288,6 +292,7 @@ function toggleImageMode() {
 }
 function syncImageBtn() {
   const btn = document.getElementById('cosmos-imageBtn');
+  if (!btn) return; // tombol gambar ditunda dan dihapus dari HTML, lihat komentar di footer
   btn.classList.toggle('on', imageMode);
   btn.textContent = '🎨 Buat gambar: ' + (imageMode ? 'NYALA' : 'MATI');
   document.getElementById('cosmos-searchHint').textContent = imageMode
