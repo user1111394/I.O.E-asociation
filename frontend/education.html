@@ -221,13 +221,9 @@
 
 .skymap-canvas-wrap {
   position:relative; width:100%; aspect-ratio:4/3;
-  background:radial-gradient(ellipse at center, #0a1128 0%, #030510 100%);
+  background:#000;
   border:1px solid var(--border); border-radius:var(--radius-lg);
   overflow:hidden; touch-action:none;
-}
-#skymap-video {
-  position:absolute; inset:0; width:100%; height:100%;
-  object-fit:cover; display:block; background:#000;
 }
 #skymap-canvas {
   position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab;
@@ -423,7 +419,7 @@
   <!-- ══ PETA LANGIT ══ -->
   <div class="tab-panel" id="tab-skymap">
     <div class="section-title">Peta Langit</div>
-    <div class="section-sub">Arahkan HP ke langit — rasi & planet muncul sesuai arah kamera</div>
+    <div class="section-sub">Arahkan HP ke langit — rasi & planet muncul sesuai arah HP</div>
 
     <input type="text" id="skymap-search" class="skymap-search"
       placeholder="🔍 Cari rasi bintang atau bintang (misal: Orion, Sirius)..."
@@ -436,21 +432,19 @@
     </div>
 
     <div class="skymap-canvas-wrap">
-      <video id="skymap-video" autoplay playsinline muted></video>
       <canvas id="skymap-canvas"></canvas>
 
-      <!-- Layar permintaan izin — ditampilkan sebelum AR aktif -->
+      <!-- Layar permintaan izin — ditampilkan sebelum peta aktif -->
       <div class="skymap-permission-gate" id="skymap-permission-gate">
         <div class="skymap-gate-icon">🧭</div>
         <div class="skymap-gate-title">Peta Langit Butuh Izin</div>
         <div class="skymap-gate-desc">
-          Fitur ini pakai kamera & kompas HP kamu sebagai teropong langit, plus lokasimu
+          Fitur ini pakai kompas &amp; giroskop HP kamu sebagai penunjuk arah, plus lokasimu
           buat menghitung rasi &amp; planet apa yang seharusnya kelihatan di arah itu sekarang.
         </div>
         <ul class="skymap-gate-list">
           <li>📍 Lokasi — buat menghitung posisi langit dari tempatmu</li>
           <li>🧭 Sensor arah (kompas/giroskop) — buat tahu HP diarahkan ke mana</li>
-          <li>📷 Kamera — buat latar belakang langit asli</li>
         </ul>
         <button class="skymap-gate-btn" id="skymap-gate-btn" onclick="startSkyAR()">Aktifkan Peta Langit</button>
         <div class="skymap-gate-error" id="skymap-gate-error"></div>
@@ -1046,7 +1040,7 @@ function planetRaDecNow(planetName, date) {
 // ══════════════════════════════════════════════════════════════════
 // STATE AR: lokasi, orientasi device, kamera
 // ══════════════════════════════════════════════════════════════════
-let skymapCanvas, skymapCtx, skymapVideo;
+let skymapCanvas, skymapCtx;
 let userLat = null, userLon = null;
 let deviceHeading = null; // azimuth kompas (0=utara, searah jarum jam), null kalau belum ada data
 let deviceAlt = 0; // altitude arah pandang (derajat dari horizon), dari kemiringan device
@@ -1063,14 +1057,28 @@ let arActive = false;
 // akurat untuk saat kamu membuka fitur ini, dan tetap konsisten selama sesi itu berlangsung
 // (mirip "difoto" sekali, bukan simulasi planetarium yang terus berjalan).
 let skymapFrozenLST = null;
-let skymapFrozenPlanets = null; // [{ name, ra, dec }], dihitung sekali
+let skymapFrozenPlanets = null; // [{ name, ra, dec, alt, az }], dihitung sekali
+let skymapFrozenConstellations = null; // [{ ...c, horiz: [{alt,az}, ...] }], dihitung sekali
 
 function computeFrozenSky() {
   const now = new Date();
   skymapFrozenLST = localSiderealTimeHours(now, userLon);
+  const lst = skymapFrozenLST;
+
+  // Pre-compute Alt/Az untuk SEMUA bintang di semua rasi sekali saja di sini —
+  // ini bagian yang paling berat secara trigonometri (asin/acos per bintang), jadi
+  // tidak boleh dihitung ulang tiap frame animasi. Yang boleh dihitung ulang tiap
+  // frame cuma proyeksi Alt/Az -> pixel (altAzToXY), karena itu murah dan memang
+  // harus responsif mengikuti arah kompas HP saat ini.
+  skymapFrozenConstellations = CONSTELLATIONS.map(c => ({
+    ...c,
+    horiz: c.stars.map(s => equatorialToHorizontal(s.ra, s.dec, userLat, lst)),
+  }));
+
   skymapFrozenPlanets = ORBITAL_PLANET_NAMES.map(name => {
     const { ra, dec } = planetRaDecNow(name, now);
-    return { name, ra, dec };
+    const horiz = equatorialToHorizontal(ra, dec, userLat, lst);
+    return { name, ra, dec, alt: horiz.alt, az: horiz.az };
   });
 }
 const ORBITAL_PLANET_NAMES = ['Merkurius', 'Venus', 'Mars', 'Jupiter', 'Saturnus', 'Uranus', 'Neptunus'];
@@ -1100,25 +1108,29 @@ function altAzToXY(alt, az, w, h) {
   return { x, y };
 }
 
+let skymapHeadingLabelEl = null; // cache DOM element biar tidak query ulang tiap frame
+
 function drawSkymap() {
   if (!skymapCtx || !arActive || deviceHeading === null || userLat === null || skymapFrozenLST === null) return;
   const w = skymapCanvas.width, h = skymapCanvas.height;
   skymapCtx.clearRect(0, 0, w, h);
   skymapClickables = [];
 
-  const lst = skymapFrozenLST; // dibekukan saat AR diaktifkan — lihat computeFrozenSky()
   const labelFontSize = Math.max(9, Math.min(13, 11 * (60 / skymapFOV)));
 
-  // Garis & bintang rasi — dikonversi RA/Dec -> Alt/Az (posisi tetap terhadap bintang,
-  // tapi Alt/Az-nya berubah tiap detik karena rotasi Bumi & lokasi user), lalu diproyeksikan.
-  for (const c of CONSTELLATIONS) {
-    const horiz = c.stars.map(s => equatorialToHorizontal(s.ra, s.dec, userLat, lst));
-    const pts = horiz.map(h2 => altAzToXY(h2.alt, h2.az, w, h));
+  // Bintang: pakai Alt/Az yang SUDAH dihitung sekali di computeFrozenSky() (skymapFrozenConstellations).
+  // Di sini cuma proyeksi pixel (altAzToXY) yang murah dan memang harus jalan tiap frame supaya
+  // ikut gerakan kompas secara responsif — tidak ada trig asin/acos berat yang diulang di sini.
+  skymapCtx.strokeStyle = 'rgba(124,158,255,0.4)';
+  skymapCtx.lineWidth = 1.2;
+  skymapCtx.fillStyle = '#fff';
+  skymapCtx.shadowColor = '#fff';
+  skymapCtx.shadowBlur = 4; // di-set SEKALI di luar loop, bukan per-bintang (shadowBlur mahal kalau toggle berkali-kali)
 
+  for (const c of skymapFrozenConstellations) {
+    const pts = c.horiz.map(hz => altAzToXY(hz.alt, hz.az, w, h));
     if (pts.every(p => p === null)) continue;
 
-    skymapCtx.strokeStyle = 'rgba(124,158,255,0.4)';
-    skymapCtx.lineWidth = 1.2;
     for (const [a, b] of c.lines) {
       if (!pts[a] || !pts[b]) continue;
       skymapCtx.beginPath();
@@ -1133,51 +1145,48 @@ function drawSkymap() {
       if (!p) return;
       visibleCount++; cx += p.x; cy += p.y;
       const size = Math.max(1.5, 4.5 - s.mag);
-      skymapCtx.fillStyle = '#fff';
-      skymapCtx.shadowColor = '#fff';
-      skymapCtx.shadowBlur = 5;
       skymapCtx.beginPath();
       skymapCtx.arc(p.x, p.y, size, 0, Math.PI * 2);
       skymapCtx.fill();
-      skymapCtx.shadowBlur = 0;
       skymapClickables.push({ x: p.x, y: p.y, r: size + 6, type: 'star', data: { star: s, constellation: c } });
     });
 
     if (visibleCount > 0) {
       cx /= visibleCount; cy /= visibleCount;
+      skymapCtx.shadowBlur = 0; // teks tidak perlu shadow, matikan sementara biar tidak ikut nge-blur
       skymapCtx.fillStyle = 'rgba(124,158,255,0.85)';
       skymapCtx.font = `${labelFontSize}px Inter, sans-serif`;
       skymapCtx.textAlign = 'center';
       skymapCtx.fillText(c.nameId, cx, cy - 14);
+      skymapCtx.fillStyle = '#fff'; // kembalikan buat rasi berikutnya
+      skymapCtx.shadowBlur = 4;
     }
   }
+  skymapCtx.shadowBlur = 0;
 
-  // Planet — posisi RA/Dec dihitung real-time dari elemen orbit, lalu jalur konversi sama
-  const planetPositions = skymapFrozenPlanets || [];
-  for (const pl of planetPositions) {
-    const horiz = equatorialToHorizontal(pl.ra, pl.dec, userLat, lst);
-    const p = altAzToXY(horiz.alt, horiz.az, w, h);
+  // Planet — Alt/Az sudah dihitung sekali juga (skymapFrozenPlanets), tinggal proyeksi
+  for (const pl of (skymapFrozenPlanets || [])) {
+    const p = altAzToXY(pl.alt, pl.az, w, h);
     if (!p) continue;
     skymapCtx.fillStyle = '#7c9eff';
     skymapCtx.shadowColor = '#7c9eff';
-    skymapCtx.shadowBlur = 9;
+    skymapCtx.shadowBlur = 8;
     skymapCtx.beginPath();
     skymapCtx.arc(p.x, p.y, 5, 0, Math.PI * 2);
     skymapCtx.fill();
     skymapCtx.shadowBlur = 0;
-    skymapCtx.fillStyle = '#7c9eff';
     skymapCtx.font = `${labelFontSize}px Inter, sans-serif`;
     skymapCtx.fillText(pl.name, p.x, p.y - 10);
     skymapClickables.push({ x: p.x, y: p.y, r: 12, type: 'planet', data: pl });
   }
 
-  // Label kompas kecil di status bar (arah + altitude kasar)
-  const headingLabel = document.getElementById('skymap-heading-label');
-  if (headingLabel) {
+  // Label kompas — DOM element di-cache, tidak query ulang tiap frame
+  if (!skymapHeadingLabelEl) skymapHeadingLabelEl = document.getElementById('skymap-heading-label');
+  if (skymapHeadingLabelEl) {
     const dirs = ['Utara', 'Timur Laut', 'Timur', 'Tenggara', 'Selatan', 'Barat Daya', 'Barat', 'Barat Laut'];
     const centerAz = ((deviceHeading + skymapDragOffsetAz) % 360 + 360) % 360;
     const dirName = dirs[Math.round(centerAz / 45) % 8];
-    headingLabel.textContent = `🧭 ${dirName} (${Math.round(centerAz)}°) · ${Math.round(deviceAlt + skymapDragOffsetAlt)}° dari horizon`;
+    skymapHeadingLabelEl.textContent = `🧭 ${dirName} (${Math.round(centerAz)}°) · ${Math.round(deviceAlt + skymapDragOffsetAlt)}° dari horizon`;
   }
 }
 
@@ -1226,10 +1235,10 @@ async function startSkyAR() {
       throw new Error('no-orientation-support');
     }
 
-    // 3) Kamera — untuk latar belakang AR (video tidak dianalisis, cuma ditampilkan)
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-    skymapVideo.srcObject = stream;
-
+    // Catatan: kamera SENGAJA TIDAK dipakai di sini. Latar belakang dibuat hitam polos supaya
+    // rasi/label tetap kebaca jelas di kondisi apapun (bukan AR video asli), tapi arah pandang
+    // tetap ditentukan kompas & giroskop fisik HP — jadi tetap "arahkan HP ke suatu arah" seperti
+    // Stellarium, cuma tanpa video kamera sebagai latar.
     setupOrientationListener();
     computeFrozenSky(); // hitung LST & posisi planet SEKALI, dibekukan sepanjang sesi ini
     document.getElementById('skymap-permission-gate').classList.add('hidden');
@@ -1248,8 +1257,6 @@ async function startSkyAR() {
       showGateError('Izin sensor arah (kompas) ditolak. Tanpa ini, Peta Langit tidak tahu HP diarahkan ke mana.');
     } else if (err.message === 'no-orientation-support' ) {
       showGateError('Perangkat/browser ini tidak mendukung sensor orientasi (biasanya terjadi di desktop/laptop). Fitur ini perlu HP dengan kompas & giroskop.');
-    } else if (err.name === 'NotAllowedError') {
-      showGateError('Izin kamera ditolak. Tanpa kamera, tidak ada latar langit asli untuk overlay rasi bintang.');
     } else {
       showGateError('Gagal mengaktifkan: ' + (err.message || 'error tidak diketahui') + '. Pastikan pakai HTTPS dan browser modern (Chrome/Safari terbaru).');
     }
@@ -1273,13 +1280,26 @@ function setupOrientationListener() {
     } else {
       return; // tidak ada data arah sama sekali
     }
-    deviceHeading = heading;
+
+    // Smoothing ringan (exponential moving average) supaya pembacaan sensor yang sedikit
+    // "melompat" antar-event tidak langsung snap kasar di layar, tapi transisi lebih mulus.
+    // Heading butuh penanganan wrap-around khusus (contoh: dari 359° ke 1° itu selisihnya
+    // cuma 2°, bukan 358°, kalau dirata-rata langsung tanpa koreksi ini akan salah arah).
+    if (deviceHeading === null) {
+      deviceHeading = heading;
+    } else {
+      let diff = heading - deviceHeading;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      deviceHeading = (deviceHeading + diff * 0.35 + 360) % 360;
+    }
 
     // beta = kemiringan depan-belakang (-180..180). Saat HP tegak lurus memotret ke depan
     // (posisi wajar buat "mengarahkan ke langit"), beta ~90 = altitude 0 (horizon),
     // beta ~180/-180 = altitude 90 (lurus ke atas/zenith).
     if (e.beta !== null) {
-      deviceAlt = Math.max(-90, Math.min(90, e.beta - 90));
+      const targetAlt = Math.max(-90, Math.min(90, e.beta - 90));
+      deviceAlt = deviceAlt + (targetAlt - deviceAlt) * 0.35;
     }
   }, true);
 }
@@ -1291,7 +1311,6 @@ function setupOrientationListener() {
 function setupSkymap() {
   skymapCanvas = document.getElementById('skymap-canvas');
   skymapCtx = skymapCanvas.getContext('2d');
-  skymapVideo = document.getElementById('skymap-video');
   resizeSkymapCanvas();
   window.addEventListener('resize', resizeSkymapCanvas);
 
