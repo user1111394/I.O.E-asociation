@@ -370,7 +370,10 @@ async function cosmosSend() {
     if (!reply) throw new Error('Respons kosong');
     convo.push({ role: 'assistant', content: reply });
     hideTyping();
-    appendMsg('ai', '<p>' + md(reply) + '</p>' + renderSources(data.sources));
+    const failNote = data.searchFailed
+      ? '<div class="cosmos-sources"><div class="cosmos-sources-title">⚠️ Pencarian web tidak berhasil — jawaban ini belum diverifikasi dengan sumber.</div></div>'
+      : '';
+    appendMsg('ai', '<p>' + md(reply) + '</p>' + renderSources(data.sources) + failNote);
 
     // Tampilkan sisa kuota kalau mendekati batas
     if (data.quota) {
