@@ -188,6 +188,40 @@ body { overflow:hidden; }
   max-width:100%; border-radius:10px; margin-top:6px; display:block;
 }
 
+/* Sandbox 3D */
+#cosmos-sandboxBtn {
+  font-family:'Inter',sans-serif; font-size:0.72rem;
+  color:var(--text-muted); background:transparent;
+  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
+  padding:5px 12px; cursor:pointer; transition:all 0.18s;
+}
+#cosmos-sandboxBtn.on {
+  color:#04040f; background:#7c5cff; border-color:#7c5cff; font-weight:600;
+}
+.sandbox-frame-wrap {
+  position:relative; width:100%; aspect-ratio:4/3; max-width:420px;
+  background:#08060f; border:1px solid rgba(255,255,255,0.12); border-radius:10px;
+  overflow:hidden; margin-top:6px;
+}
+.sandbox-frame-wrap iframe { width:100%; height:100%; border:0; display:block; }
+.sandbox-status {
+  font-family:'Inter',sans-serif; font-size:0.72rem; color:rgba(255,255,255,0.55);
+  margin-top:6px; display:flex; align-items:center; gap:6px;
+}
+.sandbox-status .dot {
+  width:6px; height:6px; border-radius:50%; background:#7c5cff; flex-shrink:0;
+  animation: sbpulse 1s infinite ease-in-out;
+}
+@keyframes sbpulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+.sandbox-round-badge {
+  font-family:'Inter',sans-serif; font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:4px;
+}
+.sandbox-download-btn {
+  display:inline-block; margin-top:8px; font-family:'Inter',sans-serif; font-size:0.72rem;
+  color:#04040f; background:#7c5cff; border-radius:8px; padding:6px 14px;
+  text-decoration:none; font-weight:600;
+}
+
 /* Daftar sumber di bawah jawaban */
 .cosmos-sources {
   margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);
@@ -249,6 +283,7 @@ body { overflow:hidden; }
            Kode JS (toggleImageMode, renderGeneratedImage) dan backend (generateImage di ai.js)
            dibiarkan utuh supaya gampang diaktifkan lagi nanti kalau billing sudah disiapkan —
            tinggal kembalikan baris <button id="cosmos-imageBtn"> ini. -->
+      <button id="cosmos-sandboxBtn" type="button" onclick="toggleSandboxMode()">🧊 Sandbox 3D: MATI</button>
       <span class="cosmos-tools-hint" id="cosmos-searchHint">Nyalakan untuk info terkini + sumber</span>
     </div>
     <div class="cosmos-input-row">
@@ -305,6 +340,18 @@ function syncSearchBtn() {
   btn.textContent = '🌐 Cari di web: ' + (searchMode ? 'NYALA' : 'MATI');
 }
 
+let sandboxMode = false; // mode sandbox 3D, saling eksklusif dengan searchMode & imageMode
+function toggleSandboxMode() {
+  sandboxMode = !sandboxMode;
+  if (sandboxMode && searchMode) { searchMode = false; syncSearchBtn(); }
+  const btn = document.getElementById('cosmos-sandboxBtn');
+  btn.classList.toggle('on', sandboxMode);
+  btn.textContent = '🧊 Sandbox 3D: ' + (sandboxMode ? 'NYALA' : 'MATI');
+  document.getElementById('cosmos-searchHint').textContent = sandboxMode
+    ? 'Mode sandbox aktif — Cosmos akan membuat objek 3D interaktif'
+    : 'Nyalakan untuk info terkini + sumber';
+}
+
 // Escape lengkap (termasuk tanda kutip) karena hasilnya dipakai di dalam atribut href.
 function escAttr(s) {
   return String(s == null ? '' : s)
@@ -320,6 +367,251 @@ function renderGeneratedImage(img) {
   if (!img || !okMime.includes(img.mime) || typeof img.data !== 'string') return '';
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(img.data) || img.data.length < 100) return '';
   return `<img class="cosmos-gen-image" src="data:${img.mime};base64,${img.data}" alt="Gambar dibuat AI">`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SANDBOX 3D
+// Kode dari 120B dijalankan di <iframe sandbox> — TERISOLASI dari halaman utama (tidak bisa akses
+// localStorage/cookie/DOM Cosmos). Komunikasi HANYA lewat postMessage terstruktur, satu arah jelas:
+// parent -> iframe: { type:'sandbox-run', code }
+// iframe -> parent: { type:'sandbox-ready' } | { type:'sandbox-screenshot', dataUri } | { type:'sandbox-error', message }
+// ═══════════════════════════════════════════════════════════════
+
+// HTML lengkap untuk isi iframe. Three.js dimuat dari CDN cdnjs (satu-satunya host skrip eksternal
+// yang diizinkan kebijakan sandbox proyek ini). scene/camera/renderer disiapkan environment;
+// kode dari 120B HANYA boleh menambah objek ke `scene` (lihat system prompt di ai.js).
+function buildSandboxIframeHtml() {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;padding:0;overflow:hidden;background:#08060f;width:100%;height:100%;}
+canvas{display:block;}
+</style></head><body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
+<script>
+// --- Environment tetap (disediakan, bukan bagian dari kode yang ditulis 120B) ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 1.2, 4);
+camera.lookAt(0, 0, 0);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(3, 5, 2);
+scene.add(dirLight);
+window.sandboxObjects = []; // kode 120B mengisi ini kalau butuh objek berotasi otomatis
+
+let running = true;
+function animate() {
+  if (!running) return;
+  requestAnimationFrame(animate);
+  for (const o of (window.sandboxObjects || [])) {
+    if (o && o.mesh && typeof o.rotationSpeed === 'number') o.mesh.rotation.y += o.rotationSpeed;
+  }
+  renderer.render(scene, camera);
+}
+animate();
+
+// --- Jembatan komunikasi ke parent (HANYA lewat postMessage, tidak ada akses langsung) ---
+window.addEventListener('message', (ev) => {
+  const msg = ev.data;
+  if (!msg || msg.type !== 'sandbox-run') return;
+  try {
+    // Kode dari 120B dieksekusi di sini. Terisolasi oleh atribut sandbox iframe di parent
+    // (allow-scripts TANPA allow-same-origin), jadi walau kode ini mencoba akses window.parent
+    // atau document.cookie, browser akan memblokirnya di level origin, bukan cuma dipercaya oleh kode ini.
+    // eslint-disable-next-line no-new-func
+    const fn = new Function('scene', 'camera', 'THREE', msg.code);
+    fn(scene, camera, THREE);
+    // Tunggu 1 frame render sebelum screenshot, supaya objek baru sempat tergambar
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try {
+          const dataUri = renderer.domElement.toDataURL('image/jpeg', 0.7);
+          parent.postMessage({ type: 'sandbox-screenshot', dataUri }, '*');
+        } catch (e) {
+          parent.postMessage({ type: 'sandbox-error', message: 'Gagal mengambil screenshot: ' + e.message }, '*');
+        }
+      });
+    });
+  } catch (e) {
+    parent.postMessage({ type: 'sandbox-error', message: e.message || String(e) }, '*');
+  }
+});
+parent.postMessage({ type: 'sandbox-ready' }, '*');
+<\/script>
+</body></html>`;
+}
+
+// Menjalankan satu kode di iframe dan menunggu hasilnya (screenshot atau error), dengan timeout
+// jaga-jaga kalau kode 120B membuat sesuatu yang menggantung (loop berat, dsb).
+function runInSandboxIframe(iframe, code) {
+  return new Promise((resolve) => {
+    let done = false;
+    const timeout = setTimeout(() => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('message', onMsg);
+      resolve({ ok: false, error: 'Waktu render habis (kode mungkin terlalu berat atau macet).' });
+    }, 8000);
+
+    function onMsg(ev) {
+      if (ev.source !== iframe.contentWindow) return;
+      const msg = ev.data;
+      if (!msg) return;
+      if (msg.type === 'sandbox-screenshot') {
+        if (done) return; done = true;
+        clearTimeout(timeout); window.removeEventListener('message', onMsg);
+        resolve({ ok: true, dataUri: msg.dataUri });
+      } else if (msg.type === 'sandbox-error') {
+        if (done) return; done = true;
+        clearTimeout(timeout); window.removeEventListener('message', onMsg);
+        resolve({ ok: false, error: msg.message });
+      }
+    }
+    window.addEventListener('message', onMsg);
+    iframe.contentWindow.postMessage({ type: 'sandbox-run', code }, '*');
+  });
+}
+
+// Menunggu iframe selesai load Three.js dan siap menerima kode (event 'sandbox-ready').
+function waitSandboxReady(iframe) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => { window.removeEventListener('message', onMsg); resolve(false); }, 10000);
+    function onMsg(ev) {
+      if (ev.source !== iframe.contentWindow) return;
+      if (ev.data?.type === 'sandbox-ready') {
+        clearTimeout(timeout); window.removeEventListener('message', onMsg); resolve(true);
+      }
+    }
+    window.addEventListener('message', onMsg);
+  });
+}
+
+async function callSandboxAPI(payload) {
+  const res = await fetch(AI_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId: myDeviceId, sandboxMode: true, ...payload }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+// Orkestrasi utama: generate -> render di iframe -> screenshot -> evaluate -> (ulang kalau perlu).
+// Berjalan otomatis tanpa member perlu klik apa pun di antara putaran.
+async function runSandboxLoop(prompt, statusEl, frameWrap) {
+  const iframe = document.createElement('iframe');
+  // "allow-scripts" SAJA tanpa "allow-same-origin": ini kombinasi kunci yang membuat browser
+  // memperlakukan iframe sebagai origin unik & terisolasi — kode di dalamnya tidak bisa membaca
+  // atau memodifikasi apa pun di halaman Cosmos, walau kodenya sendiri mencoba melakukannya.
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  frameWrap.appendChild(iframe);
+  iframe.srcdoc = buildSandboxIframeHtml();
+
+  const ready = await waitSandboxReady(iframe);
+  if (!ready) {
+    statusEl.textContent = '⚠️ Sandbox gagal dimuat (kemungkinan koneksi ke CDN Three.js bermasalah).';
+    return;
+  }
+
+  let history = [];
+  for (let round = 0; round < SANDBOX_MAX_ROUNDS_CLIENT; round++) {
+    statusEl.innerHTML = `<span class="dot"></span> ${round === 0 ? 'Merancang objek 3D' : 'Merevisi berdasarkan evaluasi'}...`;
+
+    const genRes = await callSandboxAPI({
+      sandboxStep: 'generate', sandboxPrompt: prompt,
+      sandboxHistory: round === 0 ? undefined : history,
+    });
+    if (!genRes.ok) {
+      if (genRes.status === 429) {
+        statusEl.innerHTML = `⚠️ Kuota sandbox 3D harian sudah habis (${genRes.data.sandboxQuota?.used}/${genRes.data.sandboxQuota?.limit}). ${genRes.data.resetInfo || ''}`;
+      } else {
+        statusEl.textContent = '⚠️ ' + (genRes.data.error || 'Gagal membuat kode 3D.');
+      }
+      return;
+    }
+    const code = genRes.data.sandboxCode;
+
+    statusEl.innerHTML = `<span class="dot"></span> Merender di sandbox...`;
+    const renderResult = await runInSandboxIframe(iframe, code);
+    if (!renderResult.ok) {
+      // Render gagal (error JS di kode 120B) dianggap seperti "evaluasi tidak match" —
+      // masukkan pesan errornya sebagai feedback supaya putaran berikutnya memperbaikinya.
+      history.push({ code, feedback: 'Kode sebelumnya error saat dijalankan: ' + renderResult.error });
+      if (round === SANDBOX_MAX_ROUNDS_CLIENT - 1) {
+        statusEl.textContent = '⚠️ Sandbox tidak berhasil merender setelah beberapa percobaan.';
+        return;
+      }
+      continue;
+    }
+
+    statusEl.innerHTML = `<span class="dot"></span> Mengevaluasi kemiripan...`;
+    const evalRes = await callSandboxAPI({
+      sandboxStep: 'evaluate', sandboxPrompt: prompt, sandboxScreenshot: renderResult.dataUri,
+    });
+    const matches = evalRes.ok ? evalRes.data.sandboxMatches !== false : true; // gagal evaluasi -> anggap cukup
+    const feedback = evalRes.ok ? evalRes.data.sandboxFeedback : '';
+    const score = evalRes.ok ? evalRes.data.sandboxScore : null;
+
+    if (matches || round === SANDBOX_MAX_ROUNDS_CLIENT - 1) {
+      statusEl.innerHTML = `✅ Selesai${score !== null ? ` (kemiripan ${score}/100)` : ''} — ${round + 1} putaran.`;
+      // Simpan kode final untuk tombol download
+      frameWrap.dataset.finalCode = code;
+      return;
+    }
+    history.push({ code, feedback });
+  }
+}
+const SANDBOX_MAX_ROUNDS_CLIENT = 3;
+
+// Membungkus kode object-only dari 120B menjadi file .html standalone yang bisa didownload
+// dan dibuka langsung di browser mana pun (tanpa perlu Cosmos), untuk tombol "Download".
+function wrapSandboxCodeAsStandaloneHtml(code, prompt) {
+  const escapedPrompt = escAttr(prompt);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapedPrompt} — I.O.E Sandbox 3D</title><style>
+html,body{margin:0;padding:0;overflow:hidden;background:#08060f;width:100%;height:100vh;}
+canvas{display:block;}
+</style></head><body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.js"><\/script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0, 1.2, 4);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(3,5,2); scene.add(dirLight);
+window.sandboxObjects = [];
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+${code}
+function animate(){
+  requestAnimationFrame(animate);
+  for (const o of (window.sandboxObjects||[])) if (o && o.mesh && typeof o.rotationSpeed==='number') o.mesh.rotation.y += o.rotationSpeed;
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+<\/script>
+</body></html>`;
+}
+
+function downloadSandboxResult(frameWrap, prompt) {
+  const code = frameWrap.dataset.finalCode;
+  if (!code) return;
+  const html = wrapSandboxCodeAsStandaloneHtml(code, prompt);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'sandbox3d.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 // Judul & URL sumber berasal dari internet, jadi TIDAK dipercaya: hanya URL https:// yang dijadikan
 // tautan (menolak javascript:, data:, dll), dan semua teks di-escape sebelum masuk innerHTML.
@@ -366,6 +658,7 @@ function appendMsg(role, html, extra) {
   wrap.innerHTML = `<div class="c-avatar">${avi}</div><div class="${bClass}">${html}</div>`;
   chat.appendChild(wrap);
   chat.scrollTop = chat.scrollHeight;
+  return wrap.querySelector('.' + bClass.split(' ')[0]);
 }
 
 function showTyping() {
@@ -387,6 +680,34 @@ async function cosmosSend() {
   busy = true; document.getElementById('cosmos-sendBtn').disabled = true;
   const prompt = topic ? `[Topik: ${topic}] ${raw}` : raw;
   appendMsg('user', escHtml(raw));
+
+  // MODE SANDBOX 3D: bubble berisi iframe live, loop generate-render-evaluate berjalan
+  // otomatis di dalamnya. Tidak masuk ke `convo` (riwayat chat teks) karena tidak relevan
+  // sebagai konteks percakapan berikutnya.
+  if (sandboxMode) {
+    const bubble = appendMsg('ai', `
+      <div class="sandbox-status" id="sb-status-${Date.now()}"><span class="dot"></span> Menyiapkan sandbox...</div>
+      <div class="sandbox-frame-wrap"></div>
+    `);
+    const statusEl = bubble.querySelector('.sandbox-status');
+    const frameWrap = bubble.querySelector('.sandbox-frame-wrap');
+    busy = true; document.getElementById('cosmos-sendBtn').disabled = true;
+    try {
+      await runSandboxLoop(raw, statusEl, frameWrap);
+      if (frameWrap.dataset.finalCode) {
+        const dlBtn = document.createElement('a');
+        dlBtn.href = '#'; dlBtn.className = 'sandbox-download-btn'; dlBtn.textContent = '⬇️ Download sebagai HTML';
+        dlBtn.onclick = (e) => { e.preventDefault(); downloadSandboxResult(frameWrap, raw); };
+        bubble.appendChild(dlBtn);
+      }
+    } catch (e) {
+      statusEl.textContent = '⚠️ Terjadi kesalahan: ' + e.message;
+    }
+    busy = false;
+    document.getElementById('cosmos-sendBtn').disabled = false;
+    document.getElementById('cosmos-inp').focus();
+    return;
+  }
 
   // MODE GAMBAR: alur terpisah dari chat teks. Prompt gambar TIDAK dimasukkan ke `convo`
   // (riwayat percakapan teks Groq), karena hasilnya berupa data base64 besar yang tidak relevan
