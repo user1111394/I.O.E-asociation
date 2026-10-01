@@ -174,14 +174,6 @@ export default async function handler(req, res) {
   }
 
   const DB_URL = process.env.FIREBASE_DB_URL;
-
-  // DEBUG SEMENTARA: mencatat bentuk req.body mentah untuk melacak bug "messages diperlukan"
-  // yang muncul walau sandboxMode dikirim true dari frontend. Hapus log ini setelah ketemu akarnya.
-  console.log('[ai][DEBUG] typeof req.body:', typeof req.body);
-  console.log('[ai][DEBUG] req.body keys:', req.body && typeof req.body === 'object' ? Object.keys(req.body) : '(bukan object)');
-  console.log('[ai][DEBUG] sandboxMode value:', JSON.stringify(req.body?.sandboxMode));
-  console.log('[ai][DEBUG] content-type header:', req.headers?.['content-type']);
-
   const { messages, deviceId, searchMode, imageMode, sandboxMode, sandboxStep, sandboxPrompt, sandboxCode, sandboxScreenshot, sandboxHistory } = req.body;
   // Tavily hanya boleh dipakai kalau member SENGAJA menyalakan mode pencarian. Hanya 1 key Tavily,
   // jadi tanpa flag ini Cosmos menjawab dari pengetahuannya sendiri dan tidak menyentuh kuota Tavily.
@@ -361,6 +353,8 @@ ${round === 0
       const data = await response.json();
       const code = stripCodeFence(data.choices?.[0]?.message?.content);
       if (!code) return res.status(502).json({ error: 'Model tidak menghasilkan kode' });
+      // DEBUG SEMENTARA: lihat kode asli yang ditulis 120B untuk diagnosis kualitas hasil 3D.
+      console.log(`[ai][DEBUG] sandbox code round ${round}:`, code.slice(0, 1500));
 
       return res.status(200).json({
         sandboxCode: code,
