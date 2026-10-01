@@ -9,6 +9,13 @@ const QUOTA_PREMIUM = 150;  // chat/hari untuk member premium
 const IMAGE_QUOTA_REGULAR = 3;   // gambar/hari untuk member biasa
 const IMAGE_QUOTA_PREMIUM = 10;  // gambar/hari untuk member premium
 
+// Sandbox 3D dibatasi terpisah karena satu permintaan bisa memicu sampai 3x panggilan 120B
+// (generate kode) + 3x panggilan Qwen vision (evaluasi) — jauh lebih berat dari 1 chat biasa.
+const SANDBOX_QUOTA_REGULAR = 5;
+const SANDBOX_QUOTA_PREMIUM = 15;
+const SANDBOX_MAX_ROUNDS = 3;
+const VISION_MODEL = 'qwen/qwen3.8-27b';
+
 const MODEL = 'openai/gpt-oss-120b';
 
 // Model gambar Gemini (Nano Banana). "Lite" = paling murah & cepat, hanya 1K. Kalau kualitasnya kurang,
@@ -30,6 +37,27 @@ async function callGroq(key, payload) {
     body: JSON.stringify(payload),
   });
   return response;
+}
+
+// Model kadang membungkus kode dengan ```javascript ... ``` walau diminta tidak. Ini jaring pengaman
+// supaya kode yang dikirim ke browser tidak mengandung pagar markdown yang bikin iframe error.
+function stripCodeFence(text) {
+  const trimmed = String(text || '').trim();
+  const match = trimmed.match(/^```(?:javascript|js)?\s*([\s\S]*?)\s*```$/);
+  return match ? match[1].trim() : trimmed;
+}
+
+// Validasi data URI gambar dari CLIENT sebelum dikirim ke Qwen. Ini data yang dibuat oleh browser
+// member sendiri (screenshot canvas), tapi tetap divalidasi karena payload JSON dari client tidak
+// pernah dipercaya begitu saja — bentuknya harus benar dan ukurannya dibatasi supaya tidak membebani
+// Groq (base64 4MB) atau memory function.
+function parseImageDataUri(dataUri) {
+  if (typeof dataUri !== 'string') return null;
+  const m = dataUri.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!m) return null;
+  const approxBytes = (m[2].length * 3) / 4;
+  if (approxBytes > 3.5 * 1024 * 1024) return null; // batas aman di bawah limit 4MB Groq
+  return { mime: `image/${m[1]}`, base64: m[2], dataUri };
 }
 
 // Kumpulkan key Gemini dari GEMINI_API_KEY_1 s/d GEMINI_API_KEY_5. Yang kosong dilewati.
@@ -146,15 +174,16 @@ export default async function handler(req, res) {
   }
 
   const DB_URL = process.env.FIREBASE_DB_URL;
-  const { messages, deviceId, searchMode, imageMode } = req.body;
+  const { messages, deviceId, searchMode, imageMode, sandboxMode, sandboxStep, sandboxPrompt, sandboxCode, sandboxScreenshot, sandboxHistory } = req.body;
   // Tavily hanya boleh dipakai kalau member SENGAJA menyalakan mode pencarian. Hanya 1 key Tavily,
   // jadi tanpa flag ini Cosmos menjawab dari pengetahuannya sendiri dan tidak menyentuh kuota Tavily.
   const useSearch = searchMode === true && !!process.env.TAVILY_API_KEY;
-  if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: 'messages diperlukan' });
-  }
   if (!deviceId) {
     return res.status(400).json({ error: 'deviceId diperlukan' });
+  }
+  // messages hanya wajib untuk mode chat biasa. Mode gambar & sandbox punya sumber prompt sendiri.
+  if (!sandboxMode && imageMode !== true && (!messages || !Array.isArray(messages))) {
+    return res.status(400).json({ error: 'messages diperlukan' });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -224,6 +253,155 @@ export default async function handler(req, res) {
       image: { mime: img.mime, data: img.data },
       imageQuota: { used: newImgUsed, limit: imgLimit, isPremium: imgPremium },
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // MODE SANDBOX 3D — 120B menulis kode Three.js, Qwen vision membandingkan screenshot hasil
+  // render (dari BROWSER member) dengan permintaan asli, lalu 120B merevisi kalau kurang mirip.
+  // Server tidak pernah menjalankan kode 3D — hanya menulis & mengevaluasinya lewat teks/gambar.
+  // ═══════════════════════════════════════════════════════════════
+  if (sandboxMode === true) {
+    if (sandboxStep !== 'generate' && sandboxStep !== 'evaluate') {
+      return res.status(400).json({ error: 'sandboxStep harus "generate" atau "evaluate"' });
+    }
+
+    // Kuota dicek SEKALI per permintaan baru (round 0 dari step generate), bukan tiap putaran —
+    // supaya 1 permintaan member (yang di baliknya bisa sampai 3 putaran generate+evaluate)
+    // tetap dihitung sebagai 1 pemakaian kuota sandbox, bukan 3.
+    const isFirstRound = sandboxStep === 'generate' && !Array.isArray(sandboxHistory);
+    let sbUsed = 0, sbLimit = SANDBOX_QUOTA_REGULAR, sbPremium = false;
+    const sbDay = todayKey();
+
+    if (isFirstRound) {
+      if (!DB_URL) {
+        return res.status(503).json({ error: 'Fitur sandbox 3D belum siap (penyimpanan kuota belum terhubung).' });
+      }
+      try {
+        const memberRes = await fetch(`${DB_URL}/members/${deviceId}.json`);
+        const memberData = await memberRes.json();
+        sbPremium = !!(memberData && memberData.premium);
+        sbLimit = sbPremium ? SANDBOX_QUOTA_PREMIUM : SANDBOX_QUOTA_REGULAR;
+        const uRes = await fetch(`${DB_URL}/sandbox_usage/${deviceId}/${sbDay}.json`);
+        const uData = await uRes.json();
+        sbUsed = typeof uData === 'number' ? uData : 0;
+      } catch (e) {
+        console.error('[ai] Gagal membaca kuota sandbox:', e.message);
+        return res.status(503).json({ error: 'Tidak bisa memeriksa kuota sandbox saat ini, coba lagi sebentar.' });
+      }
+      if (sbUsed >= sbLimit) {
+        return res.status(429).json({
+          error: 'Kuota sandbox 3D harian kamu sudah habis',
+          sandboxQuota: { used: sbUsed, limit: sbLimit, isPremium: sbPremium },
+          resetInfo: 'Kuota akan reset otomatis jam 00:00 WIB',
+        });
+      }
+      // Dicatat SEKARANG (di awal), bukan di akhir — beda dengan gambar. Alasan: sandbox
+      // menghabiskan biaya (beberapa panggilan 120B) bahkan kalau member menutup halaman
+      // sebelum putaran selesai, jadi tidak ada momen "berhasil" tunggal untuk jadi patokan.
+      try {
+        await fetch(`${DB_URL}/sandbox_usage/${deviceId}/${sbDay}.json`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sbUsed + 1),
+        });
+      } catch (e) {
+        console.error('[ai] Gagal mencatat pemakaian sandbox:', e.message);
+      }
+      sbUsed += 1;
+    }
+
+    const shuffledKeys = [...availableKeys].sort(() => Math.random() - 0.5);
+    async function callModel(payload) {
+      let response = null;
+      for (const key of shuffledKeys) {
+        response = await callGroq(key, payload);
+        if (response.ok) break;
+        if (response.status === 429 || response.status === 401) continue;
+        break;
+      }
+      return response;
+    }
+
+    // ── STEP: GENERATE — 120B menulis (atau merevisi) kode Three.js ──
+    if (sandboxStep === 'generate') {
+      const prompt = String(sandboxPrompt || '').trim().slice(0, 800);
+      if (!prompt) return res.status(400).json({ error: 'Deskripsi objek 3D kosong' });
+      const history = Array.isArray(sandboxHistory) ? sandboxHistory.slice(-SANDBOX_MAX_ROUNDS) : [];
+      const round = history.length;
+
+      const sysPrompt = `Kamu menulis kode JavaScript Three.js (r128, sudah dimuat sebagai variabel global THREE, TIDAK ADA OrbitControls) untuk sebuah SANDBOX EDUKASI astronomi.
+
+ATURAN WAJIB:
+1. Tulis HANYA kode JavaScript murni. TANPA blok markdown, TANPA penjelasan, TANPA komentar pembuka/penutup di luar kode.
+2. Variabel "scene", "camera", "renderer" SUDAH DISEDIAKAN oleh environment (jangan buat ulang, jangan panggil new THREE.Scene() dsb). Kamu HANYA menambahkan objek ke variabel "scene" yang sudah ada.
+3. JANGAN membuat animation loop sendiri (jangan panggil requestAnimationFrame). Environment sudah menjalankan render loop. Kalau objek perlu berotasi, simpan objeknya ke variabel global "window.sandboxObjects = [...]" (array of {mesh, rotationSpeed}) — environment akan memutarnya otomatis tiap frame.
+4. JANGAN mengakses network (fetch, XMLHttpRequest, import), JANGAN mengakses localStorage/cookie, JANGAN mengakses "window.parent" atau "window.top".
+5. Gunakan hanya geometri & material bawaan Three.js r128 (BoxGeometry, SphereGeometry, TorusGeometry, dll + MeshStandardMaterial/MeshBasicMaterial). Tidak ada akses tekstur dari URL eksternal (tidak ada internet di sandbox) — pakai warna/material prosedural saja.
+6. Kode harus SELESAI DIEKSEKUSI CEPAT (di bawah 1 detik). Jangan bikin loop berat/rekursif.
+
+${round === 0
+  ? `Buat objek 3D sesuai permintaan ini: "${prompt}"`
+  : `Permintaan asli: "${prompt}"\n\nIni revisi ke-${round + 1}. Kode sebelumnya dinilai KURANG MIRIP oleh evaluator. Catatan evaluator: "${history[history.length - 1]?.feedback || '(tidak ada catatan)'}"\n\nPerbaiki kode di bawah berdasarkan catatan itu, tetap penuhi semua ATURAN WAJIB di atas:\n\n${history[history.length - 1]?.code || ''}`}`;
+
+      const response = await callModel({
+        model: MODEL, max_tokens: 2048, temperature: 0.5, reasoning_effort: 'medium',
+        messages: [{ role: 'system', content: sysPrompt }],
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error('[ai] Sandbox generate gagal:', response.status, JSON.stringify(err?.error || err).slice(0, 300));
+        return res.status(response.status).json({ error: err.error?.message || 'Gagal membuat kode 3D' });
+      }
+      const data = await response.json();
+      const code = stripCodeFence(data.choices?.[0]?.message?.content);
+      if (!code) return res.status(502).json({ error: 'Model tidak menghasilkan kode' });
+
+      return res.status(200).json({
+        sandboxCode: code,
+        sandboxRound: round,
+        sandboxQuota: isFirstRound ? { used: sbUsed, limit: sbLimit, isPremium: sbPremium } : undefined,
+      });
+    }
+
+    // ── STEP: EVALUATE — Qwen vision membandingkan screenshot dengan permintaan asli ──
+    if (sandboxStep === 'evaluate') {
+      const prompt = String(sandboxPrompt || '').trim().slice(0, 800);
+      const img = parseImageDataUri(sandboxScreenshot);
+      if (!prompt || !img) return res.status(400).json({ error: 'Screenshot atau prompt tidak valid' });
+
+      const visionSys = `Kamu mengevaluasi seberapa mirip sebuah render 3D dengan permintaan pengguna. Permintaan: "${prompt}".
+
+Jawab HANYA dengan JSON valid, format persis: {"score": <0-100>, "matches": <true/false>, "feedback": "<catatan singkat, max 2 kalimat, dalam Bahasa Indonesia>"}
+"matches" bernilai true kalau score >= 70 (render sudah cukup merepresentasikan permintaan, walau tidak sempurna). "feedback" HANYA diisi kalau matches false — jelaskan singkat apa yang perlu diperbaiki (bentuk, warna, proporsi, bagian yang hilang). Kalau matches true, isi feedback dengan string kosong.`;
+
+      const response = await callModel({
+        model: VISION_MODEL, max_tokens: 300, temperature: 0.3,
+        response_format: { type: 'json_object' },
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: visionSys },
+            { type: 'image_url', image_url: { url: img.dataUri } },
+          ],
+        }],
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error('[ai] Sandbox evaluate gagal:', response.status, JSON.stringify(err?.error || err).slice(0, 300));
+        // Gagal evaluasi TIDAK menggagalkan seluruh sandbox — anggap saja "cukup", supaya member
+        // tetap dapat hasil (kode yang sudah ada) daripada macet karena Qwen sedang bermasalah.
+        return res.status(200).json({ sandboxScore: null, sandboxMatches: true, sandboxFeedback: '(evaluasi otomatis gagal, render terakhir digunakan apa adanya)' });
+      }
+      const data = await response.json();
+      let parsed;
+      try { parsed = JSON.parse(data.choices?.[0]?.message?.content || '{}'); } catch (e) { parsed = {}; }
+      const score = typeof parsed.score === 'number' ? Math.max(0, Math.min(100, parsed.score)) : null;
+      const matches = score === null ? true : (parsed.matches === true || score >= 70);
+
+      return res.status(200).json({
+        sandboxScore: score,
+        sandboxMatches: matches,
+        sandboxFeedback: matches ? '' : String(parsed.feedback || 'Hasil belum sesuai permintaan.').slice(0, 400),
+      });
+    }
   }
 
   let isPremium = false;
