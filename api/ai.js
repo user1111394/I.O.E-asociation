@@ -336,6 +336,7 @@ ATURAN WAJIB:
 4. JANGAN mengakses network (fetch, XMLHttpRequest, import), JANGAN mengakses localStorage/cookie, JANGAN mengakses "window.parent" atau "window.top".
 5. Gunakan hanya geometri & material bawaan Three.js r128 (BoxGeometry, SphereGeometry, TorusGeometry, dll + MeshStandardMaterial/MeshBasicMaterial). Tidak ada akses tekstur dari URL eksternal (tidak ada internet di sandbox) — pakai warna/material prosedural saja.
 6. Kode harus SELESAI DIEKSEKUSI CEPAT (di bawah 1 detik). Jangan bikin loop berat/rekursif.
+7. SKALA WAJIB: kamera berada di posisi (0, 1.2, 4) menghadap ke titik asal (0,0,0) dengan field of view 50°. Objek utama HARUS berpusat di sekitar titik asal (0,0,0) dan berukuran total (termasuk bagian terluar seperti cincin atau lingkaran orbit) tidak lebih dari radius 2 unit dari pusat — supaya seluruh objek muat terlihat dalam frame kamera, tidak terlalu besar (kamera akan "masuk ke dalam" objek, hanya terlihat lengkungan kosong) dan tidak terlalu kecil (jadi titik tak terlihat). Sebagai acuan: bola planet utama sebaiknya berukuran radius 0.6-1 unit, dan cincin/orbit di sekitarnya tidak melebihi radius 2 unit dari pusat.
 
 ${round === 0
   ? `Buat objek 3D sesuai permintaan ini: "${prompt}"`
@@ -353,8 +354,8 @@ ${round === 0
       const data = await response.json();
       const code = stripCodeFence(data.choices?.[0]?.message?.content);
       if (!code) return res.status(502).json({ error: 'Model tidak menghasilkan kode' });
-      // DEBUG SEMENTARA: lihat kode asli yang ditulis 120B untuk diagnosis kualitas hasil 3D.
-      console.log(`[ai][DEBUG] sandbox code round ${round}:`, code.slice(0, 1500));
+      // Log kode untuk diagnosis kualitas hasil 3D kalau ada laporan bug serupa di masa depan.
+      console.log(`[ai] sandbox code round ${round} (${code.length} chars):`, code.slice(0, 300));
 
       return res.status(200).json({
         sandboxCode: code,
