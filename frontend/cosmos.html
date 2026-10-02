@@ -417,12 +417,50 @@ window.addEventListener('message', (ev) => {
   const msg = ev.data;
   if (!msg || msg.type !== 'sandbox-run') return;
   try {
+    // Tandai objek yang SUDAH ADA di scene sebelum kode baru dieksekusi (ambient/directional light
+    // environment), supaya setelah eksekusi kita tahu persis objek MANA SAJA yang baru ditambahkan
+    // oleh kode 120B — itu yang akan dinormalisasi ukurannya, bukan seluruh scene.
+    const existingChildren = new Set(scene.children);
+
     // Kode dari 120B dieksekusi di sini. Terisolasi oleh atribut sandbox iframe di parent
     // (allow-scripts TANPA allow-same-origin), jadi walau kode ini mencoba akses window.parent
     // atau document.cookie, browser akan memblokirnya di level origin, bukan cuma dipercaya oleh kode ini.
     // eslint-disable-next-line no-new-func
     const fn = new Function('scene', 'camera', 'THREE', msg.code);
     fn(scene, camera, THREE);
+
+    // JARING PENGAMAN SKALA: system prompt sudah menginstruksikan 120B membuat objek berukuran
+    // pas (radius ~2 unit dari pusat), tapi model generatif tidak selalu patuh pada angka spesifik.
+    // Daripada berharap 100% kepatuhan, kita hitung bounding box gabungan semua objek BARU yang
+    // ditambahkan, lalu auto-scale supaya selalu pas dengan frame kamera — apa pun ukuran asli
+    // yang ditulis model. Ini mencegah kejadian "kamera terjebak di dalam bola raksasa" permanen.
+    const newObjects = scene.children.filter(c => !existingChildren.has(c));
+    if (newObjects.length > 0) {
+      const box = new THREE.Box3();
+      for (const obj of newObjects) box.expandByObject(obj);
+      if (!box.isEmpty()) {
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const TARGET_MAX_DIM = 3.2; // diameter total target (radius ~1.6 dari pusat), muat nyaman di frame kamera
+
+        if (maxDim > 0) {
+          const scaleFactor = TARGET_MAX_DIM / maxDim;
+          // Bungkus semua objek baru dalam satu grup. attach() (bukan add()) dipakai supaya Three.js
+          // otomatis mengoreksi transform tiap objek agar posisi dunianya tidak berubah saat pindah
+          // parent — tanpa ini, objek akan "melompat" karena posisi lokalnya dihitung ulang terhadap
+          // parent baru tanpa kompensasi.
+          const wrapper = new THREE.Group();
+          scene.add(wrapper); // wrapper harus sudah jadi bagian scene graph sebelum attach() dipanggil
+          for (const obj of newObjects) wrapper.attach(obj);
+          // Setelah semua anak di-attach (posisi dunia tetap sama), baru pusatkan & skalakan wrapper-nya.
+          wrapper.position.sub(center);
+          wrapper.scale.setScalar(scaleFactor);
+          wrapper.position.multiplyScalar(scaleFactor);
+        }
+      }
+    }
+
     // Tunggu 1 frame render sebelum screenshot, supaya objek baru sempat tergambar
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -586,7 +624,29 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(3,5,2); scene.add(dirLight);
 window.sandboxObjects = [];
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+// Jaring pengaman skala (sama seperti di preview chat): objek yang ditulis AI diukur & dinormalisasi
+// otomatis supaya selalu muat pas di frame kamera, apa pun ukuran asli yang ditulis AI.
+const __existingBeforeUserCode = new Set(scene.children);
 ${code}
+(function normalizeScale(){
+  const newObjects = scene.children.filter(c => !__existingBeforeUserCode.has(c));
+  if (newObjects.length === 0) return;
+  const box = new THREE.Box3();
+  for (const obj of newObjects) box.expandByObject(obj);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const TARGET_MAX_DIM = 3.2;
+  if (maxDim <= 0) return;
+  const scaleFactor = TARGET_MAX_DIM / maxDim;
+  const wrapper = new THREE.Group();
+  scene.add(wrapper);
+  for (const obj of newObjects) wrapper.attach(obj);
+  wrapper.position.sub(center).multiplyScalar(scaleFactor);
+  wrapper.scale.setScalar(scaleFactor);
+})();
 function animate(){
   requestAnimationFrame(animate);
   for (const o of (window.sandboxObjects||[])) if (o && o.mesh && typeof o.rotationSpeed==='number') o.mesh.rotation.y += o.rotationSpeed;
