@@ -2,6 +2,7 @@
   "name": "ioe-hub",
   "version": "2.0.0",
   "description": "I.O.E Hub — International Organization of Education",
+  "type": "module",
   "scripts": {
     "dev": "vercel dev"
   },
@@ -9,6 +10,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "cloudinary": "^2.5.1"
+    "cloudinary": "^2.5.1",
+    "pureimage": "^0.4.20"
   }
 }
