@@ -2,8 +2,15 @@
 // Proxy untuk Groq AI (agar API key aman di backend)
 // Dilengkapi sistem kuota harian per member (deviceId) + dual API key
 
+import { renderSceneToPng, SceneValidationError } from './_render3d/renderScene.js';
+
 const QUOTA_REGULAR = 80;   // chat/hari untuk member biasa
 const QUOTA_PREMIUM = 150;  // chat/hari untuk member premium
+
+// Render 3D-ke-gambar lokal (bukan Gemini): dibatasi terpisah karena tiap render memakan
+// CPU server (rasterisasi) walau tidak memakai kuota API eksternal berbayar seperti Gemini.
+const RENDER3D_QUOTA_REGULAR = 15;
+const RENDER3D_QUOTA_PREMIUM = 50;
 
 // Gambar dibatasi terpisah dari kuota chat karena tiap gambar memakai kuota Gemini yang terbatas.
 const IMAGE_QUOTA_REGULAR = 3;   // gambar/hari untuk member biasa
@@ -174,7 +181,7 @@ export default async function handler(req, res) {
   }
 
   const DB_URL = process.env.FIREBASE_DB_URL;
-  const { messages, deviceId, searchMode, imageMode, sandboxMode, sandboxStep, sandboxPrompt, sandboxCode, sandboxScreenshot, sandboxHistory } = req.body;
+  const { messages, deviceId, searchMode, imageMode, sandboxMode, sandboxStep, sandboxPrompt, sandboxCode, sandboxScreenshot, sandboxHistory, render3dMode, render3dPrompt } = req.body;
   // Tavily hanya boleh dipakai kalau member SENGAJA menyalakan mode pencarian. Hanya 1 key Tavily,
   // jadi tanpa flag ini Cosmos menjawab dari pengetahuannya sendiri dan tidak menyentuh kuota Tavily.
   const useSearch = searchMode === true && !!process.env.TAVILY_API_KEY;
@@ -182,7 +189,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'deviceId diperlukan' });
   }
   // messages hanya wajib untuk mode chat biasa. Mode gambar & sandbox punya sumber prompt sendiri.
-  if (!sandboxMode && imageMode !== true && (!messages || !Array.isArray(messages))) {
+  if (!sandboxMode && !render3dMode && imageMode !== true && (!messages || !Array.isArray(messages))) {
     return res.status(400).json({ error: 'messages diperlukan' });
   }
 
@@ -252,6 +259,115 @@ export default async function handler(req, res) {
     return res.status(200).json({
       image: { mime: img.mime, data: img.data },
       imageQuota: { used: newImgUsed, limit: imgLimit, isPremium: imgPremium },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // MODE RENDER 3D LOKAL — Pengganti Gemini image generation (ditunda karena free tier = 0/hari).
+  // 120B menulis JSON scene (daftar bentuk geometri + posisi + warna + cahaya), lalu RENDER ENGINE
+  // BUATAN SENDIRI (render3d/*.js: rasterisasi segitiga + z-buffer + shading Lambertian, tanpa
+  // Three.js/WebGL/library 3D apa pun) menggambarnya jadi PNG di server. Tidak ada API eksternal
+  // berbayar yang dipakai di sini — biaya cuma CPU server sendiri.
+  // ═══════════════════════════════════════════════════════════════
+  if (render3dMode === true) {
+    const prompt = String(render3dPrompt || '').trim().slice(0, 500);
+    if (!prompt) return res.status(400).json({ error: 'Deskripsi gambar kosong' });
+
+    // Kuota, pola sama seperti imageMode: fail-closed kalau DB tidak bisa diakses, karena tanpa
+    // hitungan yang bisa dipercaya, satu member bisa membebani CPU server tanpa batas.
+    if (!DB_URL) {
+      return res.status(503).json({ error: 'Fitur render 3D belum siap (penyimpanan kuota belum terhubung).' });
+    }
+    const r3dDay = todayKey();
+    let r3dUsed = 0, r3dLimit = RENDER3D_QUOTA_REGULAR, r3dPremium = false;
+    try {
+      const memberRes = await fetch(`${DB_URL}/members/${deviceId}.json`);
+      const memberData = await memberRes.json();
+      r3dPremium = !!(memberData && memberData.premium);
+      r3dLimit = r3dPremium ? RENDER3D_QUOTA_PREMIUM : RENDER3D_QUOTA_REGULAR;
+      const uRes = await fetch(`${DB_URL}/render3d_usage/${deviceId}/${r3dDay}.json`);
+      const uData = await uRes.json();
+      r3dUsed = typeof uData === 'number' ? uData : 0;
+    } catch (e) {
+      console.error('[ai] Gagal membaca kuota render3d:', e.message);
+      return res.status(503).json({ error: 'Tidak bisa memeriksa kuota saat ini, coba lagi sebentar.' });
+    }
+    if (r3dUsed >= r3dLimit) {
+      return res.status(429).json({
+        error: 'Kuota render gambar harian kamu sudah habis',
+        render3dQuota: { used: r3dUsed, limit: r3dLimit, isPremium: r3dPremium },
+        resetInfo: 'Kuota akan reset otomatis jam 00:00 WIB',
+      });
+    }
+
+    // Minta 120B menulis JSON scene. Format dijelaskan detail di system prompt supaya model
+    // tahu persis skema yang diterima sceneParser.js (lihat render3d/sceneParser.js).
+    const sysPrompt = `Kamu mengubah deskripsi objek menjadi JSON scene 3D sederhana untuk di-render.
+
+ATURAN WAJIB:
+1. Jawab HANYA dengan JSON valid, TANPA markdown fence, TANPA teks penjelasan apapun.
+2. Format PERSIS seperti ini:
+{
+  "camera": { "position": {"x":0,"y":1,"z":8}, "target": {"x":0,"y":0,"z":0} },
+  "light": { "position": {"x":5,"y":8,"z":10}, "intensity": 1, "ambient": 0.2 },
+  "objects": [
+    { "type": "sphere", "radius": 1, "position": {"x":0,"y":0,"z":0}, "rotation": {"x":0,"y":0,"z":0}, "color": {"r":200,"g":150,"b":50} }
+  ]
+}
+3. "type" harus salah satu: "sphere" (radius), "box" (width,height,depth), "cylinder" (radiusTop,radiusBottom,height), "cone" (radius,height). JANGAN pakai tipe lain.
+4. SKALA WAJIB: kamera ada di jarak ~8 unit dari origin (0,0,0). Semua objek gabungan harus muat dalam radius ~3 unit dari origin supaya terlihat penuh di frame — jangan membuat objek dengan radius/ukuran lebih dari 2-3 unit, dan posisikan objek dekat origin (biasanya -2 sampai 2 di tiap sumbu).
+5. Maksimal 15 objek per scene. Warna dalam skala 0-255.
+6. Untuk objek dengan banyak bagian (misal "roket": badan + sirip + puncak), gunakan beberapa primitif sekaligus (box untuk badan, cone untuk puncak, dst) dengan posisi relatif yang masuk akal supaya terlihat seperti satu kesatuan.
+
+Deskripsi objek dari pengguna: "${prompt}"`;
+
+    const shuffledKeysR3D = [...availableKeys].sort(() => Math.random() - 0.5);
+    let response = null;
+    for (const key of shuffledKeysR3D) {
+      response = await callGroq(key, {
+        model: MODEL, max_tokens: 1500, temperature: 0.6, reasoning_effort: 'medium',
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: sysPrompt }],
+      });
+      if (response.ok) break;
+      if (response.status === 429 || response.status === 401) continue;
+      break;
+    }
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      console.error('[ai] render3d generate gagal:', response.status, JSON.stringify(err?.error || err).slice(0, 300));
+      return res.status(response.status).json({ error: 'Gagal membuat deskripsi 3D' });
+    }
+    const data = await response.json();
+    const sceneJsonText = data.choices?.[0]?.message?.content;
+    if (!sceneJsonText) return res.status(502).json({ error: 'Model tidak menghasilkan data scene' });
+
+    // Render pakai mesin buatan sendiri. SceneValidationError (data dari 120B tidak sesuai skema)
+    // ditangani terpisah dari error lain — pesan ke member tetap generik, detail ke log.
+    let renderResult;
+    try {
+      renderResult = await renderSceneToPng(sceneJsonText, { width: 512, height: 512 });
+    } catch (e) {
+      if (e instanceof SceneValidationError) {
+        console.error('[ai] render3d scene tidak valid:', e.message, '| JSON mentah:', sceneJsonText.slice(0, 500));
+        return res.status(502).json({ error: 'Gagal membuat gambar 3D (format tidak sesuai), coba deskripsi lain.' });
+      }
+      console.error('[ai] render3d gagal render:', e.message);
+      return res.status(500).json({ error: 'Gagal merender gambar 3D.' });
+    }
+
+    const newR3dUsed = r3dUsed + 1;
+    try {
+      await fetch(`${DB_URL}/render3d_usage/${deviceId}/${r3dDay}.json`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newR3dUsed),
+      });
+    } catch (e) {
+      console.error('[ai] Gagal mencatat pemakaian render3d:', e.message);
+    }
+
+    return res.status(200).json({
+      render3dImage: renderResult.dataUri,
+      render3dQuota: { used: newR3dUsed, limit: r3dLimit, isPremium: r3dPremium },
     });
   }
 
