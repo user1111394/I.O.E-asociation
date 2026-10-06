@@ -213,6 +213,23 @@ body { overflow:hidden; }
   animation: sbpulse 1s infinite ease-in-out;
 }
 @keyframes sbpulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+/* Render 3D (gambar statis, bukan interaktif seperti Sandbox 3D) */
+#cosmos-render3dBtn {
+  font-family:'Inter',sans-serif; font-size:0.72rem;
+  color:var(--text-muted); background:transparent;
+  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
+  padding:5px 12px; cursor:pointer; transition:all 0.18s;
+}
+#cosmos-render3dBtn.on {
+  color:#04040f; background:#ff9f5c; border-color:#ff9f5c; font-weight:600;
+}
+.render3d-image-wrap {
+  margin-top:6px; max-width:420px;
+}
+.render3d-image-wrap img {
+  width:100%; display:block; border-radius:10px; border:1px solid rgba(255,255,255,0.12);
+}
 .sandbox-round-badge {
   font-family:'Inter',sans-serif; font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:4px;
 }
@@ -284,6 +301,7 @@ body { overflow:hidden; }
            dibiarkan utuh supaya gampang diaktifkan lagi nanti kalau billing sudah disiapkan —
            tinggal kembalikan baris <button id="cosmos-imageBtn"> ini. -->
       <button id="cosmos-sandboxBtn" type="button" onclick="toggleSandboxMode()">🧊 Sandbox 3D: MATI</button>
+      <button id="cosmos-render3dBtn" type="button" onclick="toggleRender3dMode()">🖼️ Gambar 3D: MATI</button>
       <span class="cosmos-tools-hint" id="cosmos-searchHint">Nyalakan untuk info terkini + sumber</span>
     </div>
     <div class="cosmos-input-row">
@@ -311,18 +329,18 @@ getDeviceId().then(id => { myDeviceId = id; });
 
 function toggleSearchMode() {
   searchMode = !searchMode;
-  if (searchMode && imageMode) { imageMode = false; syncImageBtn(); } // saling eksklusif: satu request cuma satu mode
-  const btn = document.getElementById('cosmos-searchBtn');
-  btn.classList.toggle('on', searchMode);
-  btn.textContent = '🌐 Cari di web: ' + (searchMode ? 'NYALA' : 'MATI');
-  document.getElementById('cosmos-searchHint').textContent = searchMode
-    ? 'Cosmos akan mencari kalau perlu info terkini'
-    : (imageMode ? 'Mode gambar aktif — Cosmos akan membuat gambar, bukan menjawab teks' : 'Nyalakan untuk info terkini + sumber');
+  if (searchMode) deactivateOtherModes('search');
+  syncSearchBtn();
+  if (!searchMode) {
+    // Saat dimatikan, hint perlu dikembalikan sesuai mode lain yang mungkin masih aktif
+    if (imageMode) document.getElementById('cosmos-searchHint').textContent = 'Mode gambar aktif — Cosmos akan membuat gambar, bukan menjawab teks';
+    else if (!sandboxMode && !render3dMode) document.getElementById('cosmos-searchHint').textContent = 'Nyalakan untuk info terkini + sumber';
+  }
 }
 
 function toggleImageMode() {
   imageMode = !imageMode;
-  if (imageMode && searchMode) { searchMode = false; syncSearchBtn(); } // saling eksklusif
+  if (imageMode) deactivateOtherModes('image');
   syncImageBtn();
 }
 function syncImageBtn() {
@@ -340,16 +358,49 @@ function syncSearchBtn() {
   btn.textContent = '🌐 Cari di web: ' + (searchMode ? 'NYALA' : 'MATI');
 }
 
-let sandboxMode = false; // mode sandbox 3D, saling eksklusif dengan searchMode & imageMode
+let sandboxMode = false; // mode sandbox 3D, saling eksklusif dengan mode lain
+let render3dMode = false; // mode render gambar 3D statis, saling eksklusif dengan mode lain
+
+// Matikan semua mode LAIN selain yang disebut di `except`. Dipanggil di awal tiap toggle*Mode()
+// supaya tidak mungkin dua mode (search/image/sandbox/render3d) aktif bersamaan — satu request
+// cuma boleh satu mode, karena tiap mode mengirim payload & menagih kuota yang berbeda di ai.js.
+function deactivateOtherModes(except) {
+  if (except !== 'search' && searchMode) { searchMode = false; syncSearchBtn(); }
+  if (except !== 'image' && imageMode) { imageMode = false; syncImageBtn(); }
+  if (except !== 'sandbox' && sandboxMode) { sandboxMode = false; syncSandboxBtn(); }
+  if (except !== 'render3d' && render3dMode) { render3dMode = false; syncRender3dBtn(); }
+}
+
 function toggleSandboxMode() {
   sandboxMode = !sandboxMode;
-  if (sandboxMode && searchMode) { searchMode = false; syncSearchBtn(); }
+  if (sandboxMode) deactivateOtherModes('sandbox');
+  syncSandboxBtn();
+}
+function syncSandboxBtn() {
   const btn = document.getElementById('cosmos-sandboxBtn');
   btn.classList.toggle('on', sandboxMode);
   btn.textContent = '🧊 Sandbox 3D: ' + (sandboxMode ? 'NYALA' : 'MATI');
-  document.getElementById('cosmos-searchHint').textContent = sandboxMode
-    ? 'Mode sandbox aktif — Cosmos akan membuat objek 3D interaktif'
-    : 'Nyalakan untuk info terkini + sumber';
+  if (sandboxMode) {
+    document.getElementById('cosmos-searchHint').textContent = 'Mode sandbox aktif — Cosmos akan membuat objek 3D interaktif';
+  } else if (!searchMode && !imageMode && !render3dMode) {
+    document.getElementById('cosmos-searchHint').textContent = 'Nyalakan untuk info terkini + sumber';
+  }
+}
+
+function toggleRender3dMode() {
+  render3dMode = !render3dMode;
+  if (render3dMode) deactivateOtherModes('render3d');
+  syncRender3dBtn();
+}
+function syncRender3dBtn() {
+  const btn = document.getElementById('cosmos-render3dBtn');
+  btn.classList.toggle('on', render3dMode);
+  btn.textContent = '🖼️ Gambar 3D: ' + (render3dMode ? 'NYALA' : 'MATI');
+  if (render3dMode) {
+    document.getElementById('cosmos-searchHint').textContent = 'Mode gambar 3D aktif — Cosmos akan membuat gambar objek 3D (bukan interaktif)';
+  } else if (!searchMode && !imageMode && !sandboxMode) {
+    document.getElementById('cosmos-searchHint').textContent = 'Nyalakan untuk info terkini + sumber';
+  }
 }
 
 // Escape lengkap (termasuk tanda kutip) karena hasilnya dipakai di dalam atribut href.
@@ -362,6 +413,14 @@ function escAttr(s) {
 // Data gambar berasal dari API eksternal (Gemini), jadi tetap divalidasi sebelum dipasang sebagai
 // src data-URI: mime harus salah satu yang dikenal, dan string base64 dicek pola karakternya supaya
 // tidak ada cara untuk menyelundupkan skema URI lain (misal "javascript:" disamarkan sebagai "data").
+// Validasi data URI PNG utuh (format dari render3dMode: server mengirim "data:image/png;base64,..."
+// sebagai satu string, beda dengan renderGeneratedImage yang menerima {mime,data} terpisah dari
+// Gemini). Walau sumbernya server sendiri (bukan input member), tetap divalidasi sebagai lapisan
+// pertahanan kedua — konsisten dengan prinsip "jangan pasang src tanpa validasi" di seluruh app ini.
+function isValidPngDataUri(uri) {
+  return typeof uri === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(uri) && uri.length > 100;
+}
+
 function renderGeneratedImage(img) {
   const okMime = ['image/jpeg', 'image/png', 'image/webp'];
   if (!img || !okMime.includes(img.mime) || typeof img.data !== 'string') return '';
@@ -762,6 +821,52 @@ async function cosmosSend() {
       }
     } catch (e) {
       statusEl.textContent = '⚠️ Terjadi kesalahan: ' + e.message;
+    }
+    busy = false;
+    document.getElementById('cosmos-sendBtn').disabled = false;
+    document.getElementById('cosmos-inp').focus();
+    return;
+  }
+
+  // MODE RENDER 3D: gambar statis dibuat render engine lokal (bukan Gemini, bukan sandbox interaktif).
+  // Sama seperti mode gambar/sandbox, prompt TIDAK masuk ke `convo` (riwayat chat teks).
+  if (render3dMode) {
+    const bubble = appendMsg('ai', `<div class="sandbox-status"><span class="dot"></span> Membuat gambar 3D...</div>`);
+    const statusEl = bubble.querySelector('.sandbox-status');
+    busy = true; document.getElementById('cosmos-sendBtn').disabled = true;
+    try {
+      const res = await fetch(AI_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: myDeviceId, render3dMode: true, render3dPrompt: raw }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 429) {
+        statusEl.innerHTML = `⚠️ Kuota gambar 3D harian kamu sudah habis (${data.render3dQuota?.used}/${data.render3dQuota?.limit}).<br><small>${data.resetInfo || 'Reset otomatis jam 00:00 WIB.'}</small>`;
+      } else if (!res.ok) {
+        statusEl.textContent = '⚠️ ' + (data.error || 'Gagal membuat gambar 3D.');
+      } else if (isValidPngDataUri(data.render3dImage)) {
+        statusEl.remove();
+        const imgWrap = document.createElement('div');
+        imgWrap.className = 'render3d-image-wrap';
+        const img = document.createElement('img');
+        img.src = data.render3dImage;
+        img.alt = 'Render 3D: ' + escAttr(raw);
+        imgWrap.appendChild(img);
+        bubble.appendChild(imgWrap);
+        if (data.render3dQuota) {
+          const sisa = data.render3dQuota.limit - data.render3dQuota.used;
+          const quotaNote = document.createElement('small');
+          quotaNote.style.cssText = 'color:rgba(255,255,255,0.35); display:block; margin-top:6px;';
+          quotaNote.textContent = `🖼️ Sisa kuota gambar 3D hari ini: ${sisa}/${data.render3dQuota.limit}`;
+          bubble.appendChild(quotaNote);
+        }
+      } else {
+        statusEl.textContent = '⚠️ Gambar diterima tapi formatnya tidak valid.';
+      }
+    } catch (e) {
+      statusEl.textContent = '⚠️ Gagal terhubung ke layanan render 3D: ' + e.message;
     }
     busy = false;
     document.getElementById('cosmos-sendBtn').disabled = false;
