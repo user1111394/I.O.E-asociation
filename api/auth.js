@@ -701,5 +701,157 @@ export default async function handler(req, res) {
     }
   }
 
+  // ══════════════════════════════════════
+  // POJOK BACA — Halaman baca novel privat, hanya untuk member yang namanya
+  // sudah ditambahkan ke daftar izin oleh superadmin. Disimpan sebagai 2 key:
+  // "pojokbaca:access" (array memberId yang diizinkan) dan "pojokbaca:novel"
+  // (satu object berisi semua bab, supaya 1x baca = 1x command Redis, hemat
+  // kuota 500K command/bulan di free tier Upstash).
+  // ══════════════════════════════════════
+
+  // CHECK-POJOKBACA-ACCESS — dipanggil pojokbaca.html setelah member login,
+  // untuk memutuskan tampilkan novel atau halaman "Belum Punya Izin".
+  if (action === 'check-pojokbaca-access') {
+    const { memberId } = req.body;
+    if (!memberId) return res.status(400).json({ error: 'memberId wajib diisi' });
+    try {
+      const accessList = await kvGet('pojokbaca:access');
+      const allowed = Array.isArray(accessList) && accessList.includes(memberId);
+      return res.status(200).json({ allowed });
+    } catch (e) {
+      // Fail-closed: kalau gagal baca daftar izin, anggap TIDAK diizinkan.
+      // Ini konten privat (karya pribadi), jadi salah ke arah "terlalu ketat"
+      // jauh lebih aman daripada salah ke arah "kebocoran ke orang yang belum diizinkan".
+      return res.status(200).json({ allowed: false });
+    }
+  }
+
+  // ADD-POJOKBACA-ACCESS — superadmin menambahkan satu memberId ke daftar izin.
+  if (action === 'add-pojokbaca-access') {
+    const { adminToken, memberId } = req.body;
+    const isValidAdmin = await verifyAdminAccess(adminToken);
+    if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
+    if (!memberId) return res.status(400).json({ error: 'memberId wajib diisi' });
+
+    try {
+      // Verifikasi memberId ini benar akun yang ada, supaya daftar izin tidak
+      // ketambahan ID asal-asalan/typo yang tidak pernah bisa dipakai siapa pun.
+      const acc = await kvGet(`account:${memberId}`);
+      if (!acc) return res.status(404).json({ error: 'Akun dengan memberId tersebut tidak ditemukan' });
+
+      const accessList = await kvGet('pojokbaca:access');
+      const list = Array.isArray(accessList) ? accessList : [];
+      if (list.includes(memberId)) {
+        return res.status(200).json({ success: true, alreadyExists: true, total: list.length });
+      }
+      list.push(memberId);
+      const saved = await kvSet('pojokbaca:access', list);
+      if (!saved) return res.status(500).json({ error: 'Gagal menyimpan daftar izin' });
+      return res.status(200).json({ success: true, total: list.length });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // REMOVE-POJOKBACA-ACCESS — superadmin mencabut izin satu memberId.
+  if (action === 'remove-pojokbaca-access') {
+    const { adminToken, memberId } = req.body;
+    const isValidAdmin = await verifyAdminAccess(adminToken);
+    if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
+    if (!memberId) return res.status(400).json({ error: 'memberId wajib diisi' });
+
+    try {
+      const accessList = await kvGet('pojokbaca:access');
+      const list = Array.isArray(accessList) ? accessList : [];
+      const filtered = list.filter(id => id !== memberId);
+      const saved = await kvSet('pojokbaca:access', filtered);
+      if (!saved) return res.status(500).json({ error: 'Gagal menyimpan daftar izin' });
+      return res.status(200).json({ success: true, total: filtered.length });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // LIST-POJOKBACA-ACCESS — superadmin melihat daftar member yang sudah diizinkan,
+  // lengkap dengan nama & username (bukan cuma memberId mentah) supaya gampang dibaca di panel.
+  if (action === 'list-pojokbaca-access') {
+    const { adminToken } = req.body;
+    const isValidAdmin = await verifyAdminAccess(adminToken);
+    if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
+
+    try {
+      const accessList = await kvGet('pojokbaca:access');
+      const list = Array.isArray(accessList) ? accessList : [];
+      const members = await Promise.all(list.map(async (memberId) => {
+        const acc = await kvGet(`account:${memberId}`);
+        return acc
+          ? { memberId, username: acc.username, nama: acc.nama }
+          : { memberId, username: null, nama: '(akun tidak ditemukan/sudah dihapus)' };
+      }));
+      return res.status(200).json({ success: true, members });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // UPLOAD-NOVEL — superadmin menulis/mengganti seluruh konten novel.
+  // Dikirim sebagai satu payload utuh (bukan per-bab terpisah) supaya tetap 1 key di Redis.
+  if (action === 'upload-novel') {
+    const { adminToken, title, chapters } = req.body;
+    const isValidAdmin = await verifyAdminAccess(adminToken);
+    if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
+
+    if (!title || typeof title !== 'string') {
+      return res.status(400).json({ error: 'title wajib diisi (judul novel)' });
+    }
+    if (!Array.isArray(chapters) || chapters.length === 0) {
+      return res.status(400).json({ error: 'chapters wajib diisi, berupa array tidak kosong' });
+    }
+    for (let i = 0; i < chapters.length; i++) {
+      const ch = chapters[i];
+      if (!ch || typeof ch.title !== 'string' || typeof ch.content !== 'string') {
+        return res.status(400).json({ error: `chapters[${i}] harus punya title & content (string)` });
+      }
+    }
+
+    try {
+      const novel = { title, chapters, updatedAt: Date.now() };
+      const saved = await kvSet('pojokbaca:novel', novel);
+      if (!saved) return res.status(500).json({ error: 'Gagal menyimpan novel' });
+      return res.status(200).json({ success: true, chapterCount: chapters.length });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // GET-NOVEL — member membaca novel. HANYA dikabulkan kalau memberId ada di daftar izin
+  // (dicek ULANG di sini, server-side, bukan cuma mengandalkan hasil check-pojokbaca-access
+  // di client — supaya member tidak bisa langsung panggil action ini untuk melewati pengecekan).
+  if (action === 'get-novel') {
+    const { memberId, sessionToken } = req.body;
+    if (!memberId || !sessionToken) return res.status(401).json({ error: 'Belum login' });
+
+    try {
+      // Verifikasi session dulu (memberId & sessionToken harus cocok dengan akun yang sedang login)
+      const acc = await kvGet(`account:${memberId}`);
+      if (!acc || acc.currentSession !== sessionToken) {
+        return res.status(401).json({ error: 'Sesi tidak valid, silakan login ulang' });
+      }
+
+      const accessList = await kvGet('pojokbaca:access');
+      const list = Array.isArray(accessList) ? accessList : [];
+      if (!list.includes(memberId)) {
+        return res.status(403).json({ error: 'Kamu belum memiliki izin untuk membaca Pojok Baca' });
+      }
+
+      const novel = await kvGet('pojokbaca:novel');
+      if (!novel) return res.status(404).json({ error: 'Novel belum tersedia' });
+
+      return res.status(200).json({ success: true, novel });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Action tidak dikenali' });
 }
