@@ -794,15 +794,25 @@ export default async function handler(req, res) {
     }
   }
 
-  // UPLOAD-NOVEL — superadmin menulis/mengganti seluruh konten novel.
+  // UPLOAD-NOVEL — superadmin menulis/mengganti seluruh konten novel + cover.
   // Dikirim sebagai satu payload utuh (bukan per-bab terpisah) supaya tetap 1 key di Redis.
+  // coverUrl berasal dari upload Cloudinary yang dilakukan LANGSUNG dari browser (skip server),
+  // jadi di sini cuma menyimpan URL hasilnya — server tidak pernah menerima file gambar itu sendiri.
   if (action === 'upload-novel') {
-    const { adminToken, title, chapters } = req.body;
+    const { adminToken, title, coverUrl, chapters } = req.body;
     const isValidAdmin = await verifyAdminAccess(adminToken);
     if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
 
     if (!title || typeof title !== 'string') {
       return res.status(400).json({ error: 'title wajib diisi (judul novel)' });
+    }
+    if (coverUrl !== undefined && coverUrl !== null) {
+      // Validasi longgar tapi tegas: harus string, dan HARUS https://res.cloudinary.com/...
+      // Menolak skema lain (javascript:, data:, http:// biasa) mencegah URL yang bukan benar-benar
+      // berasal dari upload Cloudinary tersimpan dan nanti dipasang sebagai <img src> di pojokbaca.html.
+      if (typeof coverUrl !== 'string' || !/^https:\/\/res\.cloudinary\.com\//.test(coverUrl)) {
+        return res.status(400).json({ error: 'coverUrl harus URL Cloudinary yang valid (https://res.cloudinary.com/...)' });
+      }
     }
     if (!Array.isArray(chapters) || chapters.length === 0) {
       return res.status(400).json({ error: 'chapters wajib diisi, berupa array tidak kosong' });
@@ -815,10 +825,26 @@ export default async function handler(req, res) {
     }
 
     try {
-      const novel = { title, chapters, updatedAt: Date.now() };
+      const novel = { title, coverUrl: coverUrl || null, chapters, updatedAt: Date.now() };
       const saved = await kvSet('pojokbaca:novel', novel);
       if (!saved) return res.status(500).json({ error: 'Gagal menyimpan novel' });
       return res.status(200).json({ success: true, chapterCount: chapters.length });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // GET-NOVEL-ADMIN — superadmin mengambil novel tersimpan untuk mengisi ulang form edit
+  // di panel. Beda dari "get-novel" (yang butuh session member & cek daftar izin): di sini
+  // yang dicek cuma adminToken, karena ini dipanggil dari panel superadmin, bukan oleh member.
+  if (action === 'get-novel-admin') {
+    const { adminToken } = req.body;
+    const isValidAdmin = await verifyAdminAccess(adminToken);
+    if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
+
+    try {
+      const novel = await kvGet('pojokbaca:novel');
+      return res.status(200).json({ success: true, novel: novel || null });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
