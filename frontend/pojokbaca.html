@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pojok Baca — I.O.E Hub</title>
+<style>
+  :root {
+    --bg: #05050d;
+    --card: #0f0f1e;
+    --border: rgba(255,255,255,0.1);
+    --text: #e8e8f0;
+    --text-muted: #8a8aa0;
+    --primary: #7bc5ff;
+    --primary2: #7b5cff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: 'Inter', -apple-system, sans-serif; min-height: 100vh;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: rgba(5,5,13,0.92); backdrop-filter: blur(10px); z-index: 10;
+  }
+  .topbar-title { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+  .topbar a { color: var(--text-muted); text-decoration: none; font-size: 0.85rem; }
+
+  .center-screen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 80vh; text-align: center; padding: 24px;
+  }
+  .center-screen .icon { font-size: 3rem; margin-bottom: 14px; }
+  .center-screen h2 { margin: 0 0 8px; font-size: 1.2rem; }
+  .center-screen p { color: var(--text-muted); font-size: 0.9rem; max-width: 320px; line-height: 1.6; margin: 0; }
+  .spinner {
+    width: 28px; height: 28px; border: 3px solid rgba(123,197,255,0.2); border-top-color: var(--primary);
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Layar "belum punya izin" */
+  .not-allowed .icon { filter: grayscale(1); opacity: 0.6; }
+
+  /* Cover & daftar bab */
+  .novel-header {
+    display: flex; gap: 16px; padding: 20px 18px; align-items: flex-start;
+    border-bottom: 1px solid var(--border);
+  }
+  .novel-cover {
+    width: 90px; height: 130px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--border); background: var(--card);
+  }
+  .novel-cover-placeholder {
+    width: 90px; height: 130px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(123,197,255,0.15), rgba(123,92,255,0.15));
+    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 1.8rem;
+  }
+  .novel-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 6px; }
+  .novel-meta { color: var(--text-muted); font-size: 0.8rem; }
+
+  .chapter-list { padding: 8px 12px 24px; }
+  .chapter-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 14px; margin: 6px 0; background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; cursor: pointer; transition: border-color 0.15s;
+  }
+  .chapter-item:active { border-color: var(--primary); }
+  .chapter-item .ch-title { font-size: 0.9rem; font-weight: 600; }
+  .chapter-item .ch-arrow { color: var(--text-muted); }
+
+  /* Tampilan baca satu bab */
+  .reader { display: none; padding: 20px 18px 60px; max-width: 680px; margin: 0 auto; }
+  .reader.active { display: block; }
+  .reader-back {
+    display: inline-flex; align-items: center; gap: 6px; color: var(--primary);
+    text-decoration: none; font-size: 0.85rem; margin-bottom: 18px; cursor: pointer; background: none; border: none; padding: 0;
+  }
+  .reader h3 { font-size: 1.15rem; margin: 0 0 20px; }
+  .reader-content {
+    font-size: 1rem; line-height: 1.9; color: var(--text); white-space: pre-wrap; word-wrap: break-word;
+  }
+
+  #list-view.hidden, #novel-header.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">📖 Pojok Baca</div>
+  <a href="index.html">← Kembali ke Hub</a>
+</div>
+
+<!-- Layar loading awal (saat verifikasi login & izin) -->
+<div id="loading-screen" class="center-screen">
+  <div class="spinner"></div>
+  <p>Memeriksa akses...</p>
+</div>
+
+<!-- Layar belum punya izin -->
+<div id="not-allowed-screen" class="center-screen not-allowed" style="display:none;">
+  <div class="icon">🔒</div>
+  <h2>Belum Punya Izin</h2>
+  <p>Pojok Baca ini hanya bisa dibuka oleh member yang sudah diberi izin oleh admin. Kalau kamu merasa ini keliru, hubungi admin I.O.E.</p>
+</div>
+
+<!-- Layar error teknis (bukan soal izin, tapi server/koneksi) -->
+<div id="error-screen" class="center-screen" style="display:none;">
+  <div class="icon">⚠️</div>
+  <h2>Gagal Memuat</h2>
+  <p id="error-message">Terjadi kesalahan. Coba muat ulang halaman.</p>
+</div>
+
+<!-- Konten utama: header novel + daftar bab -->
+<div id="main-content" style="display:none;">
+  <div id="novel-header" class="novel-header"></div>
+  <div id="list-view" class="chapter-list"></div>
+
+  <div id="reader" class="reader">
+    <button class="reader-back" onclick="showChapterList()">← Daftar Bab</button>
+    <h3 id="reader-chapter-title"></h3>
+    <div id="reader-content" class="reader-content"></div>
+  </div>
+</div>
+
+<script src="js/ioe-auth.js"></script>
+<script>
+let novelData = null;
+
+function escHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s == null ? '' : String(s);
+  return div.innerHTML;
+}
+
+// Validasi URL cover sebelum dipasang sebagai <img src> — pertahanan kedua di sisi client,
+// konsisten dengan validasi yang sudah ada di server (auth.js hanya menyimpan URL Cloudinary).
+function isSafeCoverUrl(url) {
+  return typeof url === 'string' && /^https:\/\/res\.cloudinary\.com\//.test(url);
+}
+
+function showScreen(id) {
+  ['loading-screen', 'not-allowed-screen', 'error-screen', 'main-content'].forEach(s => {
+    document.getElementById(s).style.display = (s === id) ? '' : 'none';
+  });
+}
+
+function renderNovelHeader(novel) {
+  const header = document.getElementById('novel-header');
+  const coverHtml = isSafeCoverUrl(novel.coverUrl)
+    ? `<img class="novel-cover" src="${escHtml(novel.coverUrl)}" alt="Cover">`
+    : `<div class="novel-cover-placeholder">📖</div>`;
+  header.innerHTML = `
+    ${coverHtml}
+    <div>
+      <div class="novel-title">${escHtml(novel.title)}</div>
+      <div class="novel-meta">${novel.chapters.length} bab</div>
+    </div>
+  `;
+}
+
+function renderChapterList(chapters) {
+  const listView = document.getElementById('list-view');
+  listView.innerHTML = chapters.map((ch, i) => `
+    <div class="chapter-item" onclick="openChapter(${i})">
+      <span class="ch-title">${escHtml(ch.title)}</span>
+      <span class="ch-arrow">›</span>
+    </div>
+  `).join('');
+}
+
+function openChapter(index) {
+  const ch = novelData.chapters[index];
+  if (!ch) return;
+  document.getElementById('reader-chapter-title').textContent = ch.title;
+  document.getElementById('reader-content').textContent = ch.content; // textContent, bukan innerHTML — aman otomatis dari isi bab
+  document.getElementById('list-view').classList.add('hidden');
+  document.getElementById('novel-header').classList.add('hidden');
+  document.getElementById('reader').classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function showChapterList() {
+  document.getElementById('reader').classList.remove('active');
+  document.getElementById('list-view').classList.remove('hidden');
+  document.getElementById('novel-header').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+
+async function init() {
+  // requireIoeLogin() otomatis redirect ke login.html kalau belum login,
+  // atau ke ban.html kalau akun di-ban. Kalau return null, redirect sudah ditangani di sana.
+  const session = await requireIoeLogin();
+  if (!session) return;
+
+  try {
+    // Langkah 1: cek apakah member ini ada di daftar izin Pojok Baca
+    const accessRes = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'check-pojokbaca-access', memberId: session.memberId }),
+    });
+    const accessData = await accessRes.json();
+
+    if (!accessData.allowed) {
+      showScreen('not-allowed-screen');
+      return;
+    }
+
+    // Langkah 2: ambil novelnya. Server MEMVERIFIKASI ULANG izin & session di sini
+    // (lihat auth.js action get-novel) — pengecekan di langkah 1 di atas hanya untuk
+    // menentukan tampilan UI lebih awal, bukan satu-satunya lapisan keamanan.
+    const novelRes = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get-novel',
+        memberId: session.memberId,
+        sessionToken: session.sessionToken,
+      }),
+    });
+    const novelResData = await novelRes.json();
+
+    if (novelRes.status === 403) {
+      // Kemungkinan kecil: izin dicabut tepat di antara langkah 1 dan 2 (race condition kecil).
+      showScreen('not-allowed-screen');
+      return;
+    }
+    if (!novelRes.ok) {
+      throw new Error(novelResData.error || 'Gagal memuat novel');
+    }
+
+    novelData = novelResData.novel;
+    renderNovelHeader(novelData);
+    renderChapterList(novelData.chapters);
+    showScreen('main-content');
+  } catch (err) {
+    console.error('Pojok Baca error:', err);
+    document.getElementById('error-message').textContent = err.message || 'Terjadi kesalahan tidak terduga.';
+    showScreen('error-screen');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
