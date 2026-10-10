@@ -17,6 +17,7 @@ const IOE_PAGES = [
   { href:'event.html',       icon:'🎉', label:'Event',          section:'Komunitas' },
   { href:'shop.html',        icon:'🛒', label:'Shop',           section:'Komunitas' },
   { href:'backpack.html',    icon:'🎒', label:'Backpack',       section:'Komunitas' },
+  { href:'pojokbaca.html',   icon:'📖', label:'Pojok Baca',     section:'Komunitas' },
 ];
 
 function buildNav(currentPage) {
