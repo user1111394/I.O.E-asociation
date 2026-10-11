@@ -34,7 +34,7 @@
 //   CLOUDINARY_API_KEY
 //   CLOUDINARY_API_SECRET
 
-const cloudinary = require('cloudinary').v2;
+import { v2 as cloudinary } from 'cloudinary';
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -42,7 +42,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // ── Mode delete: DELETE /api/event-upload { publicId, resourceType } ──
   if (req.method === 'DELETE') {
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
@@ -195,7 +195,7 @@ module.exports = async function handler(req, res) {
 // Naikkan body size limit karena base64 lebih besar ~33% dari file asli.
 // Dinaikkan ke 20mb (dari 10mb) untuk mengakomodasi file musik/video galeri
 // broadcast yang lebih besar dari foto profil/icon item biasa.
-module.exports.config = {
+export const config = {
   api: {
     bodyParser: {
       sizeLimit: '20mb',
