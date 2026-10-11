@@ -17,7 +17,6 @@ const IOE_PAGES = [
   { href:'event.html',       icon:'🎉', label:'Event',          section:'Komunitas' },
   { href:'shop.html',        icon:'🛒', label:'Shop',           section:'Komunitas' },
   { href:'backpack.html',    icon:'🎒', label:'Backpack',       section:'Komunitas' },
-  { href:'pojokbaca.html',   icon:'📖', label:'Pojok Baca',     section:'Komunitas' },
 ];
 
 function buildNav(currentPage) {
@@ -282,7 +281,6 @@ function openSuperadminPanel() {
       <button id="sa-tab-tos" onclick="saSwitchTab('tos')" style="flex:1; padding:9px 4px; background:rgba(255,180,0,0.1); border:1px solid rgba(255,180,0,0.25); border-radius:8px; color:#cbd5e0; font-size:11px; font-weight:600; cursor:pointer;">💬 ToS</button>
       <button id="sa-tab-event" onclick="saSwitchTab('event')" style="flex:1; padding:9px 4px; background:rgba(255,90,160,0.1); border:1px solid rgba(255,90,160,0.25); border-radius:8px; color:#cbd5e0; font-size:11px; font-weight:600; cursor:pointer;">🎉 Event</button>
       <button id="sa-tab-shop" onclick="saSwitchTab('shop')" style="flex:1; padding:9px 4px; background:rgba(255,210,63,0.1); border:1px solid rgba(255,210,63,0.25); border-radius:8px; color:#cbd5e0; font-size:11px; font-weight:600; cursor:pointer;">🛒 Shop</button>
-      <button id="sa-tab-pojokbaca" onclick="saSwitchTab('pojokbaca')" style="flex:1; padding:9px 4px; background:rgba(123,197,255,0.1); border:1px solid rgba(123,197,255,0.25); border-radius:8px; color:#cbd5e0; font-size:11px; font-weight:600; cursor:pointer;">📖 Pojok Baca</button>
     </div>
 
     <div id="sa-panel-event" style="display:none;">
@@ -450,7 +448,6 @@ function openSuperadminPanel() {
       <div style="display:flex; gap:6px; margin-bottom:14px;">
         <button id="sa-subtab-shopitem" onclick="saSwitchShopSubtab('item')" style="flex:1; padding:7px 4px; background:rgba(255,210,63,0.15); border:1px solid rgba(255,210,63,0.4); border-radius:8px; color:#ffd23f; font-size:11px; font-weight:600; cursor:pointer;">📦 Item</button>
         <button id="sa-subtab-redeem" onclick="saSwitchShopSubtab('redeem')" style="flex:1; padding:7px 4px; background:rgba(255,210,63,0.1); border:1px solid rgba(255,210,63,0.25); border-radius:8px; color:#cbd5e0; font-size:11px; font-weight:600; cursor:pointer;">🎁 Redeem</button>
-        <button id="sa-subtab-gacha" onclick="saSwitchShopSubtab('gacha')" style="flex:1; padding:7px 4px; background:rgba(255,210,63,0.1); border:1px solid rgba(255,210,63,0.25); border-radius:8px; color:#cbd5e0; font-size:11px; font-weight:600; cursor:pointer;">🎰 Gacha</button>
       </div>
 
       <div id="sa-shopsub-item">
@@ -519,57 +516,6 @@ function openSuperadminPanel() {
             <p style="color:#718096; font-size:12px; text-align:center; padding:20px;">Memuat daftar kode...</p>
           </div>
         </div>
-      </div>
-
-      <div id="sa-shopsub-gacha" style="display:none;">
-        <div style="font-size:13px; font-weight:600; color:#cbd5e0; margin-bottom:10px;">⚙️ Atur Gacha Spin Wheel</div>
-        <p style="font-size:11px; color:#718096; margin-bottom:12px; line-height:1.5;">Atur daftar hadiah, nominal, dan persentase peluang tiap slot. Total persentase semua slot HARUS 100%. Simpan akan mengganti seluruh config sekaligus.</p>
-
-        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">Biaya sekali spin (Koin Global)</label>
-        <input id="sa-gacha-spincost" type="number" min="0" placeholder="Contoh: 50" style="width:100%; padding:10px 12px; margin-bottom:14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,210,63,0.25); border-radius:8px; color:#fff; font-size:13px; box-sizing:border-box;">
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-size:12px; font-weight:600; color:#cbd5e0;">Daftar Slot Hadiah</div>
-          <div id="sa-gacha-total-pct" style="font-size:11px; font-weight:700;">Total: 0%</div>
-        </div>
-        <div id="sa-gacha-slot-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:10px;"></div>
-        <button type="button" onclick="saAddGachaSlotRow()" style="width:100%; padding:9px; background:rgba(255,210,63,0.12); border:1px solid rgba(255,210,63,0.3); color:#ffd23f; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer; margin-bottom:12px;">+ Tambah Slot</button>
-
-        <button onclick="saSaveGachaConfig()" id="sa-gacha-save-btn" style="width:100%; padding:11px; background:linear-gradient(90deg,#ffd23f,#ff5aa0); border:none; border-radius:8px; color:#1a1a1a; font-weight:700; font-size:13px; cursor:pointer;">Simpan Config Gacha</button>
-        <div id="sa-gacha-status" style="font-size:11px; color:#718096; margin-top:8px;"></div>
-      </div>
-    </div>
-
-    <div id="sa-panel-pojokbaca" style="display:none;">
-      <div style="font-size:13px; font-weight:600; color:#cbd5e0; margin-bottom:10px;">👤 Daftar Izin Baca</div>
-      <p style="font-size:11px; color:#718096; margin-bottom:10px; line-height:1.5;">Hanya member yang memberId-nya ada di daftar ini yang bisa membuka Pojok Baca. Cari pakai username member.</p>
-      <div style="display:flex; gap:8px; margin-bottom:8px;">
-        <input id="sa-pojokbaca-username" type="text" placeholder="Username member" style="flex:1; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:8px; color:#fff; font-size:13px; box-sizing:border-box;">
-        <button onclick="saAddPojokbacaAccess()" id="sa-pojokbaca-add-btn" style="padding:10px 16px; background:linear-gradient(90deg,#7bc5ff,#7b5cff); border:none; border-radius:8px; color:#0a0a0a; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap;">Izinkan</button>
-      </div>
-      <div id="sa-pojokbaca-add-status" style="font-size:11px; color:#718096; margin-bottom:14px;"></div>
-
-      <div id="sa-pojokbaca-access-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
-        <p style="color:#718096; font-size:12px; text-align:center; padding:20px;">Memuat daftar izin...</p>
-      </div>
-
-      <div style="padding-top:14px; border-top:1px solid rgba(255,255,255,0.1);">
-        <div style="font-size:13px; font-weight:600; color:#cbd5e0; margin-bottom:10px;">📖 Novel</div>
-
-        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">Cover novel</label>
-        <input id="sa-pojokbaca-cover-input" type="file" accept="image/*" style="width:100%; margin-bottom:8px; font-size:12px; color:#cbd5e0;">
-        <div id="sa-pojokbaca-cover-preview" style="margin-bottom:10px;"></div>
-
-        <input id="sa-pojokbaca-title" type="text" placeholder="Judul novel" style="width:100%; padding:10px 12px; margin-bottom:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:8px; color:#fff; font-size:13px; box-sizing:border-box;">
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-size:12px; font-weight:600; color:#cbd5e0;">Daftar Bab</div>
-        </div>
-        <div id="sa-pojokbaca-chapter-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:10px;"></div>
-        <button type="button" onclick="saAddPojokbacaChapterRow()" style="width:100%; padding:9px; background:rgba(123,197,255,0.12); border:1px solid rgba(123,197,255,0.3); color:#7bc5ff; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer; margin-bottom:12px;">+ Tambah Bab</button>
-
-        <button onclick="saSaveNovel()" id="sa-pojokbaca-save-btn" style="width:100%; padding:11px; background:linear-gradient(90deg,#7bc5ff,#7b5cff); border:none; border-radius:8px; color:#0a0a0a; font-weight:700; font-size:13px; cursor:pointer;">Simpan Novel</button>
-        <div id="sa-pojokbaca-save-status" style="font-size:11px; color:#718096; margin-top:8px;"></div>
       </div>
     </div>
 
@@ -653,15 +599,14 @@ async function saLoadStats() {
 }
 
 function saSwitchTab(tab) {
-  const panels = { stats: 'sa-panel-stats', member: 'sa-panel-member', tos: 'sa-panel-tos', event: 'sa-panel-event', shop: 'sa-panel-shop', pojokbaca: 'sa-panel-pojokbaca' };
-  const tabs = { stats: 'sa-tab-stats', member: 'sa-tab-member', tos: 'sa-tab-tos', event: 'sa-tab-event', shop: 'sa-tab-shop', pojokbaca: 'sa-tab-pojokbaca' };
+  const panels = { stats: 'sa-panel-stats', member: 'sa-panel-member', tos: 'sa-panel-tos', event: 'sa-panel-event', shop: 'sa-panel-shop' };
+  const tabs = { stats: 'sa-tab-stats', member: 'sa-tab-member', tos: 'sa-tab-tos', event: 'sa-tab-event', shop: 'sa-tab-shop' };
   const activeColors = {
     stats: { bg: 'rgba(123,92,255,0.15)', border: 'rgba(123,92,255,0.4)', color: '#7b5cff' },
     member: { bg: 'rgba(0,229,197,0.15)', border: 'rgba(0,229,197,0.4)', color: '#00e5c0' },
     tos: { bg: 'rgba(255,180,0,0.15)', border: 'rgba(255,180,0,0.4)', color: '#ffb400' },
     event: { bg: 'rgba(255,90,160,0.15)', border: 'rgba(255,90,160,0.4)', color: '#ff5aa0' },
     shop: { bg: 'rgba(255,210,63,0.15)', border: 'rgba(255,210,63,0.4)', color: '#ffd23f' },
-    pojokbaca: { bg: 'rgba(123,197,255,0.15)', border: 'rgba(123,197,255,0.4)', color: '#7bc5ff' },
   };
   const inactiveStyle = { bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.1)', color: '#cbd5e0' };
 
@@ -687,7 +632,6 @@ function saSwitchTab(tab) {
   if (tab === 'tos') saLoadTosThreads();
   if (tab === 'event') saLoadEventList();
   if (tab === 'shop') saLoadShopList();
-  if (tab === 'pojokbaca') { saLoadPojokbacaAccessList(); saLoadPojokbacaNovel(); }
 }
 
 // ═══ CHAT PUBLIK (Firebase terpisah dari Event — project cosmos-68cbf) ═══
@@ -1894,8 +1838,8 @@ async function saRestockItem(itemId) {
 
 // ═══ SUB-TAB SWITCHER: Item vs Redeem (di dalam tab Shop) ═══
 function saSwitchShopSubtab(subtab) {
-  const subs = { item: 'sa-shopsub-item', redeem: 'sa-shopsub-redeem', gacha: 'sa-shopsub-gacha' };
-  const tabs = { item: 'sa-subtab-shopitem', redeem: 'sa-subtab-redeem', gacha: 'sa-subtab-gacha' };
+  const subs = { item: 'sa-shopsub-item', redeem: 'sa-shopsub-redeem' };
+  const tabs = { item: 'sa-subtab-shopitem', redeem: 'sa-subtab-redeem' };
 
   Object.entries(subs).forEach(([key, id]) => {
     const el = document.getElementById(id);
@@ -1919,231 +1863,7 @@ function saSwitchShopSubtab(subtab) {
     saPopulateRedeemDropdowns();
     saLoadRedeemList();
   }
-  if (subtab === 'gacha') {
-    saLoadGachaConfig();
-  }
 }
-
-// ═══ GACHA SPIN WHEEL — Panel Superadmin ═══
-// Numpang di shop.js (action 'get-gacha-config' / 'admin-set-gacha-config'),
-// karena biaya spin & salah satu tipe hadiah (item Shop) sama-sama bagian
-// ekosistem Shop. Setiap slot direpresentasikan 1 baris form dinamis;
-// simpan mengirim SELURUH daftar slot sekaligus (ganti total, bukan patch).
-const GACHA_TYPE_LABELS = {
-  coin_global: '🪙 Koin Global', coin_garden: '🌰 Koin Garden (Seed Coin)',
-  coin_ore: '⛏️ Koin Ore', shop_item: '🎁 Item Shop',
-  thanks: '💌 Terima Kasih', zonk: '💨 Zonk',
-};
-let gachaShopItemsCache = []; // cache daftar item shop, dipakai isi dropdown tiap slot bertipe shop_item
-
-function saGachaSlotRowHtml(slot) {
-  const rowId = slot.id || ('gslot_' + Math.random().toString(36).slice(2, 9));
-  const needsValue = ['coin_global', 'coin_garden', 'coin_ore'].includes(slot.type);
-  const needsItem = slot.type === 'shop_item';
-  return `
-    <div class="sa-gacha-slot-row" data-row-id="${rowId}" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,210,63,0.2); border-radius:10px; padding:10px;">
-      <div style="display:flex; gap:6px; margin-bottom:6px;">
-        <select class="sa-gacha-slot-type" onchange="saOnGachaSlotTypeChange('${rowId}')" style="flex:1; padding:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,210,63,0.25); border-radius:6px; color:#fff; font-size:12px;">
-          ${Object.entries(GACHA_TYPE_LABELS).map(([val, label]) => `<option value="${val}" ${slot.type === val ? 'selected' : ''}>${label}</option>`).join('')}
-        </select>
-        <button type="button" onclick="saRemoveGachaSlotRow('${rowId}')" style="padding:8px 10px; background:rgba(255,90,90,0.15); border:1px solid rgba(255,90,90,0.3); color:#ff6b6b; border-radius:6px; cursor:pointer; font-size:12px;">✕</button>
-      </div>
-      <input class="sa-gacha-slot-label" type="text" placeholder="Label (contoh: Koin Global x20)" value="${slot.label ? slot.label.replace(/"/g, '&quot;') : ''}" style="width:100%; padding:8px; margin-bottom:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,210,63,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-      <div style="display:flex; gap:6px; margin-bottom:6px;">
-        <input class="sa-gacha-slot-value" type="number" min="1" placeholder="Nominal" value="${slot.value || ''}" style="flex:1; padding:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,210,63,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box; display:${needsValue ? 'block' : 'none'};">
-        <select class="sa-gacha-slot-item" style="flex:1; padding:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,210,63,0.25); border-radius:6px; color:#fff; font-size:12px; display:${needsItem ? 'block' : 'none'};">
-          <option value="">Pilih item...</option>
-        </select>
-        <input class="sa-gacha-slot-pct" type="number" min="0" max="100" step="0.1" placeholder="Persen %" value="${slot.percentage || ''}" oninput="saUpdateGachaTotalPct()" style="width:90px; padding:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,210,63,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-      </div>
-    </div>
-  `;
-}
-
-function saAddGachaSlotRow(slot) {
-  const list = document.getElementById('sa-gacha-slot-list');
-  const div = document.createElement('div');
-  div.innerHTML = saGachaSlotRowHtml(slot || { type: 'coin_global' });
-  list.appendChild(div.firstElementChild);
-  saPopulateGachaItemDropdowns();
-  saUpdateGachaTotalPct();
-}
-window.saAddGachaSlotRow = saAddGachaSlotRow;
-
-function saRemoveGachaSlotRow(rowId) {
-  const row = document.querySelector(`.sa-gacha-slot-row[data-row-id="${rowId}"]`);
-  if (row) row.remove();
-  saUpdateGachaTotalPct();
-}
-window.saRemoveGachaSlotRow = saRemoveGachaSlotRow;
-
-function saOnGachaSlotTypeChange(rowId) {
-  const row = document.querySelector(`.sa-gacha-slot-row[data-row-id="${rowId}"]`);
-  if (!row) return;
-  const type = row.querySelector('.sa-gacha-slot-type').value;
-  const needsValue = ['coin_global', 'coin_garden', 'coin_ore'].includes(type);
-  const needsItem = type === 'shop_item';
-  row.querySelector('.sa-gacha-slot-value').style.display = needsValue ? 'block' : 'none';
-  row.querySelector('.sa-gacha-slot-item').style.display = needsItem ? 'block' : 'none';
-}
-window.saOnGachaSlotTypeChange = saOnGachaSlotTypeChange;
-
-function saUpdateGachaTotalPct() {
-  const rows = document.querySelectorAll('.sa-gacha-slot-row');
-  let total = 0;
-  rows.forEach(row => {
-    const val = parseFloat(row.querySelector('.sa-gacha-slot-pct').value) || 0;
-    total += val;
-  });
-  const label = document.getElementById('sa-gacha-total-pct');
-  label.textContent = `Total: ${total}%`;
-  label.style.color = Math.abs(total - 100) < 0.5 ? '#00e5c0' : '#ff6b6b';
-}
-window.saUpdateGachaTotalPct = saUpdateGachaTotalPct;
-
-// Isi dropdown item Shop di semua baris slot bertipe shop_item —
-// dipanggil ulang tiap kali baris baru ditambah, memakai cache item
-// yang sudah diambil sekali di saLoadGachaConfig.
-function saPopulateGachaItemDropdowns() {
-  const dropdowns = document.querySelectorAll('.sa-gacha-slot-item');
-  dropdowns.forEach(dd => {
-    const currentVal = dd.value;
-    dd.innerHTML = '<option value="">Pilih item...</option>' +
-      gachaShopItemsCache.map(it => `<option value="${it.id}">${it.nama}</option>`).join('');
-    if (currentVal) dd.value = currentVal;
-  });
-}
-
-async function saLoadGachaConfig() {
-  const list = document.getElementById('sa-gacha-slot-list');
-  list.innerHTML = '<p style="color:#718096; font-size:12px; text-align:center; padding:20px;">Memuat config gacha...</p>';
-
-  try {
-    const itemsRes = await fetch('/api/shop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'list-items' }),
-    });
-    const itemsData = await itemsRes.json();
-    gachaShopItemsCache = itemsData.items || [];
-
-    const res = await fetch('/api/shop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get-gacha-config' }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal memuat config');
-
-    document.getElementById('sa-gacha-spincost').value = data.config.spinCost;
-    list.innerHTML = '';
-    for (const slot of data.config.slots) {
-      const div = document.createElement('div');
-      div.innerHTML = saGachaSlotRowHtml(slot);
-      list.appendChild(div.firstElementChild);
-      // Isi ulang value item/nominal setelah row ditambahkan (karena
-      // saGachaSlotRowHtml sudah handle value awal lewat parameter slot).
-    }
-    saPopulateGachaItemDropdowns();
-    // Set value dropdown item untuk slot bertipe shop_item (dropdown baru
-    // diisi options-nya SETELAH row dibuat, jadi value itemId perlu
-    // di-assign lagi di sini).
-    document.querySelectorAll('.sa-gacha-slot-row').forEach((row, i) => {
-      const slot = data.config.slots[i];
-      if (slot && slot.type === 'shop_item' && slot.itemId) {
-        row.querySelector('.sa-gacha-slot-item').value = slot.itemId;
-      }
-    });
-    saUpdateGachaTotalPct();
-  } catch (err) {
-    console.error('Gagal memuat config gacha:', err);
-    list.innerHTML = `<p style="color:#ff6b6b; font-size:12px; text-align:center; padding:20px;">❌ ${err.message}</p>`;
-  }
-}
-
-async function saSaveGachaConfig() {
-  const statusEl = document.getElementById('sa-gacha-status');
-  const btn = document.getElementById('sa-gacha-save-btn');
-  const spinCost = parseInt(document.getElementById('sa-gacha-spincost').value, 10);
-
-  if (isNaN(spinCost) || spinCost < 0) {
-    statusEl.textContent = '⚠️ Biaya spin harus angka >= 0.';
-    statusEl.style.color = '#ff6b6b';
-    return;
-  }
-
-  const rows = document.querySelectorAll('.sa-gacha-slot-row');
-  if (rows.length === 0) {
-    statusEl.textContent = '⚠️ Minimal harus ada 1 slot hadiah.';
-    statusEl.style.color = '#ff6b6b';
-    return;
-  }
-
-  const slots = [];
-  for (const row of rows) {
-    const type = row.querySelector('.sa-gacha-slot-type').value;
-    const label = row.querySelector('.sa-gacha-slot-label').value.trim();
-    const value = parseInt(row.querySelector('.sa-gacha-slot-value').value, 10);
-    const itemId = row.querySelector('.sa-gacha-slot-item').value;
-    const percentage = parseFloat(row.querySelector('.sa-gacha-slot-pct').value);
-
-    if (!label) {
-      statusEl.textContent = '⚠️ Semua slot wajib punya label.';
-      statusEl.style.color = '#ff6b6b';
-      return;
-    }
-    if (isNaN(percentage) || percentage < 0) {
-      statusEl.textContent = '⚠️ Semua slot wajib punya persentase >= 0.';
-      statusEl.style.color = '#ff6b6b';
-      return;
-    }
-    if (['coin_global', 'coin_garden', 'coin_ore'].includes(type) && (isNaN(value) || value < 1)) {
-      statusEl.textContent = `⚠️ Slot "${label}" wajib diisi nominal lebih dari 0.`;
-      statusEl.style.color = '#ff6b6b';
-      return;
-    }
-    if (type === 'shop_item' && !itemId) {
-      statusEl.textContent = `⚠️ Slot "${label}" wajib pilih item Shop.`;
-      statusEl.style.color = '#ff6b6b';
-      return;
-    }
-
-    slots.push({ type, label, value: value || 0, itemId: itemId || null, percentage });
-  }
-
-  const totalPct = slots.reduce((a, s) => a + s.percentage, 0);
-  if (Math.abs(totalPct - 100) > 0.5) {
-    statusEl.textContent = `⚠️ Total persentase harus 100% (sekarang ${totalPct}%).`;
-    statusEl.style.color = '#ff6b6b';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Menyimpan...';
-  statusEl.style.color = '#718096';
-
-  try {
-    const adminToken = saGetAdminToken();
-    const res = await fetch('/api/shop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin-set-gacha-config', adminToken, spinCost, slots }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal menyimpan config');
-
-    statusEl.textContent = '✅ Config gacha berhasil disimpan.';
-    statusEl.style.color = '#00e5c0';
-  } catch (err) {
-    console.error('Gagal simpan config gacha:', err);
-    statusEl.textContent = `❌ Gagal: ${err.message || err}`;
-    statusEl.style.color = '#ff6b6b';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Simpan Config Gacha';
-  }
-}
-window.saSaveGachaConfig = saSaveGachaConfig;
 
 // Isi dropdown event & item untuk form buat kode redeem
 async function saPopulateRedeemDropdowns() {
@@ -2364,240 +2084,6 @@ function saEscHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
-}
-
-// ═══ POJOK BACA (daftar izin + novel, numpang endpoint api/auth.js yang sudah ada,
-// supaya tidak perlu menambah file API baru — folder api/ sudah pas di limit 12) ═══
-
-async function saLoadPojokbacaAccessList() {
-  const container = document.getElementById('sa-pojokbaca-access-list');
-  const token = saGetAdminToken();
-  if (!token || !container) return;
-
-  try {
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'list-pojokbaca-access', adminToken: token }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal memuat daftar izin');
-
-    if (!data.members || data.members.length === 0) {
-      container.innerHTML = '<p style="color:#718096; font-size:12px; text-align:center; padding:20px;">Belum ada member yang diizinkan.</p>';
-      return;
-    }
-
-    container.innerHTML = data.members.map(m => `
-      <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
-        <div>
-          <div style="font-size:13px; font-weight:600; color:#fff;">${saEscHtml(m.nama || m.username || '(tanpa nama)')}</div>
-          <div style="font-size:11px; color:#718096;">@${saEscHtml(m.username || '-')}</div>
-        </div>
-        <button onclick="saRemovePojokbacaAccess('${saEscHtml(m.memberId)}')" style="padding:6px 12px; background:rgba(255,107,107,0.15); border:1px solid rgba(255,107,107,0.3); border-radius:6px; color:#ff6b6b; font-size:11px; font-weight:600; cursor:pointer;">Cabut</button>
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Gagal memuat daftar izin Pojok Baca:', err);
-    container.innerHTML = `<p style="color:#ff6b6b; font-size:12px; text-align:center; padding:20px;">${saEscHtml(err.message)}</p>`;
-  }
-}
-
-async function saAddPojokbacaAccess() {
-  const usernameInput = document.getElementById('sa-pojokbaca-username');
-  const statusEl = document.getElementById('sa-pojokbaca-add-status');
-  const btn = document.getElementById('sa-pojokbaca-add-btn');
-  const username = usernameInput.value.trim();
-
-  if (!username) {
-    statusEl.textContent = '⚠️ Isi username dulu.';
-    statusEl.style.color = '#ff6b6b';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Mencari...';
-  statusEl.textContent = 'Mencari akun...';
-  statusEl.style.color = '#718096';
-
-  try {
-    const adminToken = saGetAdminToken();
-
-    // Cari memberId dari username dulu (endpoint pencarian member yang sudah ada)
-    const searchRes = await fetch('/api/member-list', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'search', adminToken, query: username }),
-    });
-    const searchData = await searchRes.json();
-    if (!searchRes.ok) throw new Error(searchData.error || 'Gagal mencari member');
-
-    const found = (searchData.members || []).find(m => m.username?.toLowerCase() === username.toLowerCase());
-    if (!found) throw new Error(`Member dengan username "${username}" tidak ditemukan`);
-
-    statusEl.textContent = 'Menyimpan izin...';
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add-pojokbaca-access', adminToken, memberId: found.memberId }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal menambahkan izin');
-
-    statusEl.textContent = data.alreadyExists ? 'ℹ️ Member ini sudah ada di daftar.' : '✅ Izin berhasil diberikan!';
-    statusEl.style.color = data.alreadyExists ? '#ffb400' : '#00e5c0';
-    usernameInput.value = '';
-    saLoadPojokbacaAccessList();
-  } catch (err) {
-    console.error('Gagal menambah izin Pojok Baca:', err);
-    statusEl.textContent = `❌ ${err.message}`;
-    statusEl.style.color = '#ff6b6b';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Izinkan';
-  }
-}
-
-async function saRemovePojokbacaAccess(memberId) {
-  if (!confirm('Cabut izin baca member ini?')) return;
-  const adminToken = saGetAdminToken();
-  try {
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'remove-pojokbaca-access', adminToken, memberId }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal mencabut izin');
-    saLoadPojokbacaAccessList();
-  } catch (err) {
-    console.error('Gagal mencabut izin Pojok Baca:', err);
-    alert('Gagal mencabut izin: ' + err.message);
-  }
-}
-
-// State cover yang sedang diupload (URL Cloudinary), dikirim bersama novel saat "Simpan Novel" ditekan
-let _pojokbacaCoverUrl = null;
-
-async function saLoadPojokbacaNovel() {
-  const token = saGetAdminToken();
-  if (!token) return;
-  try {
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get-novel-admin', adminToken: token }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.novel) return; // belum ada novel tersimpan, biarkan form kosong
-
-    document.getElementById('sa-pojokbaca-title').value = data.novel.title || '';
-    _pojokbacaCoverUrl = data.novel.coverUrl || null;
-    if (_pojokbacaCoverUrl) {
-      document.getElementById('sa-pojokbaca-cover-preview').innerHTML =
-        `<img src="${saEscHtml(_pojokbacaCoverUrl)}" style="width:80px; height:110px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">`;
-    }
-
-    const listEl = document.getElementById('sa-pojokbaca-chapter-list');
-    listEl.innerHTML = '';
-    (data.novel.chapters || []).forEach(ch => saAddPojokbacaChapterRow(ch.title, ch.content));
-  } catch (err) {
-    console.error('Gagal memuat novel tersimpan:', err);
-  }
-}
-
-function saAddPojokbacaChapterRow(title = '', content = '') {
-  const listEl = document.getElementById('sa-pojokbaca-chapter-list');
-  const rowId = 'pbch-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
-  const row = document.createElement('div');
-  row.id = rowId;
-  row.style.cssText = 'background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px;';
-  row.innerHTML = `
-    <div style="display:flex; gap:8px; margin-bottom:8px;">
-      <input class="pbch-title" type="text" placeholder="Judul bab" value="${saEscHtml(title)}" style="flex:1; padding:8px 10px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-      <button type="button" onclick="document.getElementById('${rowId}').remove()" style="padding:8px 10px; background:rgba(255,107,107,0.15); border:1px solid rgba(255,107,107,0.3); border-radius:6px; color:#ff6b6b; font-size:11px; cursor:pointer;">✕</button>
-    </div>
-    <textarea class="pbch-content" placeholder="Isi bab..." rows="5" style="width:100%; padding:8px 10px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box; resize:vertical; font-family:inherit;">${saEscHtml(content)}</textarea>
-  `;
-  listEl.appendChild(row);
-}
-
-// Upload cover LANGSUNG ke Cloudinary dari browser (pola sama seperti galeri broadcast),
-// supaya tidak kena limit body Vercel dan tidak perlu endpoint API baru.
-document.addEventListener('change', async (e) => {
-  if (e.target?.id !== 'sa-pojokbaca-cover-input') return;
-  const file = e.target.files && e.target.files[0];
-  const previewEl = document.getElementById('sa-pojokbaca-cover-preview');
-  if (!file) return;
-
-  previewEl.innerHTML = '<span style="font-size:11px; color:#718096;">Mengupload cover...</span>';
-  try {
-    const cloudForm = new FormData();
-    cloudForm.append('file', file);
-    cloudForm.append('upload_preset', 'broadcast_gallery_unsigned');
-    const cloudRes = await fetch('https://api.cloudinary.com/v1_1/mclectmg/auto/upload', {
-      method: 'POST',
-      body: cloudForm,
-    });
-    const cloudData = await cloudRes.json();
-    if (!cloudRes.ok) throw new Error(cloudData.error?.message || 'Upload cover gagal');
-
-    _pojokbacaCoverUrl = cloudData.secure_url;
-    previewEl.innerHTML = `<img src="${saEscHtml(_pojokbacaCoverUrl)}" style="width:80px; height:110px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">`;
-  } catch (err) {
-    console.error('Gagal upload cover novel:', err);
-    previewEl.innerHTML = `<span style="font-size:11px; color:#ff6b6b;">❌ ${saEscHtml(err.message)}</span>`;
-  }
-});
-
-async function saSaveNovel() {
-  const title = document.getElementById('sa-pojokbaca-title').value.trim();
-  const statusEl = document.getElementById('sa-pojokbaca-save-status');
-  const btn = document.getElementById('sa-pojokbaca-save-btn');
-
-  if (!title) {
-    statusEl.textContent = '⚠️ Judul novel wajib diisi.';
-    statusEl.style.color = '#ff6b6b';
-    return;
-  }
-
-  const chapterRows = document.querySelectorAll('#sa-pojokbaca-chapter-list > div');
-  const chapters = Array.from(chapterRows).map(row => ({
-    title: row.querySelector('.pbch-title').value.trim(),
-    content: row.querySelector('.pbch-content').value.trim(),
-  })).filter(ch => ch.title && ch.content); // baris kosong (judul/isi belum diisi) dilewati, bukan error
-
-  if (chapters.length === 0) {
-    statusEl.textContent = '⚠️ Minimal 1 bab (judul & isi keduanya wajib terisi).';
-    statusEl.style.color = '#ff6b6b';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Menyimpan...';
-  statusEl.textContent = 'Menyimpan novel...';
-  statusEl.style.color = '#718096';
-
-  try {
-    const adminToken = saGetAdminToken();
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upload-novel', adminToken, title, coverUrl: _pojokbacaCoverUrl, chapters }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal menyimpan novel');
-
-    statusEl.textContent = `✅ Novel tersimpan (${data.chapterCount} bab)!`;
-    statusEl.style.color = '#00e5c0';
-  } catch (err) {
-    console.error('Gagal menyimpan novel:', err);
-    statusEl.textContent = `❌ ${err.message}`;
-    statusEl.style.color = '#ff6b6b';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Simpan Novel';
-  }
 }
 
 async function saLoadAllMembers() {
