@@ -11,7 +11,7 @@
     color: #e2e8f0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     min-height: 100vh;
-    padding-bottom: 40px;
+    padding-bottom: 0;
   }
   header {
     padding: 20px 18px 16px;
@@ -23,15 +23,17 @@
     background: linear-gradient(90deg,#7b5cff,#00c2ff);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  .container { max-width: 480px; margin: 0 auto; padding: 30px 18px; }
+  /* Full layar: tanpa batas lebar & tanpa jarak samping di HP; di layar lebar dibatasi lagi (lihat media query bawah) */
+  .container { max-width: none; margin: 0; padding: 0; }
 
   /* ===== Layout profil (mengikuti sketsa) =====
      [ HEAD 16:9 : banner di belakang | foto bulat kiri | nama + rank kanan ]
      ------------------------------ garis ------------------------------
      [ BACKGROUND 1:1 : item background Func, tombol Suka / status di bawah ] */
   .profile-card {
-    border: 1px solid rgba(123,92,255,0.25);
-    border-radius: 20px;
+    display: flex; flex-direction: column;
+    min-height: calc(100vh - 58px);   /* sisa layar di bawah header halaman */
+    min-height: calc(100dvh - 58px);
     overflow: hidden;
     background: rgba(255,255,255,0.04);
   }
@@ -94,11 +96,15 @@
   .head-info { position: relative; z-index: 2; flex: 1; min-width: 0; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
   .head-info .nama { margin-bottom: 8px; }
   .head-info .rank-badge { margin-bottom: 8px; text-shadow: none; }
+  /* Alas gelap di belakang badge rank supaya warnanya tetap kontras di atas banner apa pun */
+  .profile-head .head-info .rank-badge { background-color: rgba(10,10,18,0.6); }
 
   /* Area bawah: kotak 1:1 untuk item background */
   .bg-square {
     position: relative;
-    aspect-ratio: 1 / 1;
+    flex: 1 0 auto;
+    width: 100%;
+    aspect-ratio: 1 / 1;   /* minimal persegi; kalau layar lebih tinggi, memanjang sampai dasar layar */
     background: radial-gradient(circle at 30% 20%, #1a1f3a 0%, #0a0a12 70%); /* fallback tanpa background */
   }
   .bg-square > .bg-img { position: absolute; inset: 0; pointer-events: none; }
@@ -186,6 +192,16 @@
   .like-count { font-size: 0.8rem; color: #a0aec0; }
 
   .loading { text-align: center; padding: 60px 20px; color: #718096; }
+
+  /* Layar lebar (tablet/desktop): kembali jadi kartu di tengah supaya tidak raksasa */
+  @media (min-width: 600px) {
+    .container { max-width: 520px; margin: 0 auto; padding: 30px 18px; }
+    .profile-card {
+      min-height: 0;
+      border: 1px solid rgba(123,92,255,0.25);
+      border-radius: 20px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -307,6 +323,7 @@ function renderPublicProfile(data) {
     </div>
     ${!session ? '<div class="status-msg show error" style="margin-top:12px;">Login dulu buat kasih like ✨</div>' : ''}`;
 
+  area.className = ''; // lepas style 'loading' (padding) supaya kartu benar-benar full layar
   area.innerHTML = profileMarkup({
     fotoProfil: data.fotoProfil, nama: data.nama, rankId: data.rankId, rank: data.rank,
     memberId: data.memberId, editable: false, actionsHtml,
@@ -371,6 +388,7 @@ async function loadEquippedItems() {
 
 function renderProfile(s) {
   const area = document.getElementById('profileArea');
+  area.className = ''; // lepas style 'loading' (padding) supaya kartu benar-benar full layar
   area.innerHTML = profileMarkup({
     fotoProfil: s.fotoProfil, nama: s.nama, rankId: s.rankId, rank: s.rank,
     memberId: s.memberId, editable: true,
