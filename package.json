@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "cloudinary": "^2.5.1",
-    "pureimage": "^0.4.20"
+    "pngjs": "^7.0.0"
   }
 }
