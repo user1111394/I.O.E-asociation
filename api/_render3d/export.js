@@ -1,22 +1,16 @@
 // ══════════════════════════════════════════════════════════════════
 // EXPORT — Mengubah framebuffer (dari rasterizer.js: Uint8ClampedArray RGBA datar) jadi PNG,
-// memakai `pureimage` (https://github.com/joshmarinacci/node-pureimage) — dipilih KHUSUS karena
-// 100% pure JavaScript (pakai pngjs & jpeg-js di baliknya), TANPA native binding/kompilasi C++.
-// Ini penting karena `node-canvas` (alternatif paling umum) punya native dependency yang terbukti
-// bermasalah di Vercel serverless (build gagal / ukuran function membengkak, lihat riset sebelumnya).
+// memakai `pngjs` (https://github.com/pngjs/pngjs) — 100% pure JavaScript, TANPA native binding.
+// Dipilih menggantikan `pureimage` karena API-nya lebih sederhana: buffer RGBA langsung
+// disalin ke `png.data`, lalu `PNG.sync.write()` menghasilkan Buffer PNG. Tidak ada stream,
+// tidak ada pemanggilan per-piksel.
 //
-// CATATAN JUJUR: modul ini ditulis berdasarkan dokumentasi pureimage v0.4.x yang terbaca saat
-// pengembangan, TAPI belum bisa diuji dengan library asli di lingkungan ini (sandbox tidak punya
-// akses npm registry). Fungsi framebufferToPureimageBitmap() diuji penuh secara terisolasi
-// (konversi data piksel manual, tanpa pureimage), tapi pemanggilan API pureimage yang sebenarnya
-// (pureimage.make, img.getContext, pureimage.encodePNGToStream) HARUS divalidasi ulang saat
-// pertama kali dijalankan di server sungguhan — ada kemungkinan kecil nama method API berbeda
-// dari versi yang didokumentasikan di sini.
+// CATATAN JUJUR: sandbox pengembangan tidak punya akses npm, jadi `pngjs` asli belum pernah
+// dipanggil di sini. Pengujian lokal memakai stub. Validasi sebenarnya = Vercel Logs.
 // ══════════════════════════════════════════════════════════════════
 
-// Mengubah framebuffer RGBA datar (format rasterizer.js) jadi struktur bitmap generik
-// { width, height, getPixelRGBA(x,y) -> {r,g,b,a} }. Fungsi ini TIDAK bergantung pada pureimage
-// sama sekali, jadi bisa diuji penuh tanpa library eksternal apapun.
+// Ubah framebuffer RGBA datar jadi struktur bitmap generik { width, height, getPixelRGBA(x,y) }.
+// Tidak bergantung pada library eksternal (tetap diekspor demi kompatibilitas test lama).
 function framebufferToBitmapData(framebuffer) {
   const { width, height, color } = framebuffer;
   return {
@@ -32,53 +26,45 @@ function framebufferToBitmapData(framebuffer) {
   };
 }
 
-// Menulis bitmapData (dari framebufferToBitmapData) ke objek image pureimage, piksel demi piksel.
-// Dipisah dari pemanggilan pureimage.make()/encodePNGToStream() supaya logika "piksel mana diisi
-// warna apa" testable tanpa pureimage asli — cukup kirim objek tiruan yang punya method setPixelRGBA.
-function writeBitmapToImage(bitmapData, imageTarget) {
-  const ctx = imageTarget.getContext('2d');
-  for (let y = 0; y < bitmapData.height; y++) {
-    for (let x = 0; x < bitmapData.width; x++) {
-      const { r, g, b, a } = bitmapData.getPixelRGBA(x, y);
-      // API pureimage Context2D: setPixelRGBA_i menerima komponen 0-255 terpisah (lebih cepat
-      // daripada setPixelRGBA yang menerima 1 angka 32-bit gabungan, berdasar dokumentasi pureimage).
-      ctx.setPixelRGBA_i(x, y, r, g, b, a);
-    }
+// Validasi framebuffer sebelum diencode (data rusak -> error jelas, bukan PNG korup).
+function assertValidFramebuffer(framebuffer) {
+  const { width, height, color } = framebuffer || {};
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new TypeError(`framebuffer: width/height harus integer positif (dapat ${width}x${height})`);
   }
-  return imageTarget;
+  if (!color || typeof color.length !== 'number') {
+    throw new TypeError('framebuffer: properti color (RGBA datar) tidak ada');
+  }
+  const expected = width * height * 4;
+  if (color.length !== expected) {
+    throw new RangeError(`framebuffer: panjang color ${color.length} != ${expected} (width*height*4)`);
+  }
 }
 
-// Fungsi utama: render framebuffer -> PNG, dikembalikan sebagai Buffer base64-ready.
-// Memakai pureimage asli (di-require secara lazy di dalam fungsi, supaya modul ini tetap bisa
-// di-import dan diuji sebagian tanpa pureimage ter-install, misal untuk unit test komponen lain).
+// Fungsi utama: framebuffer -> Buffer PNG.
+// pngjs di-import lazy di dalam fungsi, supaya modul ini tetap bisa di-import tanpa pngjs terpasang.
+// pngjs adalah paket CommonJS, jadi `PNG` bisa ada di mod.PNG atau mod.default.PNG tergantung bundler/Node.
 async function framebufferToPngBuffer(framebuffer) {
-  // Namespace import (bukan default import) dipakai di sini karena pureimage adalah package
-  // CommonJS lama — polanya lebih konsisten lintas versi Node.js saat di-import dari modul ESM.
-  // CATATAN: ini BELUM divalidasi dengan pureimage asli (lihat catatan jujur di atas file ini).
-  const pureimage = await import('pureimage');
-  const { PassThrough } = await import('node:stream');
+  assertValidFramebuffer(framebuffer);
 
-  const img = pureimage.make(framebuffer.width, framebuffer.height);
-  const bitmapData = framebufferToBitmapData(framebuffer);
-  writeBitmapToImage(bitmapData, img);
+  const mod = await import('pngjs');
+  const PNG = mod.PNG ?? (mod.default && mod.default.PNG);
+  if (!PNG) throw new Error('export: class PNG tidak ditemukan di modul pngjs');
 
-  // pureimage.encodePNGToStream menulis ke writable stream; kita tampung ke buffer di memory
-  // (bukan ke file disk) karena di Vercel serverless filesystem bersifat read-only/ephemeral,
-  // jadi hasil PNG harus langsung dikirim sebagai response, bukan disimpan dulu ke file.
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    const stream = new PassThrough();
-    stream.on('data', chunk => chunks.push(chunk));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
-    pureimage.encodePNGToStream(img, stream).catch(reject);
-  });
+  const { width, height, color } = framebuffer;
+  const png = new PNG({ width, height });
+
+  // Salin langsung seluruh buffer RGBA (urutan R,G,B,A per piksel — sama persis dengan format pngjs).
+  png.data.set(color);
+
+  // PNG.sync.write mengembalikan Buffer. Tanpa stream, tanpa file disk (filesystem Vercel read-only).
+  return PNG.sync.write(png);
 }
 
-// Helper: langsung hasilkan base64 data URI siap pakai di <img src="...">
+// Helper: base64 data URI siap pakai di <img src="...">
 async function framebufferToPngDataUri(framebuffer) {
   const buffer = await framebufferToPngBuffer(framebuffer);
   return `data:image/png;base64,${buffer.toString('base64')}`;
 }
 
-export { framebufferToBitmapData, writeBitmapToImage, framebufferToPngBuffer, framebufferToPngDataUri };
+export { framebufferToBitmapData, framebufferToPngBuffer, framebufferToPngDataUri };
