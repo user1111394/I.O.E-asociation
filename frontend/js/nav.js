@@ -253,7 +253,7 @@ document.addEventListener('keydown', e => {
 // biasa tidak ikut mengunduh ±130 KB kode admin di setiap halaman.
 // Urutan di IOE_SA_MODULES = urutan asli di nav.js lama. Naikkan IOE_ADMIN_VER
 // setiap kali isi modul diubah supaya cache browser tidak memakai versi lama.
-const IOE_ADMIN_VER = '1';
+const IOE_ADMIN_VER = '2';
 const IOE_SA_MODULES = ['panel', 'firebase', 'event', 'event-review', 'event-coin', 'broadcast', 'shop', 'gacha', 'redeem', 'member', 'pojokbaca', 'trial', 'tos'];
 const IOE_ADMIN_BASE = (document.currentScript && document.currentScript.src)
   ? new URL('superadmin/', document.currentScript.src).href
