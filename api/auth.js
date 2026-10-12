@@ -145,6 +145,66 @@ function calculateRank(totalLikes, totalMembers) {
   return { id: 'grandmaster', label: 'Grandmaster', isFlag: false };
 }
 
+// ── Pojok Baca: penyimpanan multi-cerita ──
+// Struktur di Redis (hemat command & aman dari batas ukuran request Upstash 1 MB):
+//   pojokbaca:index         -> [{ id, title, coverUrl, synopsis, chapterCount, updatedAt }]  (metadata ringan, buat rak)
+//   pojokbaca:story:{id}    -> { id, title, coverUrl, synopsis, chapters:[{title,content}], updatedAt }  (1 cerita utuh)
+//   pojokbaca:access        -> [memberId, ...]  (tidak berubah)
+//   pojokbaca:novel         -> KEY LAMA (1 novel). Dimigrasi otomatis jadi cerita id "legacy"; tidak dihapus.
+const POJOK_INDEX_KEY = 'pojokbaca:index';
+const POJOK_MAX_STORIES = 100;
+const POJOK_MAX_STORY_BYTES = 900000; // di bawah batas 1 MB request Upstash
+const pojokStoryKey = (id) => `pojokbaca:story:${id}`;
+const isValidStoryId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
+const isCloudinaryUrl = (u) => typeof u === 'string' && /^https:\/\/res\.cloudinary\.com\//.test(u);
+
+function toIndexEntry(story) {
+  return {
+    id: story.id,
+    title: story.title,
+    coverUrl: story.coverUrl || null,
+    synopsis: story.synopsis || '',
+    chapterCount: Array.isArray(story.chapters) ? story.chapters.length : 0,
+    updatedAt: story.updatedAt || Date.now(),
+  };
+}
+
+// Baca daftar cerita. Kalau index belum ada tapi novel lama ada, migrasikan (id tetap "legacy"
+// supaya aman kalau dua request pertama datang bersamaan — hasilnya identik, tidak jadi dobel).
+async function getPojokIndex() {
+  const idx = await kvGet(POJOK_INDEX_KEY);
+  if (Array.isArray(idx)) return idx;
+
+  const legacy = await kvGet('pojokbaca:novel');
+  if (!legacy || typeof legacy !== 'object' || !Array.isArray(legacy.chapters)) return [];
+
+  const story = {
+    id: 'legacy',
+    title: typeof legacy.title === 'string' && legacy.title ? legacy.title : 'Tanpa judul',
+    coverUrl: isCloudinaryUrl(legacy.coverUrl) ? legacy.coverUrl : null,
+    synopsis: '',
+    chapters: legacy.chapters,
+    updatedAt: legacy.updatedAt || Date.now(),
+  };
+  if (!(await kvSet(pojokStoryKey('legacy'), story))) throw new Error('Gagal memigrasi novel lama');
+  const index = [toIndexEntry(story)];
+  if (!(await kvSet(POJOK_INDEX_KEY, index))) throw new Error('Gagal memigrasi daftar cerita');
+  return index;
+}
+
+// Verifikasi pembaca: session cocok + ada di daftar izin. Return null kalau lolos,
+// atau [status, pesan] kalau ditolak. Selalu dicek server-side (bukan percaya hasil cek client).
+async function verifyPojokReader(memberId, sessionToken) {
+  if (!memberId || !sessionToken) return [401, 'Belum login'];
+  const acc = await kvGet(`account:${memberId}`);
+  if (!acc || acc.currentSession !== sessionToken) return [401, 'Sesi tidak valid, silakan login ulang'];
+  const accessList = await kvGet('pojokbaca:access');
+  if (!Array.isArray(accessList) || !accessList.includes(memberId)) {
+    return [403, 'Kamu belum memiliki izin untuk membaca Pojok Baca'];
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -703,10 +763,9 @@ export default async function handler(req, res) {
 
   // ══════════════════════════════════════
   // POJOK BACA — Halaman baca novel privat, hanya untuk member yang namanya
-  // sudah ditambahkan ke daftar izin oleh superadmin. Disimpan sebagai 2 key:
-  // "pojokbaca:access" (array memberId yang diizinkan) dan "pojokbaca:novel"
-  // (satu object berisi semua bab, supaya 1x baca = 1x command Redis, hemat
-  // kuota 500K command/bulan di free tier Upstash).
+  // sudah ditambahkan ke daftar izin oleh superadmin. Mendukung BANYAK cerita:
+  // "pojokbaca:access" (array memberId), "pojokbaca:index" (metadata rak) dan
+  // "pojokbaca:story:{id}" (isi 1 cerita) — lihat helper di atas handler.
   // ══════════════════════════════════════
 
   // CHECK-POJOKBACA-ACCESS — dipanggil pojokbaca.html setelah member login,
@@ -794,86 +853,141 @@ export default async function handler(req, res) {
     }
   }
 
-  // UPLOAD-NOVEL — superadmin menulis/mengganti seluruh konten novel + cover.
-  // Dikirim sebagai satu payload utuh (bukan per-bab terpisah) supaya tetap 1 key di Redis.
-  // coverUrl berasal dari upload Cloudinary yang dilakukan LANGSUNG dari browser (skip server),
-  // jadi di sini cuma menyimpan URL hasilnya — server tidak pernah menerima file gambar itu sendiri.
-  if (action === 'upload-novel') {
-    const { adminToken, title, coverUrl, chapters } = req.body;
-    const isValidAdmin = await verifyAdminAccess(adminToken);
-    if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
-
-    if (!title || typeof title !== 'string') {
-      return res.status(400).json({ error: 'title wajib diisi (judul novel)' });
+  // ── ADMIN: daftar cerita (metadata) ──
+  if (action === 'list-stories-admin') {
+    const { adminToken } = req.body;
+    if (!(await verifyAdminAccess(adminToken))) return res.status(403).json({ error: 'Akses admin tidak valid' });
+    try {
+      return res.status(200).json({ success: true, stories: await getPojokIndex() });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
     }
-    if (coverUrl !== undefined && coverUrl !== null) {
-      // Validasi longgar tapi tegas: harus string, dan HARUS https://res.cloudinary.com/...
-      // Menolak skema lain (javascript:, data:, http:// biasa) mencegah URL yang bukan benar-benar
-      // berasal dari upload Cloudinary tersimpan dan nanti dipasang sebagai <img src> di pojokbaca.html.
-      if (typeof coverUrl !== 'string' || !/^https:\/\/res\.cloudinary\.com\//.test(coverUrl)) {
-        return res.status(400).json({ error: 'coverUrl harus URL Cloudinary yang valid (https://res.cloudinary.com/...)' });
-      }
+  }
+
+  // ── ADMIN: ambil 1 cerita utuh untuk diisi ke form edit ──
+  if (action === 'get-story-admin') {
+    const { adminToken, storyId } = req.body;
+    if (!(await verifyAdminAccess(adminToken))) return res.status(403).json({ error: 'Akses admin tidak valid' });
+    if (!isValidStoryId(storyId)) return res.status(400).json({ error: 'storyId tidak valid' });
+    try {
+      await getPojokIndex(); // memastikan migrasi novel lama sudah jalan
+      const story = await kvGet(pojokStoryKey(storyId));
+      if (!story) return res.status(404).json({ error: 'Cerita tidak ditemukan' });
+      return res.status(200).json({ success: true, story });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // ── ADMIN: buat cerita baru (tanpa storyId) atau perbarui yang ada (dengan storyId) ──
+  // coverUrl berasal dari upload Cloudinary langsung dari browser, jadi di sini cuma menyimpan URL-nya;
+  // harus https://res.cloudinary.com/... supaya aman dipasang sebagai <img src> di pojokbaca.html.
+  if (action === 'save-story') {
+    const { adminToken, storyId, title, synopsis, coverUrl, chapters } = req.body;
+    if (!(await verifyAdminAccess(adminToken))) return res.status(403).json({ error: 'Akses admin tidak valid' });
+
+    if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'title wajib diisi (judul cerita)' });
+    if (title.length > 120) return res.status(400).json({ error: 'Judul maksimal 120 karakter' });
+    if (synopsis !== undefined && synopsis !== null && typeof synopsis !== 'string') {
+      return res.status(400).json({ error: 'synopsis harus berupa teks' });
+    }
+    if (typeof synopsis === 'string' && synopsis.length > 2000) {
+      return res.status(400).json({ error: 'Sinopsis maksimal 2000 karakter' });
+    }
+    if (coverUrl !== undefined && coverUrl !== null && !isCloudinaryUrl(coverUrl)) {
+      return res.status(400).json({ error: 'coverUrl harus URL Cloudinary yang valid (https://res.cloudinary.com/...)' });
     }
     if (!Array.isArray(chapters) || chapters.length === 0) {
       return res.status(400).json({ error: 'chapters wajib diisi, berupa array tidak kosong' });
     }
+    if (chapters.length > 500) return res.status(400).json({ error: 'Maksimal 500 bab per cerita' });
     for (let i = 0; i < chapters.length; i++) {
       const ch = chapters[i];
       if (!ch || typeof ch.title !== 'string' || typeof ch.content !== 'string') {
         return res.status(400).json({ error: `chapters[${i}] harus punya title & content (string)` });
       }
+      if (ch.title.length > 200) return res.status(400).json({ error: `chapters[${i}].title maksimal 200 karakter` });
+    }
+    if (storyId !== undefined && storyId !== null && !isValidStoryId(storyId)) {
+      return res.status(400).json({ error: 'storyId tidak valid' });
     }
 
     try {
-      const novel = { title, coverUrl: coverUrl || null, chapters, updatedAt: Date.now() };
-      const saved = await kvSet('pojokbaca:novel', novel);
-      if (!saved) return res.status(500).json({ error: 'Gagal menyimpan novel' });
-      return res.status(200).json({ success: true, chapterCount: chapters.length });
+      const index = await getPojokIndex();
+      const isUpdate = !!storyId;
+      if (isUpdate && !index.some(e => e.id === storyId)) {
+        return res.status(404).json({ error: 'Cerita yang mau diperbarui tidak ditemukan' });
+      }
+      if (!isUpdate && index.length >= POJOK_MAX_STORIES) {
+        return res.status(400).json({ error: `Maksimal ${POJOK_MAX_STORIES} cerita` });
+      }
+
+      const story = {
+        id: isUpdate ? storyId : 's_' + crypto.randomBytes(6).toString('hex'),
+        title: title.trim(),
+        coverUrl: coverUrl || null,
+        synopsis: (synopsis || '').trim(),
+        chapters: chapters.map(ch => ({ title: ch.title, content: ch.content })),
+        updatedAt: Date.now(),
+      };
+      if (JSON.stringify(story).length > POJOK_MAX_STORY_BYTES) {
+        return res.status(400).json({ error: 'Cerita terlalu besar (maks ±900 KB teks). Kurangi isi bab atau pecah jadi cerita lain.' });
+      }
+
+      // Simpan isi cerita DULU, baru index — kalau index gagal, tidak ada entri rak yang menunjuk ke cerita kosong.
+      if (!(await kvSet(pojokStoryKey(story.id), story))) return res.status(500).json({ error: 'Gagal menyimpan cerita' });
+      const entry = toIndexEntry(story);
+      const newIndex = isUpdate ? index.map(e => (e.id === story.id ? entry : e)) : [...index, entry];
+      if (!(await kvSet(POJOK_INDEX_KEY, newIndex))) return res.status(500).json({ error: 'Gagal memperbarui daftar cerita' });
+
+      return res.status(200).json({ success: true, storyId: story.id, chapterCount: story.chapters.length, created: !isUpdate });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
   }
 
-  // GET-NOVEL-ADMIN — superadmin mengambil novel tersimpan untuk mengisi ulang form edit
-  // di panel. Beda dari "get-novel" (yang butuh session member & cek daftar izin): di sini
-  // yang dicek cuma adminToken, karena ini dipanggil dari panel superadmin, bukan oleh member.
-  if (action === 'get-novel-admin') {
-    const { adminToken } = req.body;
-    const isValidAdmin = await verifyAdminAccess(adminToken);
-    if (!isValidAdmin) return res.status(403).json({ error: 'Akses admin tidak valid' });
-
+  // ── ADMIN: hapus cerita ──
+  if (action === 'delete-story') {
+    const { adminToken, storyId } = req.body;
+    if (!(await verifyAdminAccess(adminToken))) return res.status(403).json({ error: 'Akses admin tidak valid' });
+    if (!isValidStoryId(storyId)) return res.status(400).json({ error: 'storyId tidak valid' });
     try {
-      const novel = await kvGet('pojokbaca:novel');
-      return res.status(200).json({ success: true, novel: novel || null });
+      const index = await getPojokIndex();
+      if (!index.some(e => e.id === storyId)) return res.status(404).json({ error: 'Cerita tidak ditemukan' });
+      const newIndex = index.filter(e => e.id !== storyId);
+      // Index dulu (supaya langsung hilang dari rak), baru hapus isinya.
+      if (!(await kvSet(POJOK_INDEX_KEY, newIndex))) return res.status(500).json({ error: 'Gagal memperbarui daftar cerita' });
+      await kvDel(pojokStoryKey(storyId));
+      return res.status(200).json({ success: true, total: newIndex.length });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
   }
 
-  // GET-NOVEL — member membaca novel. HANYA dikabulkan kalau memberId ada di daftar izin
-  // (dicek ULANG di sini, server-side, bukan cuma mengandalkan hasil check-pojokbaca-access
-  // di client — supaya member tidak bisa langsung panggil action ini untuk melewati pengecekan).
-  if (action === 'get-novel') {
+  // ── MEMBER: rak cerita (metadata saja: cover, judul, sinopsis, jumlah bab) ──
+  if (action === 'get-shelf') {
     const { memberId, sessionToken } = req.body;
-    if (!memberId || !sessionToken) return res.status(401).json({ error: 'Belum login' });
-
     try {
-      // Verifikasi session dulu (memberId & sessionToken harus cocok dengan akun yang sedang login)
-      const acc = await kvGet(`account:${memberId}`);
-      if (!acc || acc.currentSession !== sessionToken) {
-        return res.status(401).json({ error: 'Sesi tidak valid, silakan login ulang' });
-      }
+      const denied = await verifyPojokReader(memberId, sessionToken);
+      if (denied) return res.status(denied[0]).json({ error: denied[1] });
+      return res.status(200).json({ success: true, stories: await getPojokIndex() });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
 
-      const accessList = await kvGet('pojokbaca:access');
-      const list = Array.isArray(accessList) ? accessList : [];
-      if (!list.includes(memberId)) {
-        return res.status(403).json({ error: 'Kamu belum memiliki izin untuk membaca Pojok Baca' });
-      }
-
-      const novel = await kvGet('pojokbaca:novel');
-      if (!novel) return res.status(404).json({ error: 'Novel belum tersedia' });
-
-      return res.status(200).json({ success: true, novel });
+  // ── MEMBER: satu cerita utuh (judul bab + isi). Izin & sesi dicek ulang di server. ──
+  if (action === 'get-story') {
+    const { memberId, sessionToken, storyId } = req.body;
+    if (!isValidStoryId(storyId)) return res.status(400).json({ error: 'storyId tidak valid' });
+    try {
+      const denied = await verifyPojokReader(memberId, sessionToken);
+      if (denied) return res.status(denied[0]).json({ error: denied[1] });
+      const index = await getPojokIndex();
+      if (!index.some(e => e.id === storyId)) return res.status(404).json({ error: 'Cerita tidak ditemukan' });
+      const story = await kvGet(pojokStoryKey(storyId));
+      if (!story) return res.status(404).json({ error: 'Cerita tidak ditemukan' });
+      return res.status(200).json({ success: true, story });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
