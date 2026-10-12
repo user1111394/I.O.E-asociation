@@ -312,22 +312,36 @@ function openSuperadminPanel() {
       </div>
 
       <div style="padding-top:14px; border-top:1px solid rgba(255,255,255,0.1);">
-        <div style="font-size:13px; font-weight:600; color:#cbd5e0; margin-bottom:10px;">📖 Novel</div>
-
-        <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">Cover novel</label>
-        <input id="sa-pojokbaca-cover-input" type="file" accept="image/*" style="width:100%; margin-bottom:8px; font-size:12px; color:#cbd5e0;">
-        <div id="sa-pojokbaca-cover-preview" style="margin-bottom:10px;"></div>
-
-        <input id="sa-pojokbaca-title" type="text" placeholder="Judul novel" style="width:100%; padding:10px 12px; margin-bottom:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:8px; color:#fff; font-size:13px; box-sizing:border-box;">
-
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-size:12px; font-weight:600; color:#cbd5e0;">Daftar Bab</div>
+          <div style="font-size:13px; font-weight:600; color:#cbd5e0;">📚 Daftar Cerita</div>
+          <button type="button" onclick="saNewPojokbacaStory()" style="padding:7px 12px; background:rgba(123,197,255,0.12); border:1px solid rgba(123,197,255,0.3); color:#7bc5ff; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer;">+ Cerita Baru</button>
         </div>
-        <div id="sa-pojokbaca-chapter-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:10px;"></div>
-        <button type="button" onclick="saAddPojokbacaChapterRow()" style="width:100%; padding:9px; background:rgba(123,197,255,0.12); border:1px solid rgba(123,197,255,0.3); color:#7bc5ff; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer; margin-bottom:12px;">+ Tambah Bab</button>
+        <div id="sa-pojokbaca-story-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          <p style="color:#718096; font-size:12px; text-align:center; padding:20px;">Memuat daftar cerita...</p>
+        </div>
 
-        <button onclick="saSaveNovel()" id="sa-pojokbaca-save-btn" style="width:100%; padding:11px; background:linear-gradient(90deg,#7bc5ff,#7b5cff); border:none; border-radius:8px; color:#0a0a0a; font-weight:700; font-size:13px; cursor:pointer;">Simpan Novel</button>
-        <div id="sa-pojokbaca-save-status" style="font-size:11px; color:#718096; margin-top:8px;"></div>
+        <div id="sa-pojokbaca-form" style="display:none; padding:12px; border:1px solid rgba(123,197,255,0.25); border-radius:12px; background:rgba(123,197,255,0.04);">
+          <div id="sa-pojokbaca-form-title" style="font-size:13px; font-weight:700; color:#7bc5ff; margin-bottom:12px;">Cerita baru</div>
+
+          <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">Cover cerita</label>
+          <input id="sa-pojokbaca-cover-input" type="file" accept="image/*" style="width:100%; margin-bottom:8px; font-size:12px; color:#cbd5e0;">
+          <div id="sa-pojokbaca-cover-preview" style="margin-bottom:10px;"></div>
+
+          <input id="sa-pojokbaca-title" type="text" maxlength="120" placeholder="Judul cerita" style="width:100%; margin-bottom:10px; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:8px; color:#fff; font-size:13px; box-sizing:border-box;">
+
+          <label style="display:block; font-size:11px; color:#718096; margin-bottom:6px;">Sinopsis (maks 2000 karakter)</label>
+          <textarea id="sa-pojokbaca-synopsis" rows="4" maxlength="2000" placeholder="Ringkasan cerita yang tampil di halaman detail..." style="width:100%; margin-bottom:12px; resize:vertical; font-family:inherit; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:8px; color:#fff; font-size:13px; box-sizing:border-box;"></textarea>
+
+          <div style="font-size:12px; font-weight:600; color:#cbd5e0; margin-bottom:10px;">Daftar Bab</div>
+          <div id="sa-pojokbaca-chapter-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:10px;"></div>
+          <button type="button" onclick="saAddPojokbacaChapterRow()" style="width:100%; padding:9px; background:rgba(123,197,255,0.12); border:1px solid rgba(123,197,255,0.3); color:#7bc5ff; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer; margin-bottom:12px;">+ Tambah Bab</button>
+
+          <div style="display:flex; gap:8px;">
+            <button type="button" onclick="saCancelPojokbacaStory()" style="flex:0 0 auto; padding:11px 16px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#cbd5e0; font-weight:600; font-size:13px; cursor:pointer;">Batal</button>
+            <button onclick="saSaveStory()" id="sa-pojokbaca-save-btn" style="flex:1; padding:11px; background:linear-gradient(90deg,#7bc5ff,#7b5cff); border:none; border-radius:8px; color:#0a0a0a; font-weight:700; font-size:13px; cursor:pointer;">Simpan Cerita</button>
+          </div>
+          <div id="sa-pojokbaca-save-status" style="font-size:11px; color:#718096; margin-top:8px;"></div>
+        </div>
       </div>
     </div>
 
@@ -445,7 +459,7 @@ function saSwitchTab(tab) {
   if (tab === 'tos') saLoadTosThreads();
   if (tab === 'event') saLoadEventList();
   if (tab === 'shop') saLoadShopList();
-  if (tab === 'pojokbaca') { saLoadPojokbacaAccessList(); saLoadPojokbacaNovel(); }
+  if (tab === 'pojokbaca') { saLoadPojokbacaAccessList(); saLoadPojokbacaStories(); }
 }
 
 

@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════
    I.O.E HUB — SUPERADMIN / pojokbaca.js
-   Tab Pojok Baca: daftar izin + novel
+   Tab Pojok Baca: daftar izin + banyak cerita (cover, judul, sinopsis, bab)
    Dimuat otomatis oleh js/nav.js (lazy-load) saat panel admin pertama kali dibuka.
    Script klasik (bukan ES module): fungsi & variabel tetap global, jadi onclick="..." di HTML tetap jalan.
 ═══════════════════════════════════════════════ */
@@ -115,33 +115,116 @@ async function saRemovePojokbacaAccess(memberId) {
   }
 }
 
-// State cover yang sedang diupload (URL Cloudinary), dikirim bersama novel saat "Simpan Novel" ditekan
+// ── Multi-cerita ──
+// State form: id cerita yang sedang diedit (null = cerita baru) + URL cover hasil upload Cloudinary.
+let _pojokbacaEditingId = null;
 let _pojokbacaCoverUrl = null;
 
-async function saLoadPojokbacaNovel() {
-  const token = saGetAdminToken();
-  if (!token) return;
+async function saPojokbacaApi(body) {
+  const res = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, adminToken: saGetAdminToken() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Permintaan gagal');
+  return data;
+}
+
+function saPojokbacaCoverPreviewHtml(url) {
+  return url
+    ? `<img src="${saEscHtml(url)}" style="width:80px; height:120px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">`
+    : '';
+}
+
+async function saLoadPojokbacaStories() {
+  const listEl = document.getElementById('sa-pojokbaca-story-list');
+  if (!listEl || !saGetAdminToken()) return;
   try {
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get-novel-admin', adminToken: token }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.novel) return; // belum ada novel tersimpan, biarkan form kosong
-
-    document.getElementById('sa-pojokbaca-title').value = data.novel.title || '';
-    _pojokbacaCoverUrl = data.novel.coverUrl || null;
-    if (_pojokbacaCoverUrl) {
-      document.getElementById('sa-pojokbaca-cover-preview').innerHTML =
-        `<img src="${saEscHtml(_pojokbacaCoverUrl)}" style="width:80px; height:110px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">`;
+    const data = await saPojokbacaApi({ action: 'list-stories-admin' });
+    const stories = data.stories || [];
+    if (!stories.length) {
+      listEl.innerHTML = '<p style="color:#718096; font-size:12px; text-align:center; padding:20px;">Belum ada cerita. Tekan "+ Cerita Baru".</p>';
+      return;
     }
-
-    const listEl = document.getElementById('sa-pojokbaca-chapter-list');
-    listEl.innerHTML = '';
-    (data.novel.chapters || []).forEach(ch => saAddPojokbacaChapterRow(ch.title, ch.content));
+    listEl.innerHTML = stories.map(st => {
+      const thumb = st.coverUrl
+        ? `<img src="${saEscHtml(st.coverUrl)}" style="width:40px; height:60px; object-fit:cover; border-radius:5px; flex-shrink:0;">`
+        : `<div style="width:40px; height:60px; border-radius:5px; flex-shrink:0; background:rgba(123,197,255,0.12); display:flex; align-items:center; justify-content:center;">📖</div>`;
+      const id = saEscHtml(st.id);
+      return `
+        <div style="display:flex; align-items:center; gap:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:8px;">
+          ${thumb}
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${saEscHtml(st.title)}</div>
+            <div style="font-size:11px; color:#718096;">${st.chapterCount} bab${st.synopsis ? '' : ' · belum ada sinopsis'}</div>
+          </div>
+          <button onclick="saEditPojokbacaStory('${id}')" style="padding:6px 10px; background:rgba(123,197,255,0.12); border:1px solid rgba(123,197,255,0.3); border-radius:6px; color:#7bc5ff; font-size:11px; font-weight:600; cursor:pointer;">Edit</button>
+          <button onclick="saDeletePojokbacaStory('${id}')" style="padding:6px 10px; background:rgba(255,107,107,0.15); border:1px solid rgba(255,107,107,0.3); border-radius:6px; color:#ff6b6b; font-size:11px; font-weight:600; cursor:pointer;">Hapus</button>
+        </div>`;
+    }).join('');
   } catch (err) {
-    console.error('Gagal memuat novel tersimpan:', err);
+    console.error('Gagal memuat daftar cerita:', err);
+    listEl.innerHTML = `<p style="color:#ff6b6b; font-size:12px; text-align:center; padding:20px;">${saEscHtml(err.message)}</p>`;
+  }
+}
+
+function saOpenPojokbacaForm(titleText) {
+  document.getElementById('sa-pojokbaca-form-title').textContent = titleText;
+  document.getElementById('sa-pojokbaca-save-status').textContent = '';
+  const form = document.getElementById('sa-pojokbaca-form');
+  form.style.display = 'block';
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function saResetPojokbacaForm() {
+  _pojokbacaEditingId = null;
+  _pojokbacaCoverUrl = null;
+  document.getElementById('sa-pojokbaca-title').value = '';
+  document.getElementById('sa-pojokbaca-synopsis').value = '';
+  document.getElementById('sa-pojokbaca-cover-input').value = '';
+  document.getElementById('sa-pojokbaca-cover-preview').innerHTML = '';
+  document.getElementById('sa-pojokbaca-chapter-list').innerHTML = '';
+}
+
+function saNewPojokbacaStory() {
+  saResetPojokbacaForm();
+  saAddPojokbacaChapterRow();
+  saOpenPojokbacaForm('Cerita baru');
+}
+
+function saCancelPojokbacaStory() {
+  saResetPojokbacaForm();
+  document.getElementById('sa-pojokbaca-form').style.display = 'none';
+}
+
+async function saEditPojokbacaStory(storyId) {
+  try {
+    const data = await saPojokbacaApi({ action: 'get-story-admin', storyId });
+    const st = data.story;
+    saResetPojokbacaForm();
+    _pojokbacaEditingId = st.id;
+    _pojokbacaCoverUrl = st.coverUrl || null;
+    document.getElementById('sa-pojokbaca-title').value = st.title || '';
+    document.getElementById('sa-pojokbaca-synopsis').value = st.synopsis || '';
+    document.getElementById('sa-pojokbaca-cover-preview').innerHTML = saPojokbacaCoverPreviewHtml(_pojokbacaCoverUrl);
+    (st.chapters || []).forEach(ch => saAddPojokbacaChapterRow(ch.title, ch.content));
+    saOpenPojokbacaForm('Edit: ' + (st.title || ''));
+  } catch (err) {
+    console.error('Gagal memuat cerita untuk diedit:', err);
+    alert('Gagal memuat cerita: ' + err.message);
+  }
+}
+
+async function saDeletePojokbacaStory(storyId) {
+  if (!confirm('Hapus cerita ini beserta semua babnya? Tindakan ini tidak bisa dibatalkan.')) return;
+  try {
+    await saPojokbacaApi({ action: 'delete-story', storyId });
+    if (_pojokbacaEditingId === storyId) saCancelPojokbacaStory();
+    saLoadPojokbacaStories();
+  } catch (err) {
+    console.error('Gagal menghapus cerita:', err);
+    alert('Gagal menghapus cerita: ' + err.message);
   }
 }
 
@@ -153,7 +236,7 @@ function saAddPojokbacaChapterRow(title = '', content = '') {
   row.style.cssText = 'background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px;';
   row.innerHTML = `
     <div style="display:flex; gap:8px; margin-bottom:8px;">
-      <input class="pbch-title" type="text" placeholder="Judul bab" value="${saEscHtml(title)}" style="flex:1; padding:8px 10px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+      <input class="pbch-title" type="text" maxlength="200" placeholder="Judul bab" value="${saEscHtml(title)}" style="flex:1; padding:8px 10px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
       <button type="button" onclick="document.getElementById('${rowId}').remove()" style="padding:8px 10px; background:rgba(255,107,107,0.15); border:1px solid rgba(255,107,107,0.3); border-radius:6px; color:#ff6b6b; font-size:11px; cursor:pointer;">✕</button>
     </div>
     <textarea class="pbch-content" placeholder="Isi bab..." rows="5" style="width:100%; padding:8px 10px; background:rgba(255,255,255,0.05); border:1px solid rgba(123,197,255,0.25); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box; resize:vertical; font-family:inherit;">${saEscHtml(content)}</textarea>
@@ -182,20 +265,21 @@ document.addEventListener('change', async (e) => {
     if (!cloudRes.ok) throw new Error(cloudData.error?.message || 'Upload cover gagal');
 
     _pojokbacaCoverUrl = cloudData.secure_url;
-    previewEl.innerHTML = `<img src="${saEscHtml(_pojokbacaCoverUrl)}" style="width:80px; height:110px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">`;
+    previewEl.innerHTML = saPojokbacaCoverPreviewHtml(_pojokbacaCoverUrl);
   } catch (err) {
-    console.error('Gagal upload cover novel:', err);
+    console.error('Gagal upload cover cerita:', err);
     previewEl.innerHTML = `<span style="font-size:11px; color:#ff6b6b;">❌ ${saEscHtml(err.message)}</span>`;
   }
 });
 
-async function saSaveNovel() {
+async function saSaveStory() {
   const title = document.getElementById('sa-pojokbaca-title').value.trim();
+  const synopsis = document.getElementById('sa-pojokbaca-synopsis').value.trim();
   const statusEl = document.getElementById('sa-pojokbaca-save-status');
   const btn = document.getElementById('sa-pojokbaca-save-btn');
 
   if (!title) {
-    statusEl.textContent = '⚠️ Judul novel wajib diisi.';
+    statusEl.textContent = '⚠️ Judul cerita wajib diisi.';
     statusEl.style.color = '#ff6b6b';
     return;
   }
@@ -214,27 +298,26 @@ async function saSaveNovel() {
 
   btn.disabled = true;
   btn.textContent = 'Menyimpan...';
-  statusEl.textContent = 'Menyimpan novel...';
+  statusEl.textContent = 'Menyimpan cerita...';
   statusEl.style.color = '#718096';
 
   try {
-    const adminToken = saGetAdminToken();
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upload-novel', adminToken, title, coverUrl: _pojokbacaCoverUrl, chapters }),
+    const data = await saPojokbacaApi({
+      action: 'save-story',
+      storyId: _pojokbacaEditingId || undefined,
+      title, synopsis, coverUrl: _pojokbacaCoverUrl, chapters,
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal menyimpan novel');
-
-    statusEl.textContent = `✅ Novel tersimpan (${data.chapterCount} bab)!`;
+    _pojokbacaEditingId = data.storyId; // setelah cerita baru tersimpan, simpan berikutnya = update, bukan bikin dobel
+    document.getElementById('sa-pojokbaca-form-title').textContent = 'Edit: ' + title;
+    statusEl.textContent = `✅ ${data.created ? 'Cerita dibuat' : 'Cerita diperbarui'} (${data.chapterCount} bab)!`;
     statusEl.style.color = '#00e5c0';
+    saLoadPojokbacaStories();
   } catch (err) {
-    console.error('Gagal menyimpan novel:', err);
+    console.error('Gagal menyimpan cerita:', err);
     statusEl.textContent = `❌ ${err.message}`;
     statusEl.style.color = '#ff6b6b';
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Simpan Novel';
+    btn.textContent = 'Simpan Cerita';
   }
 }
