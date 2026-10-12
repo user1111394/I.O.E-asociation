@@ -25,79 +25,94 @@
   }
   .container { max-width: 480px; margin: 0 auto; padding: 30px 18px; }
 
+  /* ===== Layout profil (mengikuti sketsa) =====
+     [ HEAD 16:9 : banner di belakang | foto bulat kiri | nama + rank kanan ]
+     ------------------------------ garis ------------------------------
+     [ BACKGROUND 1:1 : item background Func, tombol Suka / status di bawah ] */
   .profile-card {
-    position: relative;
-    background: rgba(255,255,255,0.04);
     border: 1px solid rgba(123,92,255,0.25);
     border-radius: 20px;
-    padding: 30px 20px;
-    text-align: center;
-    overflow: hidden; /* penting: bikin background item Func ke-clip rapi di dalam card */
+    overflow: hidden;
+    background: rgba(255,255,255,0.04);
   }
 
-  /* Background item Func: sekarang ngisi SELURUH card (bukan cuma di
-     belakang foto), jadi jadi wallpaper untuk seluruh profil — foto, nama,
-     rank, ID, tombol Suka semua tampil di atasnya. */
-  .card-bg-layer {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-  }
-  .card-bg-layer img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    opacity: 0.55; /* biar teks/konten di atasnya tetap kebaca jelas */
-  }
-
-  /* Semua konten asli card (foto, nama, rank, dst) didorong ke atas layer
-     background lewat z-index, supaya tidak ketutup / tidak ketutupan. */
-  .card-content {
+  .profile-head {
     position: relative;
-    z-index: 1;
+    aspect-ratio: 16 / 9;
+    display: flex; align-items: center; gap: 5%;
+    padding: 0 5%;
+    background: linear-gradient(135deg, #2a2160 0%, #0b3a5c 100%); /* fallback kalau tidak ada banner */
+    border-bottom: 2px solid rgba(255,255,255,0.35); /* garis pemisah di sketsa */
+    overflow: hidden;
+  }
+  .banner-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+  .banner-layer img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* Scrim: menggelapkan sisi kanan supaya nama & rank tetap terbaca di atas banner apa pun */
+  .profile-head::after {
+    content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(90deg, rgba(10,10,18,0.05) 0%, rgba(10,10,18,0.55) 100%);
   }
 
   .photo-wrap {
-    position: relative;
-    width: 120px; height: 120px;
-    margin: 0 auto 18px;
+    position: relative; z-index: 2;
+    flex: 0 0 42%;
+    aspect-ratio: 1 / 1;
   }
-
   .photo-wrap img.profile-photo, .photo-wrap .photo-placeholder {
-    width: 120px; height: 120px;
+    width: 100%; height: 100%;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid rgba(123,92,255,0.5);
-    background: rgba(255,255,255,0.06);
+    border: 3px solid rgba(123,92,255,0.6);
+    background: rgba(255,255,255,0.08);
     display: flex; align-items: center; justify-content: center;
-    font-size: 2.6rem;
+    font-size: clamp(2rem, 12vw, 3.4rem);
     position: relative;
     z-index: 1;
   }
-  /* Border item Func: layer di atas foto, ukuran lebih besar supaya
-     framing/border-nya terlihat mengelilingi foto profil bulat. */
+  /* Border item Func: lebih besar dari foto supaya framing-nya mengelilingi lingkaran */
   .photo-border-layer {
     position: absolute;
     top: 50%; left: 50%;
-    width: 150px; height: 150px;
+    width: 125%; height: 125%;
     transform: translate(-50%, -50%);
     z-index: 2;
     pointer-events: none;
   }
   .photo-border-layer img { width: 100%; height: 100%; object-fit: contain; }
   .photo-edit-btn {
-    position: absolute; bottom: 2px; right: 2px;
-    width: 36px; height: 36px;
+    position: absolute; bottom: 2%; right: 2%;
+    width: 34px; height: 34px;
     border-radius: 50%;
     background: linear-gradient(135deg,#7b5cff,#00c2ff);
     border: 3px solid #0a0a12;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1rem; cursor: pointer;
-    z-index: 3; /* di atas border layer, supaya tombol edit tidak ketutupan */
+    font-size: 0.95rem; cursor: pointer;
+    z-index: 3;
   }
   #photoInput { display: none; }
 
-  .nama { font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .head-info { position: relative; z-index: 2; flex: 1; min-width: 0; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
+  .head-info .nama { margin-bottom: 8px; }
+  .head-info .rank-badge { margin-bottom: 8px; text-shadow: none; }
+
+  /* Area bawah: kotak 1:1 untuk item background */
+  .bg-square {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: radial-gradient(circle at 30% 20%, #1a1f3a 0%, #0a0a12 70%); /* fallback tanpa background */
+  }
+  .bg-square > .bg-img { position: absolute; inset: 0; pointer-events: none; }
+  .bg-square > .bg-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .bg-actions {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+    padding: 16px 16px 18px;
+    display: flex; flex-direction: column; align-items: center;
+    background: linear-gradient(0deg, rgba(10,10,18,0.65) 0%, rgba(10,10,18,0) 100%);
+  }
+  .bg-actions:empty { display: none; }
+  .bg-actions .status-msg { margin-top: 0; }
+
+  .nama { font-size: clamp(1.15rem, 5.5vw, 1.6rem); font-weight: 700; color: #fff; margin-bottom: 4px; overflow-wrap: anywhere; line-height: 1.2; }
   .rank-badge {
     display: inline-block;
     font-size: 0.75rem; font-weight: 600;
@@ -136,7 +151,7 @@
     background: linear-gradient(90deg,#ff5aa0,#ffd23f,#00e5c0,#00c2ff,#7b5cff);
   }
   .member-id {
-    font-size: 0.8rem; color: #718096;
+    font-size: 0.8rem; color: #cbd5e0;
     font-family: monospace;
     letter-spacing: 0.5px;
   }
@@ -152,7 +167,6 @@
 
   .like-row {
     display: flex; align-items: center; justify-content: center; gap: 10px;
-    margin-top: 18px;
   }
   .like-btn {
     display: flex; align-items: center; gap: 6px;
@@ -197,6 +211,7 @@ const viewedId = urlParams.get('id'); // memberId yang mau dilihat, dari klik ha
 const isPublicMode = !!viewedId && (!session || viewedId !== session.memberId);
 
 let equippedBorder = null;
+let equippedBanner = null;
 let equippedBackground = null;
 let publicProfileData = null; // dipakai kalau isPublicMode
 let hasLiked = false;
@@ -225,6 +240,7 @@ async function loadPublicProfile(targetId) {
 
     publicProfileData = data;
     equippedBorder = data.equippedBorder || null;
+    equippedBanner = data.equippedBanner || null;
     equippedBackground = data.equippedBackground || null;
 
     // Kalau yang login sendiri sudah pernah like akun ini, cek dari sisi
@@ -236,45 +252,65 @@ async function loadPublicProfile(targetId) {
   }
 }
 
+// Satu template untuk mode akun sendiri & mode publik, supaya tampilannya selalu sama.
+function profileMarkup({ fotoProfil, nama, rankId, rank, memberId, editable, actionsHtml }) {
+  const photoInner = fotoProfil
+    ? `<img class="profile-photo" src="${fotoProfil}" alt="Foto profil">`
+    : `<div class="photo-placeholder">👤</div>`;
+  const bannerLayer = equippedBanner
+    ? `<div class="banner-layer"><img src="${equippedBanner.icon}" alt=""></div>` : '';
+  const borderLayer = equippedBorder
+    ? `<div class="photo-border-layer"><img src="${equippedBorder.icon}" alt=""></div>` : '';
+  const bgLayer = equippedBackground
+    ? `<div class="bg-img"><img src="${equippedBackground.icon}" alt=""></div>` : '';
+  const editBtn = editable
+    ? `<div class="photo-edit-btn" onclick="document.getElementById('photoInput').click()">✏️</div>` : '';
+  const fileInput = editable
+    ? `<input type="file" id="photoInput" accept="image/*" onchange="uploadPhoto(this)">` : '';
+
+  return `
+    <div class="profile-card">
+      <div class="profile-head">
+        ${bannerLayer}
+        <div class="photo-wrap">
+          ${photoInner}
+          ${borderLayer}
+          ${editBtn}
+        </div>
+        <div class="head-info">
+          <div class="nama">${escHtml(nama)}</div>
+          <div class="rank-badge rank-${escHtml(rankId || 'newbie')}">${escHtml(rank || 'Newbie')}</div>
+          <div class="member-id">${escHtml(memberId)}</div>
+          ${fileInput}
+        </div>
+      </div>
+      <div class="bg-square">
+        ${bgLayer}
+        <div class="bg-actions">${actionsHtml || ''}</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderPublicProfile(data) {
   const area = document.getElementById('profileArea');
-  const photoInner = data.fotoProfil
-    ? `<img class="profile-photo" src="${data.fotoProfil}" alt="Foto profil">`
-    : `<div class="photo-placeholder">👤</div>`;
-
-  const bgLayer = equippedBackground
-    ? `<div class="card-bg-layer"><img src="${equippedBackground.icon}" alt=""></div>`
-    : '';
-  const borderLayer = equippedBorder
-    ? `<div class="photo-border-layer"><img src="${equippedBorder.icon}" alt=""></div>`
-    : '';
-
   const canLike = !!session && session.memberId !== data.memberId;
   const likeBtn = canLike
     ? `<button class="like-btn ${hasLiked ? 'liked' : ''}" id="likeBtn" onclick="doToggleLike('${data.memberId}')">
          <span id="likeIcon">${hasLiked ? '💖' : '🤍'}</span> <span id="likeLabel">${hasLiked ? 'Disukai' : 'Suka'}</span>
        </button>`
     : '';
-
-  area.innerHTML = `
-    <div class="profile-card">
-      ${bgLayer}
-      <div class="card-content">
-        <div class="photo-wrap">
-          ${photoInner}
-          ${borderLayer}
-        </div>
-        <div class="nama">${escHtml(data.nama)}</div>
-        <div class="rank-badge rank-${escHtml(data.rankId || 'newbie')}">${escHtml(data.rank || 'Newbie')}</div>
-        <div class="member-id">${escHtml(data.memberId)}</div>
-        <div class="like-row">
-          ${likeBtn}
-          <span class="like-count" id="likeCount">${data.totalLikes} suka</span>
-        </div>
-        ${!session ? '<div class="status-msg show error" style="margin-top:14px;">Login dulu buat kasih like ✨</div>' : ''}
-      </div>
+  const actionsHtml = `
+    <div class="like-row">
+      ${likeBtn}
+      <span class="like-count" id="likeCount">${data.totalLikes} suka</span>
     </div>
-  `;
+    ${!session ? '<div class="status-msg show error" style="margin-top:12px;">Login dulu buat kasih like ✨</div>' : ''}`;
+
+  area.innerHTML = profileMarkup({
+    fotoProfil: data.fotoProfil, nama: data.nama, rankId: data.rankId, rank: data.rank,
+    memberId: data.memberId, editable: false, actionsHtml,
+  });
 }
 
 async function doToggleLike(targetMemberId) {
@@ -323,6 +359,7 @@ async function loadEquippedItems() {
     if (!res.ok) throw new Error(data.error || 'Gagal memuat item terpakai');
 
     equippedBorder = data.equippedBorder || null;
+    equippedBanner = data.equippedBanner || null;
     equippedBackground = data.equippedBackground || null;
     renderProfile(session);
   } catch (err) {
@@ -334,34 +371,11 @@ async function loadEquippedItems() {
 
 function renderProfile(s) {
   const area = document.getElementById('profileArea');
-  const photoInner = s.fotoProfil
-    ? `<img class="profile-photo" src="${s.fotoProfil}" alt="Foto profil">`
-    : `<div class="photo-placeholder">👤</div>`;
-
-  const bgLayer = equippedBackground
-    ? `<div class="card-bg-layer"><img src="${equippedBackground.icon}" alt="${escHtml(equippedBackground.nama)}"></div>`
-    : '';
-  const borderLayer = equippedBorder
-    ? `<div class="photo-border-layer"><img src="${equippedBorder.icon}" alt="${escHtml(equippedBorder.nama)}"></div>`
-    : '';
-
-  area.innerHTML = `
-    <div class="profile-card">
-      ${bgLayer}
-      <div class="card-content">
-        <div class="photo-wrap">
-          ${photoInner}
-          ${borderLayer}
-          <div class="photo-edit-btn" onclick="document.getElementById('photoInput').click()">✏️</div>
-        </div>
-        <div class="nama">${escHtml(s.nama)}</div>
-        <div class="rank-badge rank-${escHtml(s.rankId || 'newbie')}">${escHtml(s.rank || 'Newbie')}</div>
-        <div class="member-id">${escHtml(s.memberId)}</div>
-        <input type="file" id="photoInput" accept="image/*" onchange="uploadPhoto(this)">
-        <div id="statusMsg" class="status-msg"></div>
-      </div>
-    </div>
-  `;
+  area.innerHTML = profileMarkup({
+    fotoProfil: s.fotoProfil, nama: s.nama, rankId: s.rankId, rank: s.rank,
+    memberId: s.memberId, editable: true,
+    actionsHtml: '<div id="statusMsg" class="status-msg"></div>',
+  });
 }
 
 function escHtml(str) {
