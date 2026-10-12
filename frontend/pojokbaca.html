@@ -43,46 +43,62 @@
   /* Layar "belum punya izin" */
   .not-allowed .icon { filter: grayscale(1); opacity: 0.6; }
 
-  /* Cover & daftar bab */
-  .novel-header {
-    display: flex; gap: 16px; padding: 20px 18px; align-items: flex-start;
-    border-bottom: 1px solid var(--border);
-  }
-  .novel-cover {
-    width: 90px; height: 130px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
-    border: 1px solid var(--border); background: var(--card);
-  }
-  .novel-cover-placeholder {
-    width: 90px; height: 130px; border-radius: 8px; flex-shrink: 0;
+  /* ===== Rak cerita: kartu cover potret berjajar 3, judul di bar kecil di bawah tiap cover ===== */
+  .shelf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 12px; padding: 20px 16px 32px; }
+  @media (min-width: 640px) { .shelf { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); max-width: 860px; margin: 0 auto; } }
+  .story-card { display: block; width: 100%; padding: 0; background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+  .story-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 10px; }
+  .story-card .cover-box { aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--card); transition: border-color 0.15s; }
+  .story-card:active .cover-box { border-color: var(--primary); }
+  .story-card img.cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .story-card .cover-placeholder, .detail-cover-placeholder {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem;
     background: linear-gradient(135deg, rgba(123,197,255,0.15), rgba(123,92,255,0.15));
-    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 1.8rem;
   }
-  .novel-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 6px; }
-  .novel-meta { color: var(--text-muted); font-size: 0.8rem; }
+  .story-card .title-bar {
+    margin-top: 8px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card);
+    font-size: 0.75rem; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .shelf-empty { padding: 60px 24px; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
 
-  .chapter-list { padding: 8px 12px 24px; }
+  /* ===== Detail cerita: cover kiri + sinopsis kanan, garis, lalu daftar bab ===== */
+  .detail-wrap { max-width: 680px; margin: 0 auto; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px; color: var(--primary); font-size: 0.85rem;
+    cursor: pointer; background: none; border: none; padding: 14px 18px 0; font-family: inherit;
+  }
+  .detail-head { display: flex; gap: 16px; padding: 16px 18px 20px; align-items: flex-start; border-bottom: 1px solid var(--border); }
+  .detail-cover { flex: 0 0 34%; max-width: 160px; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--card); }
+  .detail-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .detail-info { flex: 1; min-width: 0; }
+  .detail-title { font-size: 1.15rem; font-weight: 700; margin: 0 0 4px; overflow-wrap: anywhere; line-height: 1.3; }
+  .detail-meta { color: var(--text-muted); font-size: 0.78rem; margin-bottom: 12px; }
+  .detail-info h4 { margin: 0 0 6px; font-size: 0.85rem; color: var(--primary); }
+  .synopsis { font-size: 0.88rem; line-height: 1.7; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+  .synopsis.empty { color: var(--text-muted); font-style: italic; }
+
+  .chapter-list { padding: 12px 16px 32px; }
   .chapter-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 14px; margin: 6px 0; background: var(--card); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; width: 100%; font: inherit; color: inherit; text-align: left;
+    padding: 16px 14px; margin: 10px 0; background: var(--card); border: 1px solid var(--border);
     border-radius: 10px; cursor: pointer; transition: border-color 0.15s;
   }
   .chapter-item:active { border-color: var(--primary); }
-  .chapter-item .ch-title { font-size: 0.9rem; font-weight: 600; }
-  .chapter-item .ch-arrow { color: var(--text-muted); }
+  .chapter-item:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .chapter-item .ch-title { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
+  .chapter-item .ch-arrow { color: var(--text-muted); margin-left: 10px; }
 
-  /* Tampilan baca satu bab */
-  .reader { display: none; padding: 20px 18px 60px; max-width: 680px; margin: 0 auto; }
-  .reader.active { display: block; }
-  .reader-back {
-    display: inline-flex; align-items: center; gap: 6px; color: var(--primary);
-    text-decoration: none; font-size: 0.85rem; margin-bottom: 18px; cursor: pointer; background: none; border: none; padding: 0;
+  /* ===== Tampilan baca satu bab ===== */
+  .reader { padding: 0 18px 60px; max-width: 680px; margin: 0 auto; }
+  .reader .back-link { padding: 14px 0 0; margin-bottom: 18px; }
+  .reader h3 { font-size: 1.15rem; margin: 0 0 20px; overflow-wrap: anywhere; }
+  .reader-content { font-size: 1rem; line-height: 1.9; color: var(--text); white-space: pre-wrap; word-wrap: break-word; }
+  .reader-nav { display: flex; gap: 10px; margin-top: 32px; }
+  .reader-nav button {
+    flex: 1; padding: 12px; font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--primary);
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
   }
-  .reader h3 { font-size: 1.15rem; margin: 0 0 20px; }
-  .reader-content {
-    font-size: 1rem; line-height: 1.9; color: var(--text); white-space: pre-wrap; word-wrap: break-word;
-  }
-
-  #list-view.hidden, #novel-header.hidden { display: none; }
+  .reader-nav button:disabled { opacity: 0.35; cursor: default; }
 </style>
 </head>
 <body>
@@ -112,21 +128,35 @@
   <p id="error-message">Terjadi kesalahan. Coba muat ulang halaman.</p>
 </div>
 
-<!-- Konten utama: header novel + daftar bab -->
+<!-- Konten utama: 3 tampilan (rak -> detail cerita -> baca bab), satu aktif pada satu waktu -->
 <div id="main-content" style="display:none;">
-  <div id="novel-header" class="novel-header"></div>
-  <div id="list-view" class="chapter-list"></div>
+  <div id="shelf-view" style="display:none;">
+    <div id="shelf" class="shelf"></div>
+  </div>
 
-  <div id="reader" class="reader">
-    <button class="reader-back" onclick="showChapterList()">← Daftar Bab</button>
+  <div id="detail-view" class="detail-wrap" style="display:none;">
+    <button class="back-link" onclick="history.back()">← Semua Cerita</button>
+    <div id="detail-head" class="detail-head"></div>
+    <div id="chapter-list" class="chapter-list"></div>
+  </div>
+
+  <div id="reader-view" class="reader" style="display:none;">
+    <button class="back-link" onclick="history.back()">← Daftar Bab</button>
     <h3 id="reader-chapter-title"></h3>
     <div id="reader-content" class="reader-content"></div>
+    <div class="reader-nav">
+      <button id="prev-btn" onclick="stepChapter(-1)">‹ Sebelumnya</button>
+      <button id="next-btn" onclick="stepChapter(1)">Berikutnya ›</button>
+    </div>
   </div>
 </div>
 
 <script src="js/ioe-auth.js"></script>
 <script>
-let novelData = null;
+let session = null;
+let shelfData = [];              // metadata semua cerita (dari get-shelf)
+const storyCache = {};           // id -> cerita utuh (dari get-story), supaya buka ulang tidak fetch lagi
+let currentStory = null;
 
 function escHtml(s) {
   const div = document.createElement('div');
@@ -135,7 +165,7 @@ function escHtml(s) {
 }
 
 // Validasi URL cover sebelum dipasang sebagai <img src> — pertahanan kedua di sisi client,
-// konsisten dengan validasi yang sudah ada di server (auth.js hanya menyimpan URL Cloudinary).
+// konsisten dengan validasi di server (auth.js hanya menyimpan URL Cloudinary).
 function isSafeCoverUrl(url) {
   return typeof url === 'string' && /^https:\/\/res\.cloudinary\.com\//.test(url);
 }
@@ -146,94 +176,161 @@ function showScreen(id) {
   });
 }
 
-function renderNovelHeader(novel) {
-  const header = document.getElementById('novel-header');
-  const coverHtml = isSafeCoverUrl(novel.coverUrl)
-    ? `<img class="novel-cover" src="${escHtml(novel.coverUrl)}" alt="Cover">`
-    : `<div class="novel-cover-placeholder">📖</div>`;
-  header.innerHTML = `
-    ${coverHtml}
-    <div>
-      <div class="novel-title">${escHtml(novel.title)}</div>
-      <div class="novel-meta">${novel.chapters.length} bab</div>
-    </div>
-  `;
+function showView(id) {
+  ['shelf-view', 'detail-view', 'reader-view'].forEach(v => {
+    document.getElementById(v).style.display = (v === id) ? '' : 'none';
+  });
+  window.scrollTo(0, 0);
 }
 
-function renderChapterList(chapters) {
-  const listView = document.getElementById('list-view');
-  listView.innerHTML = chapters.map((ch, i) => `
-    <div class="chapter-item" onclick="openChapter(${i})">
-      <span class="ch-title">${escHtml(ch.title)}</span>
-      <span class="ch-arrow">›</span>
-    </div>
+async function api(body) {
+  const res = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
+
+// ───── Rak ─────
+function coverHtml(url, cls) {
+  return isSafeCoverUrl(url)
+    ? `<img class="${cls}" src="${escHtml(url)}" alt="" loading="lazy">`
+    : `<div class="${cls === 'cover' ? 'cover-placeholder' : 'detail-cover-placeholder'}">📖</div>`;
+}
+
+function renderShelf() {
+  const shelf = document.getElementById('shelf');
+  if (!shelfData.length) {
+    shelf.className = '';
+    shelf.innerHTML = '<div class="shelf-empty">Belum ada cerita di rak ini.</div>';
+    return;
+  }
+  shelf.className = 'shelf';
+  shelf.innerHTML = shelfData.map(st => `
+    <button class="story-card" onclick="openStory('${escHtml(st.id)}')" aria-label="${escHtml(st.title)}">
+      <div class="cover-box">${coverHtml(st.coverUrl, 'cover')}</div>
+      <div class="title-bar">${escHtml(st.title)}</div>
+    </button>
   `).join('');
 }
 
-function openChapter(index) {
-  const ch = novelData.chapters[index];
-  if (!ch) return;
+// ───── Detail cerita ─────
+function renderDetail(story) {
+  const synopsis = (story.synopsis || '').trim();
+  document.getElementById('detail-head').innerHTML = `
+    <div class="detail-cover">${coverHtml(story.coverUrl, 'detail-cover-img')}</div>
+    <div class="detail-info">
+      <h2 class="detail-title">${escHtml(story.title)}</h2>
+      <div class="detail-meta">${story.chapters.length} bab</div>
+      <h4>Sinopsis</h4>
+      <p class="synopsis ${synopsis ? '' : 'empty'}">${synopsis ? escHtml(synopsis) : 'Belum ada sinopsis.'}</p>
+    </div>
+  `;
+  document.getElementById('chapter-list').innerHTML = story.chapters.map((ch, i) => `
+    <button class="chapter-item" onclick="openChapter(${i})">
+      <span class="ch-title">${escHtml(ch.title)}</span>
+      <span class="ch-arrow">›</span>
+    </button>
+  `).join('');
+}
+
+// ───── Navigasi (pakai history supaya tombol Back HP naik satu tingkat: bab -> detail -> rak) ─────
+function render(state) {
+  if (state.v === 'detail' && currentStory && currentStory.id === state.id) {
+    renderDetail(currentStory);
+    showView('detail-view');
+  } else if (state.v === 'reader' && currentStory && currentStory.id === state.id && currentStory.chapters[state.ch]) {
+    drawChapter(state.ch);
+    showView('reader-view');
+  } else {
+    renderShelf();
+    showView('shelf-view');
+  }
+}
+
+window.addEventListener('popstate', (e) => {
+  const state = e.state || { v: 'shelf' };
+  if (state.v !== 'shelf' && storyCache[state.id]) currentStory = storyCache[state.id];
+  render(state);
+});
+
+async function openStory(id) {
+  const card = document.querySelector(`.story-card[onclick="openStory('${id}')"]`);
+  if (card) card.disabled = true;
+  try {
+    if (!storyCache[id]) {
+      const { res, data } = await api({ action: 'get-story', memberId: session.memberId, sessionToken: session.sessionToken, storyId: id });
+      if (res.status === 403) { showScreen('not-allowed-screen'); return; }
+      if (!res.ok) throw new Error(data.error || 'Gagal memuat cerita');
+      storyCache[id] = data.story;
+    }
+    currentStory = storyCache[id];
+    history.pushState({ v: 'detail', id }, '');
+    render({ v: 'detail', id });
+  } catch (err) {
+    console.error('Gagal membuka cerita:', err);
+    alert('Gagal membuka cerita: ' + (err.message || err));
+  } finally {
+    if (card) card.disabled = false;
+  }
+}
+
+// ───── Baca bab ─────
+let currentChapterIndex = 0;
+
+function drawChapter(index) {
+  const ch = currentStory.chapters[index];
+  currentChapterIndex = index;
   document.getElementById('reader-chapter-title').textContent = ch.title;
   document.getElementById('reader-content').textContent = ch.content; // textContent, bukan innerHTML — aman otomatis dari isi bab
-  document.getElementById('list-view').classList.add('hidden');
-  document.getElementById('novel-header').classList.add('hidden');
-  document.getElementById('reader').classList.add('active');
-  window.scrollTo(0, 0);
+  document.getElementById('prev-btn').disabled = index <= 0;
+  document.getElementById('next-btn').disabled = index >= currentStory.chapters.length - 1;
 }
 
-function showChapterList() {
-  document.getElementById('reader').classList.remove('active');
-  document.getElementById('list-view').classList.remove('hidden');
-  document.getElementById('novel-header').classList.remove('hidden');
-  window.scrollTo(0, 0);
+function openChapter(index) {
+  if (!currentStory || !currentStory.chapters[index]) return;
+  history.pushState({ v: 'reader', id: currentStory.id, ch: index }, '');
+  render({ v: 'reader', id: currentStory.id, ch: index });
 }
 
+// Pindah bab sebelum/sesudah: replaceState supaya tombol Back tetap sekali tekan kembali ke daftar bab.
+function stepChapter(delta) {
+  const next = currentChapterIndex + delta;
+  if (!currentStory || !currentStory.chapters[next]) return;
+  const state = { v: 'reader', id: currentStory.id, ch: next };
+  history.replaceState(state, '');
+  render(state);
+}
+
+// ───── Init ─────
 async function init() {
   // requireIoeLogin() otomatis redirect ke login.html kalau belum login,
   // atau ke ban.html kalau akun di-ban. Kalau return null, redirect sudah ditangani di sana.
-  const session = await requireIoeLogin();
+  session = await requireIoeLogin();
   if (!session) return;
 
   try {
-    // Langkah 1: cek apakah member ini ada di daftar izin Pojok Baca
-    const accessRes = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'check-pojokbaca-access', memberId: session.memberId }),
-    });
-    const accessData = await accessRes.json();
-
-    if (!accessData.allowed) {
+    // Langkah 1: cek apakah member ini ada di daftar izin Pojok Baca (hanya untuk menentukan tampilan awal)
+    const access = await api({ action: 'check-pojokbaca-access', memberId: session.memberId });
+    if (!access.data.allowed) {
       showScreen('not-allowed-screen');
       return;
     }
 
-    // Langkah 2: ambil novelnya. Server MEMVERIFIKASI ULANG izin & session di sini
-    // (lihat auth.js action get-novel) — pengecekan di langkah 1 di atas hanya untuk
-    // menentukan tampilan UI lebih awal, bukan satu-satunya lapisan keamanan.
-    const novelRes = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'get-novel',
-        memberId: session.memberId,
-        sessionToken: session.sessionToken,
-      }),
-    });
-    const novelResData = await novelRes.json();
-
-    if (novelRes.status === 403) {
-      // Kemungkinan kecil: izin dicabut tepat di antara langkah 1 dan 2 (race condition kecil).
-      showScreen('not-allowed-screen');
+    // Langkah 2: ambil rak cerita. Server MEMVERIFIKASI ULANG izin & session di sini (auth.js get-shelf);
+    // pengecekan di langkah 1 bukan satu-satunya lapisan keamanan.
+    const { res, data } = await api({ action: 'get-shelf', memberId: session.memberId, sessionToken: session.sessionToken });
+    if (res.status === 403) {
+      showScreen('not-allowed-screen'); // izin dicabut tepat di antara langkah 1 dan 2
       return;
     }
-    if (!novelRes.ok) {
-      throw new Error(novelResData.error || 'Gagal memuat novel');
-    }
+    if (!res.ok) throw new Error(data.error || 'Gagal memuat Pojok Baca');
 
-    novelData = novelResData.novel;
-    renderNovelHeader(novelData);
-    renderChapterList(novelData.chapters);
+    shelfData = data.stories || [];
+    history.replaceState({ v: 'shelf' }, '');
+    render({ v: 'shelf' });
     showScreen('main-content');
   } catch (err) {
     console.error('Pojok Baca error:', err);
