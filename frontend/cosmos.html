@@ -10,102 +10,74 @@ body { overflow:hidden; }
 
 #page-cosmos {
   display:flex; flex-direction:column;
-  height:100vh; overflow:hidden;
-  padding-top:var(--nav-h);
+  height:100vh; height:100dvh; overflow:hidden;
+  padding-top:var(--nav-h); box-sizing:border-box;
 }
 
-/* ── HEADER ── */
-.cosmos-header {
-  padding:12px 18px 10px;
-  border-bottom:1px solid var(--border);
-  background:rgba(4,4,15,0.9);
-  flex-shrink:0;
-}
-.cosmos-header-top {
-  display:flex; align-items:center; gap:8px; margin-bottom:10px;
-}
-.cosmos-h1 {
-  font-family:'Space Grotesk',sans-serif; font-size:1.05rem; font-weight:700;
-  color:#fff; letter-spacing:0.06em;
-}
-.cosmos-badge {
-  margin-left:auto;
-  font-size:0.58rem; padding:3px 10px; border-radius:20px;
-  background:rgba(0,229,192,0.1); border:1px solid rgba(0,229,192,0.3);
-  color:var(--teal); font-family:'Orbitron',sans-serif; font-weight:700;
-  letter-spacing:0.06em; white-space:nowrap;
-}
-
-/* Topic pills */
-.topics { display:flex; gap:6px; flex-wrap:wrap; }
-.pill {
-  font-size:0.7rem; padding:4px 11px; border-radius:20px;
-  border:1px solid var(--border); background:var(--bg-card);
-  color:var(--text-muted); cursor:pointer; transition:all 0.18s; user-select:none;
-  font-family:'Inter',sans-serif;
-}
-.pill:hover { border-color:rgba(255,255,255,0.22); color:rgba(255,255,255,0.8); }
-.pill.active { background:rgba(0,194,255,0.1); border-color:var(--border2); color:var(--primary); }
-
-/* ── CHAT AREA ── */
+/* ── AREA CHAT: teks AI polos (tanpa bubble), pesan member sebagai bubble kecil di kanan ── */
 #cosmos-chat {
-  flex:1; overflow-y:auto; padding:18px 16px;
-  display:flex; flex-direction:column; gap:14px;
-  max-width:800px; width:100%; margin:0 auto;
+  flex:1; overflow-y:auto; overscroll-behavior:contain;
+  padding:20px 18px 8px; box-sizing:border-box;
+  display:flex; flex-direction:column; gap:22px;
+  max-width:760px; width:100%; margin:0 auto;
 }
 #cosmos-chat::-webkit-scrollbar { width:3px; }
 #cosmos-chat::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:2px; }
 
 /* Welcome screen */
 .welcome-cosmos {
-  margin:auto; text-align:center; padding:24px 16px; max-width:460px;
+  margin:auto; text-align:center; padding:12px 4px; max-width:460px;
   animation:fadeUp 0.4s ease;
 }
-.w-icon { font-size:3rem; margin-bottom:14px; display:block; animation:float 3s ease-in-out infinite; }
+.w-icon { font-size:2.6rem; margin-bottom:12px; display:block; animation:float 3s ease-in-out infinite; }
 .welcome-cosmos h2 {
   font-family:'Space Grotesk',sans-serif; font-size:1.15rem; color:#fff;
   margin-bottom:8px; font-weight:700;
 }
 .welcome-cosmos p {
-  color:var(--text-muted); font-size:0.86rem; line-height:1.65; margin-bottom:22px;
+  color:var(--text-muted); font-size:0.86rem; line-height:1.65; margin-bottom:18px;
   font-family:'Inter',sans-serif;
 }
+.topics-label {
+  font-family:'Inter',sans-serif; font-size:0.64rem; letter-spacing:0.1em; text-transform:uppercase;
+  color:rgba(255,255,255,0.32); margin-bottom:8px;
+}
+.topics { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin-bottom:18px; }
+.pill {
+  font-size:0.72rem; padding:5px 12px; border-radius:20px;
+  border:1px solid var(--border); background:var(--bg-card);
+  color:var(--text-muted); cursor:pointer; transition:all 0.18s; user-select:none;
+  font-family:'Inter',sans-serif;
+}
+.pill:hover { border-color:rgba(255,255,255,0.22); color:rgba(255,255,255,0.8); }
+.pill.active { background:rgba(0,194,255,0.1); border-color:var(--border2); color:var(--primary); }
 .suggestions { display:flex; flex-direction:column; gap:7px; text-align:left; }
 .suggestion {
-  font-size:0.83rem; padding:10px 14px;
+  font-size:0.83rem; padding:11px 14px;
   background:var(--bg-card); border:1px solid var(--border);
   border-radius:var(--radius); cursor:pointer;
   color:var(--text-muted); transition:all 0.18s;
   font-family:'Inter',sans-serif;
 }
-.suggestion:hover {
-  background:rgba(0,194,255,0.07);
-  border-color:var(--border2); color:#ddd8f5;
+.suggestion:hover { background:rgba(0,194,255,0.07); border-color:var(--border2); color:#ddd8f5; }
+.welcome-meta {
+  margin-top:16px; font-family:'Inter',sans-serif; font-size:0.62rem; color:rgba(255,255,255,0.28);
 }
 
 /* Messages */
-.cmsg { display:flex; gap:9px; animation:fadeUp 0.25s ease; }
-.cmsg.user { flex-direction:row-reverse; }
-.c-avatar {
-  width:30px; height:30px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-size:13px; flex-shrink:0; margin-top:3px;
-}
-.cmsg.ai   .c-avatar { background:rgba(0,194,255,0.12); border:1px solid rgba(0,194,255,0.25); }
-.cmsg.user .c-avatar { background:rgba(123,92,255,0.15); border:1px solid rgba(123,92,255,0.3); }
+.cmsg { display:flex; animation:fadeUp 0.25s ease; }
+.cmsg.user { justify-content:flex-end; }
+.c-avatar { display:none; } /* avatar dihilangkan: sketsa memakai teks polos */
 
 .cbubble {
-  max-width:82%; padding:11px 15px;
-  font-size:0.9rem; line-height:1.72;
-  font-family:'Inter',sans-serif;
+  font-size:0.93rem; line-height:1.75; font-family:'Inter',sans-serif;
+  min-width:0; overflow-wrap:anywhere;
 }
-.cmsg.ai .cbubble {
-  background:rgba(255,255,255,0.04); border:1px solid var(--border);
-  border-radius:3px 10px 10px 10px; color:#cfc8ec;
-}
+.cmsg.ai .cbubble { width:100%; color:#d8d3f0; padding:0; }
 .cmsg.user .cbubble {
-  background:rgba(123,92,255,0.14); border:1px solid rgba(123,92,255,0.25);
-  border-radius:10px 3px 10px 10px; color:#e0d8ff;
+  max-width:84%; padding:10px 15px;
+  background:rgba(123,92,255,0.16); border:1px solid rgba(123,92,255,0.28);
+  border-radius:18px 18px 4px 18px; color:#e8e2ff;
 }
 .cbubble strong { color:#c0aaff; font-weight:600; }
 .cbubble em     { color:#7de8d8; font-style:italic; }
@@ -116,7 +88,10 @@ body { overflow:hidden; }
 .cbubble li { margin:3px 0; }
 .cbubble p  { margin:5px 0; }
 .cbubble hr { border:none; border-top:1px solid rgba(255,255,255,0.08); margin:8px 0; }
-.cbubble.err { color:#ff9090!important; border-color:rgba(255,80,80,0.2)!important; background:rgba(255,50,50,0.05)!important; }
+.cmsg.ai .cbubble.err, .cbubble.err {
+  color:#ff9090!important; border:1px solid rgba(255,80,80,0.2)!important;
+  background:rgba(255,50,50,0.05)!important; padding:10px 14px!important; border-radius:12px!important;
+}
 
 /* Typing dots */
 .dots { display:flex; gap:5px; align-items:center; padding:4px 0; }
@@ -129,78 +104,100 @@ body { overflow:hidden; }
 .dots span:nth-child(3){animation-delay:0.4s;}
 @keyframes blink{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.15);}}
 
-/* ── FOOTER INPUT ── */
+/* ── FOOTER: chip mode aktif + kolom input bulat dengan tombol + dan kirim ── */
 .cosmos-footer {
-  padding:10px 16px 14px;
-  border-top:1px solid var(--border);
-  background:rgba(4,4,15,0.9);
-  flex-shrink:0; max-width:800px; width:100%; margin:0 auto;
+  flex-shrink:0; max-width:760px; width:100%; margin:0 auto; box-sizing:border-box;
+  padding:6px 14px calc(12px + env(safe-area-inset-bottom, 0px));
 }
+.mode-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 4px 8px; }
+.mode-chips:empty { display:none; }
+.chip {
+  --c:#00c2ff;
+  display:inline-flex; align-items:center; gap:4px;
+  font-family:'Inter',sans-serif; font-size:0.72rem; font-weight:600;
+  padding:4px 5px 4px 11px; border-radius:20px;
+  color:var(--c); border:1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  background:color-mix(in srgb, var(--c) 12%, transparent);
+}
+.chip button {
+  all:unset; box-sizing:border-box; cursor:pointer; width:20px; height:20px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center; opacity:0.75;
+}
+.chip button:hover { opacity:1; background:rgba(255,255,255,0.1); }
+.chip button:focus-visible { outline:2px solid var(--c); outline-offset:1px; }
+
 .cosmos-input-row {
-  display:flex; gap:8px; align-items:flex-end;
+  display:flex; gap:4px; align-items:flex-end;
   background:var(--bg-card2); border:1px solid var(--border);
-  border-radius:var(--radius); padding:9px 13px;
-  transition:border-color 0.2s;
+  border-radius:28px; padding:6px; transition:border-color 0.2s;
 }
 .cosmos-input-row:focus-within { border-color:var(--border2); }
+#cosmos-plusBtn, #cosmos-sendBtn {
+  width:40px; height:40px; border-radius:50%; flex-shrink:0; border:none; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; transition:all 0.18s;
+}
+#cosmos-plusBtn { background:transparent; color:var(--text-muted); }
+#cosmos-plusBtn:hover { background:rgba(255,255,255,0.07); color:#fff; }
+#cosmos-sendBtn { background:linear-gradient(135deg, var(--primary), #7b5cff); color:#04040f; }
+#cosmos-sendBtn:hover:not(:disabled) { filter:brightness(1.12); }
+#cosmos-sendBtn:disabled { opacity:0.3; cursor:not-allowed; }
+#cosmos-plusBtn:focus-visible, #cosmos-sendBtn:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 #cosmos-inp {
-  flex:1; background:transparent; border:none; outline:none;
-  color:var(--text); font-family:'Inter',sans-serif; font-size:0.9rem;
+  flex:1; min-width:0; background:transparent; border:none; outline:none;
+  color:var(--text); font-family:'Inter',sans-serif; font-size:0.93rem;
   line-height:1.5; resize:none; min-height:22px; max-height:130px; overflow-y:auto;
+  padding:9px 4px;
 }
 #cosmos-inp::placeholder { color:var(--text-muted); }
-#cosmos-sendBtn {
-  width:32px; height:32px; border-radius:8px;
-  background:rgba(0,194,255,0.7); border:none; color:#fff;
-  font-size:0.9rem; cursor:pointer; transition:all 0.18s; flex-shrink:0;
-  display:flex; align-items:center; justify-content:center;
-}
-#cosmos-sendBtn:hover:not(:disabled) { background:var(--primary); }
-#cosmos-sendBtn:disabled { opacity:0.3; cursor:not-allowed; }
-.cosmos-note {
-  text-align:center; font-size:0.62rem;
-  color:rgba(255,255,255,0.15); margin-top:7px;
-  font-family:'Inter',sans-serif;
-}
 
-/* Tombol mode pencarian web */
-.cosmos-tools-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-#cosmos-searchBtn {
-  font-family:'Inter',sans-serif; font-size:0.72rem;
-  color:var(--text-muted); background:transparent;
-  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
-  padding:5px 12px; cursor:pointer; transition:all 0.18s;
+/* ── BOTTOM SHEET (tombol +) ── */
+.sheet-backdrop {
+  position:fixed; inset:0; z-index:900; background:rgba(2,2,10,0.62);
+  opacity:0; pointer-events:none; transition:opacity 0.2s;
 }
-#cosmos-searchBtn.on {
-  color:#04040f; background:var(--primary); border-color:var(--primary); font-weight:600;
+.sheet {
+  position:fixed; left:0; right:0; bottom:0; z-index:901;
+  max-width:760px; margin:0 auto; box-sizing:border-box;
+  background:#0c0c1e; border-top:1px solid var(--border2); border-radius:22px 22px 0 0;
+  padding:6px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  max-height:85dvh; overflow-y:auto;
+  transform:translateY(105%); visibility:hidden;
+  transition:transform 0.25s ease, visibility 0s linear 0.25s;
 }
-#cosmos-imageBtn {
-  font-family:'Inter',sans-serif; font-size:0.72rem;
-  color:var(--text-muted); background:transparent;
-  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
-  padding:5px 12px; cursor:pointer; transition:all 0.18s;
+body.sheet-open .sheet-backdrop { opacity:1; pointer-events:auto; }
+body.sheet-open .sheet { transform:none; visibility:visible; transition:transform 0.25s ease; }
+.sheet-head { display:flex; align-items:center; justify-content:space-between; padding:10px 2px 12px; }
+.sheet-title { font-family:'Space Grotesk',sans-serif; font-size:0.92rem; font-weight:700; color:#fff; }
+.sheet-close {
+  all:unset; box-sizing:border-box; cursor:pointer; width:36px; height:36px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; color:var(--text-muted);
 }
-#cosmos-imageBtn.on {
-  color:#04040f; background:#ffb347; border-color:#ffb347; font-weight:600;
+.sheet-close:hover { background:rgba(255,255,255,0.08); color:#fff; }
+.sheet-close:focus-visible { outline:2px solid var(--primary); }
+.sheet-item {
+  --c:#00c2ff;
+  display:flex; align-items:center; gap:12px; width:100%; box-sizing:border-box;
+  padding:12px 14px; margin-bottom:8px; text-align:left; cursor:pointer;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  color:var(--text); font-family:'Inter',sans-serif; transition:border-color 0.15s, background 0.15s;
 }
-.cosmos-tools-hint { font-family:'Inter',sans-serif; font-size:0.62rem; color:rgba(255,255,255,0.3); }
-.cosmos-gen-image {
-  max-width:100%; border-radius:10px; margin-top:6px; display:block;
-}
+.sheet-item:hover:not(:disabled) { border-color:rgba(255,255,255,0.22); }
+.sheet-item:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.sheet-item .si-icon { font-size:1.35rem; width:28px; text-align:center; flex-shrink:0; }
+.sheet-item .si-text { flex:1; min-width:0; }
+.sheet-item .si-label { display:block; font-size:0.9rem; font-weight:600; }
+.sheet-item .si-desc { display:block; font-size:0.72rem; color:var(--text-muted); margin-top:1px; }
+.sheet-item .si-state { font-size:0.66rem; font-weight:600; color:var(--c); flex-shrink:0; }
+.sheet-item.on { border-color:var(--c); background:color-mix(in srgb, var(--c) 10%, transparent); }
+.sheet-item:disabled { opacity:0.5; cursor:default; }
+.sheet-item:disabled .si-state { color:var(--text-muted); font-weight:500; background:rgba(255,255,255,0.07); padding:2px 8px; border-radius:10px; }
+.sheet-sep { height:1px; background:var(--border); margin:6px 0 12px; }
 
-/* Sandbox 3D */
-#cosmos-sandboxBtn {
-  font-family:'Inter',sans-serif; font-size:0.72rem;
-  color:var(--text-muted); background:transparent;
-  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
-  padding:5px 12px; cursor:pointer; transition:all 0.18s;
-}
-#cosmos-sandboxBtn.on {
-  color:#04040f; background:#7c5cff; border-color:#7c5cff; font-weight:600;
-}
+/* Hasil gambar / 3D: kartu + keterangan di bawahnya */
+.cosmos-gen-image { max-width:100%; border-radius:10px; margin-top:6px; display:block; }
 .sandbox-frame-wrap {
   position:relative; width:100%; aspect-ratio:4/3; max-width:420px;
-  background:#08060f; border:1px solid rgba(255,255,255,0.12); border-radius:10px;
+  background:#08060f; border:1px solid rgba(255,255,255,0.12); border-radius:14px;
   overflow:hidden; margin-top:6px;
 }
 .sandbox-frame-wrap iframe { width:100%; height:100%; border:0; display:block; }
@@ -213,22 +210,14 @@ body { overflow:hidden; }
   animation: sbpulse 1s infinite ease-in-out;
 }
 @keyframes sbpulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
-
-/* Render 3D (gambar statis, bukan interaktif seperti Sandbox 3D) */
-#cosmos-render3dBtn {
-  font-family:'Inter',sans-serif; font-size:0.72rem;
-  color:var(--text-muted); background:transparent;
-  border:1px solid rgba(255,255,255,0.14); border-radius:20px;
-  padding:5px 12px; cursor:pointer; transition:all 0.18s;
-}
-#cosmos-render3dBtn.on {
-  color:#04040f; background:#ff9f5c; border-color:#ff9f5c; font-weight:600;
-}
-.render3d-image-wrap {
-  margin-top:6px; max-width:420px;
-}
+.render3d-image-wrap { margin-top:6px; max-width:420px; }
 .render3d-image-wrap img {
-  width:100%; display:block; border-radius:10px; border:1px solid rgba(255,255,255,0.12);
+  width:100%; display:block; border-radius:14px; border:1px solid rgba(255,255,255,0.12);
+}
+.media-caption {
+  max-width:420px; margin-top:6px; padding:0 3px; font-family:'Inter',sans-serif;
+  font-size:0.74rem; line-height:1.4; color:var(--text-muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .sandbox-round-badge {
   font-family:'Inter',sans-serif; font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:4px;
@@ -239,16 +228,24 @@ body { overflow:hidden; }
   text-decoration:none; font-weight:600;
 }
 
-/* Daftar sumber di bawah jawaban */
-.cosmos-sources {
-  margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);
-  font-family:'Inter',sans-serif; font-size:0.72rem; line-height:1.5;
+/* Sumber web: chip bernomor */
+.cosmos-sources { margin-top:12px; font-family:'Inter',sans-serif; font-size:0.72rem; line-height:1.5; }
+.cosmos-sources-title { color:rgba(255,255,255,0.4); margin-bottom:6px; }
+.src-row { display:flex; flex-wrap:wrap; gap:6px; }
+.src-chip {
+  display:inline-flex; align-items:center; gap:6px; max-width:100%; box-sizing:border-box;
+  padding:5px 10px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card);
+  color:var(--primary); text-decoration:none; overflow:hidden;
 }
-.cosmos-sources-title { color:rgba(255,255,255,0.4); margin-bottom:4px; }
-.cosmos-sources a { color:var(--primary); text-decoration:none; word-break:break-word; }
-.cosmos-sources a:hover { text-decoration:underline; }
+.src-chip b { color:var(--text-muted); font-weight:600; flex-shrink:0; }
+.src-chip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.src-chip:hover { border-color:var(--border2); }
 
-@media(max-width:480px) { .cbubble { max-width:90%; font-size:0.87rem; } }
+@media(max-width:480px) { #cosmos-chat { padding:16px 14px 8px; } }
+@media (prefers-reduced-motion: reduce) {
+  .w-icon, .welcome-cosmos, .cmsg { animation:none; }
+  .sheet, .sheet-backdrop { transition:none; }
+}
 </style>
 </head>
 <body>
@@ -257,23 +254,6 @@ body { overflow:hidden; }
 
 <div id="page-cosmos">
 
-  <div class="cosmos-header">
-    <div class="cosmos-header-top">
-      <span>🌌</span>
-      <h1 class="cosmos-h1">COSMOS AI</h1>
-      <span class="cosmos-badge">GRATIS · KUOTA HARIAN</span>
-    </div>
-    <div class="topics">
-      <span class="pill" data-t="Astronomi"   onclick="pickTopic(this)">🔭 Astronomi</span>
-      <span class="pill" data-t="Astrofisika" onclick="pickTopic(this)">⚛️ Astrofisika</span>
-      <span class="pill" data-t="Kosmologi"   onclick="pickTopic(this)">🌀 Kosmologi</span>
-      <span class="pill" data-t="Astrologi"   onclick="pickTopic(this)">♈ Astrologi</span>
-      <span class="pill" data-t="Sejarah"     onclick="pickTopic(this)">📜 Sejarah</span>
-      <span class="pill" data-t="Peradaban"   onclick="pickTopic(this)">🏛️ Peradaban</span>
-      <span class="pill" data-t="Psikologi"   onclick="pickTopic(this)">🧠 Psikologi</span>
-    </div>
-  </div>
-
   <div id="cosmos-chat">
     <div class="welcome-cosmos" id="welcomeScreen">
       <span class="w-icon">🔭</span>
@@ -281,6 +261,16 @@ body { overflow:hidden; }
       <p>Asisten edukasi I.O.E — spesialis <strong style="color:var(--primary)">Astronomi</strong>
         dan <strong style="color:var(--gold)">Sejarah</strong> berbahasa Indonesia.
         Pilih topik atau langsung tanya apa saja!</p>
+      <div class="topics-label">Fokus topik (opsional)</div>
+      <div class="topics">
+        <span class="pill" data-t="Astronomi"   onclick="pickTopic(this)">🔭 Astronomi</span>
+        <span class="pill" data-t="Astrofisika" onclick="pickTopic(this)">⚛️ Astrofisika</span>
+        <span class="pill" data-t="Kosmologi"   onclick="pickTopic(this)">🌀 Kosmologi</span>
+        <span class="pill" data-t="Astrologi"   onclick="pickTopic(this)">♈ Astrologi</span>
+        <span class="pill" data-t="Sejarah"     onclick="pickTopic(this)">📜 Sejarah</span>
+        <span class="pill" data-t="Peradaban"   onclick="pickTopic(this)">🏛️ Peradaban</span>
+        <span class="pill" data-t="Psikologi"   onclick="pickTopic(this)">🧠 Psikologi</span>
+      </div>
       <div class="suggestions">
         <div class="suggestion" onclick="useSug(this)">🌑 Bagaimana lubang hitam terbentuk dan apa yang terjadi di dalamnya?</div>
         <div class="suggestion" onclick="useSug(this)">🌠 Apa itu materi gelap dan mengapa sulit dideteksi?</div>
@@ -289,27 +279,53 @@ body { overflow:hidden; }
         <div class="suggestion" onclick="useSug(this)">⚡ Apa yang akan terjadi ketika Matahari mati?</div>
         <div class="suggestion" onclick="useSug(this)">📜 Siapa Nicolaus Copernicus dan mengapa ia merevolusi astronomi?</div>
       </div>
+      <div class="welcome-meta">Gratis · kuota harian · Groq GPT-OSS 120B · I.O.E Education AI</div>
     </div>
   </div>
 
   <div class="cosmos-footer">
-    <div class="cosmos-tools-row">
-      <button id="cosmos-searchBtn" type="button" onclick="toggleSearchMode()">🌐 Cari di web: MATI</button>
-      <!-- Tombol "Buat gambar" DITUNDA: Gemini image generation tidak punya Free Tier sama sekali
-           (limit resmi 0 request/hari tanpa billing aktif, dikonfirmasi lewat Vercel Logs).
-           Kode JS (toggleImageMode, renderGeneratedImage) dan backend (generateImage di ai.js)
-           dibiarkan utuh supaya gampang diaktifkan lagi nanti kalau billing sudah disiapkan —
-           tinggal kembalikan baris <button id="cosmos-imageBtn"> ini. -->
-      <button id="cosmos-sandboxBtn" type="button" onclick="toggleSandboxMode()">🧊 Sandbox 3D: MATI</button>
-      <button id="cosmos-render3dBtn" type="button" onclick="toggleRender3dMode()">🖼️ Gambar 3D: MATI</button>
-      <span class="cosmos-tools-hint" id="cosmos-searchHint">Nyalakan untuk info terkini + sumber</span>
-    </div>
+    <!-- Chip mode / topik yang sedang aktif (diisi syncModeUi) -->
+    <div class="mode-chips" id="modeChips"></div>
     <div class="cosmos-input-row">
-      <textarea id="cosmos-inp" placeholder="Tanya tentang astronomi, sejarah, atau apa saja..." rows="1"></textarea>
-      <button id="cosmos-sendBtn" onclick="cosmosSend()">➤</button>
+      <button id="cosmos-plusBtn" type="button" aria-label="Tambah: file, foto, atau mode lain" aria-haspopup="dialog" aria-expanded="false" onclick="openSheet()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <textarea id="cosmos-inp" placeholder="Tanya apa saja..." rows="1" aria-label="Pesan untuk Cosmos AI"></textarea>
+      <button id="cosmos-sendBtn" type="button" onclick="cosmosSend()" aria-label="Kirim">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
     </div>
-    <div class="cosmos-note">Powered by Groq · GPT-OSS 120B · I.O.E Education AI</div>
   </div>
+</div>
+
+<!-- Bottom sheet tombol + : urutan mengikuti sketsa (file, foto, reasoning, gen. img, 3D model) -->
+<div class="sheet-backdrop" onclick="closeSheet()"></div>
+<div class="sheet" id="cosmosSheet" role="dialog" aria-modal="true" aria-label="Tambah ke pesan">
+  <div class="sheet-head">
+    <span class="sheet-title">Tambah ke pesan</span>
+    <button class="sheet-close" type="button" onclick="closeSheet()" aria-label="Tutup"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <!-- File, Foto, dan Reasoning BELUM punya backend di ai.js, jadi dinonaktifkan (bukan pura-pura jalan).
+       Aktifkan dengan menghapus atribut disabled + menambah handler setelah backend-nya ada. -->
+  <button class="sheet-item" type="button" disabled>
+    <span class="si-icon">📄</span><span class="si-text"><span class="si-label">File</span><span class="si-desc">Lampirkan dokumen untuk dibahas</span></span><span class="si-state">Segera</span>
+  </button>
+  <button class="sheet-item" type="button" disabled>
+    <span class="si-icon">📷</span><span class="si-text"><span class="si-label">Foto</span><span class="si-desc">Tanya tentang sebuah gambar</span></span><span class="si-state">Segera</span>
+  </button>
+  <button class="sheet-item" type="button" disabled>
+    <span class="si-icon">🧠</span><span class="si-text"><span class="si-label">Reasoning</span><span class="si-desc">Berpikir lebih dalam untuk soal sulit</span></span><span class="si-state">Segera</span>
+  </button>
+  <button class="sheet-item" type="button" data-mode="render3d" style="--c:#ff9f5c" onclick="pickSheetMode('render3d')" aria-pressed="false">
+    <span class="si-icon">🖼️</span><span class="si-text"><span class="si-label">Gen. img</span><span class="si-desc">Gambar objek 3D (hasil statis)</span></span><span class="si-state"></span>
+  </button>
+  <button class="sheet-item" type="button" data-mode="sandbox" style="--c:#7c5cff" onclick="pickSheetMode('sandbox')" aria-pressed="false">
+    <span class="si-icon">🧊</span><span class="si-text"><span class="si-label">3D model</span><span class="si-desc">Objek 3D interaktif, bisa diputar</span></span><span class="si-state"></span>
+  </button>
+  <div class="sheet-sep"></div>
+  <button class="sheet-item" type="button" data-mode="search" style="--c:#00c2ff" onclick="pickSheetMode('search')" aria-pressed="false">
+    <span class="si-icon">🌐</span><span class="si-text"><span class="si-label">Cari di web</span><span class="si-desc">Info terkini + sumber</span></span><span class="si-state"></span>
+  </button>
 </div>
 
 <script src="js/nav.js"></script>
@@ -327,81 +343,91 @@ let searchMode = false; // mode pencarian web (Tavily), default MATI karena kuot
 let imageMode = false;  // mode buat gambar (Gemini), default MATI, saling eksklusif dengan searchMode
 getDeviceId().then(id => { myDeviceId = id; });
 
-function toggleSearchMode() {
-  searchMode = !searchMode;
-  if (searchMode) deactivateOtherModes('search');
-  syncSearchBtn();
-  if (!searchMode) {
-    // Saat dimatikan, hint perlu dikembalikan sesuai mode lain yang mungkin masih aktif
-    if (imageMode) document.getElementById('cosmos-searchHint').textContent = 'Mode gambar aktif — Cosmos akan membuat gambar, bukan menjawab teks';
-    else if (!sandboxMode && !render3dMode) document.getElementById('cosmos-searchHint').textContent = 'Nyalakan untuk info terkini + sumber';
+// ── MODE (satu aktif pada satu waktu) ──
+// searchMode / imageMode / sandboxMode / render3dMode tetap dipakai cosmosSend() apa adanya.
+// Semuanya diatur lewat setMode(), jadi mustahil dua mode aktif bersamaan — satu request cuma
+// boleh satu mode karena tiap mode menagih kuota & payload yang berbeda di ai.js.
+let sandboxMode = false;  // 3D model interaktif
+let render3dMode = false; // gambar 3D statis (render engine lokal)
+
+const DEFAULT_PLACEHOLDER = 'Tanya apa saja...';
+const MODES = {
+  search:   { icon:'🌐', label:'Cari di web',  color:'#00c2ff', placeholder:'Cari di web...' },
+  render3d: { icon:'🖼️', label:'Gen. img',     color:'#ff9f5c', placeholder:'Deskripsikan objek 3D...' },
+  sandbox:  { icon:'🧊', label:'3D model',     color:'#7c5cff', placeholder:'Deskripsikan objek 3D...' },
+  image:    { icon:'🎨', label:'Buat gambar',  color:'#ffb347', placeholder:'Deskripsikan gambar...' }, // DITUNDA (Gemini tanpa Free Tier)
+};
+const CLOSE_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function activeMode() {
+  if (searchMode) return 'search';
+  if (sandboxMode) return 'sandbox';
+  if (render3dMode) return 'render3d';
+  if (imageMode) return 'image';
+  return null;
+}
+function setMode(key) {
+  searchMode = key === 'search';
+  imageMode = key === 'image';
+  sandboxMode = key === 'sandbox';
+  render3dMode = key === 'render3d';
+  syncModeUi();
+}
+function toggleMode(key) { setMode(activeMode() === key ? null : key); }
+// Nama lama dipertahankan supaya gampang dipanggil/diaktifkan lagi (mis. mode gambar Gemini nanti).
+function toggleSearchMode()   { toggleMode('search'); }
+function toggleImageMode()    { toggleMode('image'); }
+function toggleSandboxMode()  { toggleMode('sandbox'); }
+function toggleRender3dMode() { toggleMode('render3d'); }
+
+function clearTopic() {
+  topic = '';
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  syncModeUi();
+}
+
+// Satu fungsi yang menyegarkan semua tampilan yang bergantung pada mode/topik:
+// chip di atas kolom input, status di bottom sheet, dan placeholder.
+function syncModeUi() {
+  const m = activeMode();
+  const chips = [];
+  if (m) {
+    const d = MODES[m];
+    chips.push(`<span class="chip" style="--c:${d.color}">${d.icon} ${d.label}<button type="button" aria-label="Matikan mode ${d.label}" onclick="setMode(null)">${CLOSE_ICON}</button></span>`);
   }
-}
-
-function toggleImageMode() {
-  imageMode = !imageMode;
-  if (imageMode) deactivateOtherModes('image');
-  syncImageBtn();
-}
-function syncImageBtn() {
-  const btn = document.getElementById('cosmos-imageBtn');
-  if (!btn) return; // tombol gambar ditunda dan dihapus dari HTML, lihat komentar di footer
-  btn.classList.toggle('on', imageMode);
-  btn.textContent = '🎨 Buat gambar: ' + (imageMode ? 'NYALA' : 'MATI');
-  document.getElementById('cosmos-searchHint').textContent = imageMode
-    ? 'Mode gambar aktif — Cosmos akan membuat gambar, bukan menjawab teks'
-    : 'Nyalakan untuk info terkini + sumber';
-}
-function syncSearchBtn() {
-  const btn = document.getElementById('cosmos-searchBtn');
-  btn.classList.toggle('on', searchMode);
-  btn.textContent = '🌐 Cari di web: ' + (searchMode ? 'NYALA' : 'MATI');
-}
-
-let sandboxMode = false; // mode sandbox 3D, saling eksklusif dengan mode lain
-let render3dMode = false; // mode render gambar 3D statis, saling eksklusif dengan mode lain
-
-// Matikan semua mode LAIN selain yang disebut di `except`. Dipanggil di awal tiap toggle*Mode()
-// supaya tidak mungkin dua mode (search/image/sandbox/render3d) aktif bersamaan — satu request
-// cuma boleh satu mode, karena tiap mode mengirim payload & menagih kuota yang berbeda di ai.js.
-function deactivateOtherModes(except) {
-  if (except !== 'search' && searchMode) { searchMode = false; syncSearchBtn(); }
-  if (except !== 'image' && imageMode) { imageMode = false; syncImageBtn(); }
-  if (except !== 'sandbox' && sandboxMode) { sandboxMode = false; syncSandboxBtn(); }
-  if (except !== 'render3d' && render3dMode) { render3dMode = false; syncRender3dBtn(); }
-}
-
-function toggleSandboxMode() {
-  sandboxMode = !sandboxMode;
-  if (sandboxMode) deactivateOtherModes('sandbox');
-  syncSandboxBtn();
-}
-function syncSandboxBtn() {
-  const btn = document.getElementById('cosmos-sandboxBtn');
-  btn.classList.toggle('on', sandboxMode);
-  btn.textContent = '🧊 Sandbox 3D: ' + (sandboxMode ? 'NYALA' : 'MATI');
-  if (sandboxMode) {
-    document.getElementById('cosmos-searchHint').textContent = 'Mode sandbox aktif — Cosmos akan membuat objek 3D interaktif';
-  } else if (!searchMode && !imageMode && !render3dMode) {
-    document.getElementById('cosmos-searchHint').textContent = 'Nyalakan untuk info terkini + sumber';
+  if (topic) {
+    chips.push(`<span class="chip" style="--c:#7b5cff">📌 ${escHtml(topic)}<button type="button" aria-label="Hapus fokus topik ${escHtml(topic)}" onclick="clearTopic()">${CLOSE_ICON}</button></span>`);
   }
+  document.getElementById('modeChips').innerHTML = chips.join('');
+
+  document.querySelectorAll('.sheet-item[data-mode]').forEach(btn => {
+    const on = btn.dataset.mode === m;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.querySelector('.si-state').textContent = on ? 'Aktif' : '';
+  });
+  document.getElementById('cosmos-inp').placeholder = m ? MODES[m].placeholder : DEFAULT_PLACEHOLDER;
 }
 
-function toggleRender3dMode() {
-  render3dMode = !render3dMode;
-  if (render3dMode) deactivateOtherModes('render3d');
-  syncRender3dBtn();
+// ── Bottom sheet (+) ──
+function openSheet() {
+  document.body.classList.add('sheet-open');
+  document.getElementById('cosmos-plusBtn').setAttribute('aria-expanded', 'true');
+  setTimeout(() => document.querySelector('#cosmosSheet .sheet-close').focus(), 50);
 }
-function syncRender3dBtn() {
-  const btn = document.getElementById('cosmos-render3dBtn');
-  btn.classList.toggle('on', render3dMode);
-  btn.textContent = '🖼️ Gambar 3D: ' + (render3dMode ? 'NYALA' : 'MATI');
-  if (render3dMode) {
-    document.getElementById('cosmos-searchHint').textContent = 'Mode gambar 3D aktif — Cosmos akan membuat gambar objek 3D (bukan interaktif)';
-  } else if (!searchMode && !imageMode && !sandboxMode) {
-    document.getElementById('cosmos-searchHint').textContent = 'Nyalakan untuk info terkini + sumber';
-  }
+function closeSheet() {
+  if (!document.body.classList.contains('sheet-open')) return;
+  document.body.classList.remove('sheet-open');
+  const plus = document.getElementById('cosmos-plusBtn');
+  plus.setAttribute('aria-expanded', 'false');
+  plus.focus();
 }
+function pickSheetMode(key) {
+  toggleMode(key);
+  closeSheet();
+  document.getElementById('cosmos-inp').focus();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 
 // Escape lengkap (termasuk tanda kutip) karena hasilnya dipakai di dalam atribut href.
 function escAttr(s) {
@@ -740,15 +766,16 @@ function renderSources(sources) {
     const url = String(s && s.url || '');
     const title = String(s && s.title || url).slice(0, 120);
     if (!/^https:\/\//i.test(url)) return '';
-    return `<div>[${i + 1}] <a href="${escAttr(url)}" target="_blank" rel="noopener noreferrer nofollow">${escAttr(title)}</a></div>`;
+    return `<a class="src-chip" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer nofollow"><b>${i + 1}</b><span>${escAttr(title)}</span></a>`;
   }).join('');
-  return items ? `<div class="cosmos-sources"><div class="cosmos-sources-title">🌐 Sumber</div>${items}</div>` : '';
+  return items ? `<div class="cosmos-sources"><div class="cosmos-sources-title">🌐 Sumber</div><div class="src-row">${items}</div></div>` : '';
 }
 
 function pickTopic(el) {
   document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
   topic = (topic === el.dataset.t) ? '' : el.dataset.t;
   if (topic) el.classList.add('active');
+  syncModeUi();
 }
 
 function md(t) {
@@ -761,7 +788,7 @@ function md(t) {
     .replace(/^# (.+)$/gm,'<h1>$1</h1>')
     .replace(/^---$/gm,'<hr>')
     .replace(/^\s*[-*] (.+)$/gm,'<li>$1</li>')
-    .replace(/(<li>[\s\S]*?<\/li>\n?)+/g, s => '<ul>'+s+'</ul>')
+    .replace(/(<li>[\s\S]*?<\/li>\n?)+/g, s => '<ul>'+s.replace(/\n/g,'')+'</ul>')
     .replace(/\n\n+/g,'</p><p>')
     .replace(/\n/g,'<br>');
 }
@@ -807,6 +834,7 @@ async function cosmosSend() {
     const bubble = appendMsg('ai', `
       <div class="sandbox-status" id="sb-status-${Date.now()}"><span class="dot"></span> Menyiapkan sandbox...</div>
       <div class="sandbox-frame-wrap"></div>
+      <div class="media-caption">🧊 ${escHtml(raw)}</div>
     `);
     const statusEl = bubble.querySelector('.sandbox-status');
     const frameWrap = bubble.querySelector('.sandbox-frame-wrap');
@@ -854,7 +882,15 @@ async function cosmosSend() {
         img.src = data.render3dImage;
         img.alt = 'Render 3D: ' + escAttr(raw);
         imgWrap.appendChild(img);
+        const cap = document.createElement('div');
+        cap.className = 'media-caption';
+        cap.textContent = '🖼️ ' + raw;
+        imgWrap.appendChild(cap);
         bubble.appendChild(imgWrap);
+        // Gambar baru punya tinggi setelah selesai dimuat — gulung lagi ke bawah supaya keterangannya tidak terpotong.
+        const chatEl = document.getElementById('cosmos-chat');
+        chatEl.scrollTop = chatEl.scrollHeight;
+        img.addEventListener('load', () => { chatEl.scrollTop = chatEl.scrollHeight; });
         if (data.render3dQuota) {
           const sisa = data.render3dQuota.limit - data.render3dQuota.used;
           const quotaNote = document.createElement('small');
@@ -986,6 +1022,8 @@ cTa.addEventListener('input', function() {
 cTa.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cosmosSend(); }
 });
+
+syncModeUi();
 </script>
 </body>
 </html>
