@@ -194,7 +194,7 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
 .sheet-sep { height:1px; background:var(--border); margin:6px 0 12px; }
 
 /* Hasil gambar / 3D: kartu + keterangan di bawahnya */
-.cosmos-gen-image { max-width:100%; border-radius:10px; margin-top:6px; display:block; }
+.cosmos-gen-image { width:100%; max-width:420px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); margin-top:6px; display:block; }
 .sandbox-frame-wrap {
   position:relative; width:100%; aspect-ratio:4/3; max-width:420px;
   background:#08060f; border:1px solid rgba(255,255,255,0.12); border-radius:14px;
@@ -316,8 +316,11 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
   <button class="sheet-item" type="button" disabled>
     <span class="si-icon">🧠</span><span class="si-text"><span class="si-label">Reasoning</span><span class="si-desc">Berpikir lebih dalam untuk soal sulit</span></span><span class="si-state">Segera</span>
   </button>
-  <button class="sheet-item" type="button" data-mode="render3d" style="--c:#ff9f5c" onclick="pickSheetMode('render3d')" aria-pressed="false">
-    <span class="si-icon">🖼️</span><span class="si-text"><span class="si-label">Gen. img</span><span class="si-desc">Gambar objek 3D (hasil statis)</span></span><span class="si-state"></span>
+  <button class="sheet-item" type="button" data-mode="image" style="--c:#ff9f5c" onclick="pickSheetMode('image')" aria-pressed="false">
+    <span class="si-icon">🎨</span><span class="si-text"><span class="si-label">Gen. img</span><span class="si-desc">Gambar AI dari deskripsimu</span></span><span class="si-state"></span>
+  </button>
+  <button class="sheet-item" type="button" data-mode="render3d" style="--c:#e9b44c" onclick="pickSheetMode('render3d')" aria-pressed="false">
+    <span class="si-icon">🧱</span><span class="si-text"><span class="si-label">Gambar 3D</span><span class="si-desc">Render 3D buatan sendiri (gaya low-poly)</span></span><span class="si-state"></span>
   </button>
   <button class="sheet-item" type="button" data-mode="sandbox" style="--c:#7c5cff" onclick="pickSheetMode('sandbox')" aria-pressed="false">
     <span class="si-icon">🧊</span><span class="si-text"><span class="si-label">3D model</span><span class="si-desc">Objek 3D interaktif, bisa diputar</span></span><span class="si-state"></span>
@@ -340,7 +343,7 @@ const AI_ENDPOINT = '/api/ai'; // Vercel serverless function
 let convo = [], busy = false, topic = '';
 let myDeviceId = '';
 let searchMode = false; // mode pencarian web (Tavily), default MATI karena kuota Tavily terbatas
-let imageMode = false;  // mode buat gambar (Gemini), default MATI, saling eksklusif dengan searchMode
+let imageMode = false;  // mode gambar AI (FLUX via Cloudflare), default MATI, saling eksklusif dengan mode lain
 getDeviceId().then(id => { myDeviceId = id; });
 
 // ── MODE (satu aktif pada satu waktu) ──
@@ -353,9 +356,9 @@ let render3dMode = false; // gambar 3D statis (render engine lokal)
 const DEFAULT_PLACEHOLDER = 'Tanya apa saja...';
 const MODES = {
   search:   { icon:'🌐', label:'Cari di web',  color:'#00c2ff', placeholder:'Cari di web...' },
-  render3d: { icon:'🖼️', label:'Gen. img',     color:'#ff9f5c', placeholder:'Deskripsikan objek 3D...' },
+  render3d: { icon:'🧱', label:'Gambar 3D',    color:'#e9b44c', placeholder:'Deskripsikan objek 3D...' },
   sandbox:  { icon:'🧊', label:'3D model',     color:'#7c5cff', placeholder:'Deskripsikan objek 3D...' },
-  image:    { icon:'🎨', label:'Buat gambar',  color:'#ffb347', placeholder:'Deskripsikan gambar...' }, // DITUNDA (Gemini tanpa Free Tier)
+  image:    { icon:'🎨', label:'Gen. img',     color:'#ff9f5c', placeholder:'Deskripsikan gambar...' }, // gambar AI (FLUX via Cloudflare)
 };
 const CLOSE_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
@@ -374,7 +377,7 @@ function setMode(key) {
   syncModeUi();
 }
 function toggleMode(key) { setMode(activeMode() === key ? null : key); }
-// Nama lama dipertahankan supaya gampang dipanggil/diaktifkan lagi (mis. mode gambar Gemini nanti).
+// Nama lama dipertahankan supaya pemanggilnya tetap jalan.
 function toggleSearchMode()   { toggleMode('search'); }
 function toggleImageMode()    { toggleMode('image'); }
 function toggleSandboxMode()  { toggleMode('sandbox'); }
@@ -436,12 +439,12 @@ function escAttr(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// Data gambar berasal dari API eksternal (Gemini), jadi tetap divalidasi sebelum dipasang sebagai
+// Data gambar berasal dari API eksternal (Cloudflare FLUX), jadi tetap divalidasi sebelum dipasang sebagai
 // src data-URI: mime harus salah satu yang dikenal, dan string base64 dicek pola karakternya supaya
 // tidak ada cara untuk menyelundupkan skema URI lain (misal "javascript:" disamarkan sebagai "data").
 // Validasi data URI PNG utuh (format dari render3dMode: server mengirim "data:image/png;base64,..."
 // sebagai satu string, beda dengan renderGeneratedImage yang menerima {mime,data} terpisah dari
-// Gemini). Walau sumbernya server sendiri (bukan input member), tetap divalidasi sebagai lapisan
+// FLUX). Walau sumbernya server sendiri (bukan input member), tetap divalidasi sebagai lapisan
 // pertahanan kedua — konsisten dengan prinsip "jangan pasang src tanpa validasi" di seluruh app ini.
 function isValidPngDataUri(uri) {
   return typeof uri === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(uri) && uri.length > 100;
@@ -856,7 +859,7 @@ async function cosmosSend() {
     return;
   }
 
-  // MODE RENDER 3D: gambar statis dibuat render engine lokal (bukan Gemini, bukan sandbox interaktif).
+  // MODE GAMBAR 3D: gambar statis dibuat render engine lokal (bukan AI diffusion, bukan sandbox interaktif).
   // Sama seperti mode gambar/sandbox, prompt TIDAK masuk ke `convo` (riwayat chat teks).
   if (render3dMode) {
     const bubble = appendMsg('ai', `<div class="sandbox-status"><span class="dot"></span> Membuat gambar 3D...</div>`);
@@ -932,7 +935,9 @@ async function cosmosSend() {
         appendMsg('ai', '⚠️ ' + (data.error || 'Gagal membuat gambar.'), 'err');
       } else {
         const imgHtml = renderGeneratedImage(data.image);
-        appendMsg('ai', imgHtml || '⚠️ Gambar diterima tapi formatnya tidak valid.');
+        appendMsg('ai', imgHtml
+          ? imgHtml + `<div class="media-caption">🎨 ${escHtml(raw)}</div>`
+          : '⚠️ Gambar diterima tapi formatnya tidak valid.');
         if (data.imageQuota) {
           const sisa = data.imageQuota.limit - data.imageQuota.used;
           appendMsg('ai', `<small style="color:rgba(255,255,255,0.35)">🎨 Sisa kuota gambar hari ini: ${sisa}/${data.imageQuota.limit}</small>`);
