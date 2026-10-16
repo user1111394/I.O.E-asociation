@@ -480,6 +480,8 @@ body.sky-full .skymap-info-panel {
     <div class="skymap-legend">
       <span><span class="skymap-dot skymap-dot-star"></span> Bintang</span>
       <span><span class="skymap-dot skymap-dot-planet"></span> Planet (klik untuk lihat 3D)</span>
+      <span>☀️🌙 Matahari &amp; Bulan</span>
+      <span>✨ Galaksi, nebula &amp; gugus bintang</span>
     </div>
 
     <div class="skymap-canvas-wrap">
@@ -506,12 +508,15 @@ body.sky-full .skymap-info-panel {
       <!-- Indikator status saat AR aktif -->
       <div class="skymap-ar-status" id="skymap-ar-status">
         <span id="skymap-heading-label">--°</span>
+        <span id="skymap-catalog-status" class="skymap-calib-warning" style="display:none;"></span>
         <span id="skymap-calib-warning" class="skymap-calib-warning" style="display:none;">⚠️ Kalibrasi kompas: goyangkan HP membentuk angka 8</span>
         <button class="skymap-refresh-btn" id="skymap-refresh-btn" onclick="computeFrozenSky()" title="Perbarui posisi langit ke waktu sekarang">🔄 Perbarui posisi</button>
       </div>
     </div>
     <div class="skymap-hint" id="skymap-hint">💡 Arahkan HP ke langit, geser dikit buat kunci objek, ketuk objek untuk info</div>
     <div class="skymap-hint" style="margin-top:2px;">📌 Posisi rasi &amp; planet dihitung sekali saat diaktifkan, supaya tampilannya stabil (tidak geser sendiri). Tekan "Perbarui posisi" kalau sudah lama dibuka.</div>
+
+    <div class="skymap-hint" style="margin-top:2px;">🔭 Katalog bintang, rasi &amp; objek langit dalam: d3-celestial oleh Olaf Frohn (lisensi BSD-3).</div>
 
     <div class="skymap-info-panel" id="skymap-info-panel"></div>
   </div>
@@ -1219,8 +1224,575 @@ function computeFrozenSky() {
     const horiz = equatorialToHorizontal(ra, dec, userLat, lst);
     return { name, ra, dec, alt: horiz.alt, az: horiz.az };
   });
+
+  // Matahari & Bulan (hitungan lokal, selalu tersedia) + katalog lengkap kalau sudah terunduh
+  computeSunMoon(now, userLat, lst);
+  if (skyCat.ready) computeCatalogHorizontal(userLat, lst);
 }
 const ORBITAL_PLANET_NAMES = ['Merkurius', 'Venus', 'Mars', 'Jupiter', 'Saturnus', 'Uranus', 'Neptunus'];
+
+// ══════════════════════════════════════════════════════════════════
+// KATALOG LANGIT LENGKAP (88 rasi, ±5.000 bintang, objek langit dalam) + MATAHARI & BULAN
+// ══════════════════════════════════════════════════════════════════
+// Data diunduh sekali saat Peta Langit diaktifkan dari katalog terbuka d3-celestial
+// (Olaf Frohn, lisensi BSD-3; salinan GeoJSON oleh Diego Hernangómez), posisi epoch J2000.
+// Kalau unduhan gagal, peta memakai data ringkas bawaan (15 rasi) seperti sebelumnya —
+// Matahari & Bulan dihitung lokal dan selalu tersedia.
+const SKY_DATA_BASE = 'https://cdn.jsdelivr.net/gh/dieghernan/celestial_data@main/data/';
+const SKY_FILES = {
+  lines: 'constellations.lines.min.geojson',
+  stars: 'stars.6.min.geojson',
+  dsos:  'dsos.bright.min.geojson',
+};
+const skyCat = {
+  ready: false, loading: false, failed: false, frozenOk: false,
+  cons: [],        // [{ id, name, label, rank, polys: [[start, count], ...] }]
+  vRa: [], vDec: [],        // titik-titik garis rasi (RA jam, Dec derajat)
+  sRa: null, sDec: null, sMag: null, sBv: null, sName: [], sId: [], // bintang
+  sBucket: null,   // indeks warna per bintang
+  dsos: [],        // [{ id, desig, type, mag, dim, name, ra, dec }]
+  // hasil hitung posisi beku (Alt/Az): 4 angka per objek [sinAlt, cosAlt, sinAz, cosAz]
+  hV: null, hS: null, hD: null,
+  starsByBucket: [], brightStars: [],
+};
+
+// Nama Indonesia untuk 88 rasi (kunci = kode IAU 3 huruf, huruf kecil)
+const CONST_ID_NAMES = {
+  and:'Andromeda', ant:'Pompa Udara (Antlia)', aps:'Burung Surga (Apus)', aqr:'Pembawa Air (Aquarius)', aql:'Rajawali (Aquila)',
+  ara:'Altar (Ara)', ari:'Domba Jantan (Aries)', aur:'Kusir (Auriga)', boo:'Penggembala (Boötes)', cae:'Pahat (Caelum)',
+  cam:'Jerapah (Camelopardalis)', cnc:'Kepiting (Cancer)', cvn:'Anjing Pemburu (Canes Venatici)', cma:'Anjing Besar (Canis Major)',
+  cmi:'Anjing Kecil (Canis Minor)', cap:'Kambing Laut (Capricornus)', car:'Lunas Kapal (Carina)', cas:'Cassiopeia', cen:'Centaurus',
+  cep:'Cepheus', cet:'Paus (Cetus)', cha:'Bunglon (Chamaeleon)', cir:'Jangka (Circinus)', col:'Merpati (Columba)',
+  com:'Rambut Berenice (Coma Berenices)', cra:'Mahkota Selatan (Corona Australis)', crb:'Mahkota Utara (Corona Borealis)',
+  crv:'Gagak (Corvus)', crt:'Cawan (Crater)', cru:'Salib Selatan (Crux)', cyg:'Angsa (Cygnus)', del:'Lumba-lumba (Delphinus)',
+  dor:'Ikan Mas (Dorado)', dra:'Naga (Draco)', equ:'Kuda Kecil (Equuleus)', eri:'Sungai Eridanus', for:'Tungku (Fornax)',
+  gem:'Kembar (Gemini)', gru:'Bangau (Grus)', her:'Herkules (Hercules)', hor:'Jam (Horologium)', hya:'Ular Air (Hydra)',
+  hyi:'Ular Air Kecil (Hydrus)', ind:'Orang India (Indus)', lac:'Kadal (Lacerta)', leo:'Singa (Leo)', lmi:'Singa Kecil (Leo Minor)',
+  lep:'Kelinci (Lepus)', lib:'Timbangan (Libra)', lup:'Serigala (Lupus)', lyn:'Kucing Hutan (Lynx)', lyr:'Kecapi (Lyra)',
+  men:'Gunung Meja (Mensa)', mic:'Mikroskop (Microscopium)', mon:'Unicorn (Monoceros)', mus:'Lalat (Musca)', nor:'Penyiku (Norma)',
+  oct:'Oktan (Octans)', oph:'Pembawa Ular (Ophiuchus)', ori:'Pemburu (Orion)', pav:'Merak (Pavo)', peg:'Kuda Bersayap (Pegasus)',
+  per:'Perseus', phe:'Feniks (Phoenix)', pic:'Pelukis (Pictor)', psc:'Ikan (Pisces)', psa:'Ikan Selatan (Piscis Austrinus)',
+  pup:'Buritan Kapal (Puppis)', pyx:'Kompas (Pyxis)', ret:'Jaring (Reticulum)', sge:'Anak Panah (Sagitta)', sgr:'Pemanah (Sagittarius)',
+  sco:'Kalajengking (Scorpius)', scl:'Pemahat (Sculptor)', sct:'Perisai (Scutum)', ser:'Ular (Serpens)', sex:'Sekstan (Sextans)',
+  tau:'Banteng (Taurus)', tel:'Teleskop (Telescopium)', tri:'Segitiga (Triangulum)', tra:'Segitiga Selatan (Triangulum Australe)',
+  tuc:'Tukan (Tucana)', uma:'Beruang Besar (Ursa Major)', umi:'Beruang Kecil (Ursa Minor)', vel:'Layar (Vela)', vir:'Perawan (Virgo)',
+  vol:'Ikan Terbang (Volans)', vul:'Rubah (Vulpecula)',
+};
+// Rasi yang sudah punya data lengkap (mitologi, musim) di CONSTELLATIONS: kode IAU -> id lama
+const LEGACY_BY_IAU = {
+  uma:'ursa-major', ori:'orion', sco:'scorpius', cru:'crux', umi:'ursa-minor', cas:'cassiopeia', leo:'leo', cyg:'cygnus',
+  tau:'taurus', gem:'gemini', cma:'canis-major', sgr:'sagittarius', lyr:'lyra', aql:'aquila', cen:'centaurus',
+};
+const STAR_BUCKET_COLORS = ['#9bb0ff', '#cad7ff', '#f8f7ff', '#fff4ea', '#ffd2a1', '#ffad7a'];
+const STAR_BUCKET_NAMES = [
+  'biru (sangat panas)', 'putih kebiruan (panas)', 'putih', 'kuning-putih (seperti Matahari)', 'jingga (lebih dingin)', 'merah-jingga (relatif dingin)',
+];
+const DSO_TYPE_ID = {
+  gg:'Gugus galaksi', g:'Galaksi', s:'Galaksi spiral', s0:'Galaksi lentikular', sd:'Galaksi kerdil', i:'Galaksi tak beraturan', e:'Galaksi elips',
+  oc:'Gugus bintang terbuka', gc:'Gugus bola', dn:'Nebula gelap', bn:'Nebula terang', sfr:'Wilayah pembentukan bintang',
+  rn:'Nebula refleksi', en:'Nebula emisi', pn:'Nebula planeter', snr:'Sisa supernova',
+};
+const DSO_TYPE_DESC = {
+  galaxy: 'Kumpulan miliaran bintang, gas, dan debu yang terikat gravitasi. Cahaya yang kamu lihat sudah menempuh perjalanan jutaan tahun.',
+  gg: 'Gugus yang berisi puluhan sampai ribuan galaksi.',
+  oc: 'Kelompok ratusan bintang yang lahir bersama dari awan gas yang sama.',
+  gc: 'Bola padat ratusan ribu bintang tua yang mengorbit pusat galaksi.',
+  neb: 'Awan gas dan debu bercahaya, sering menjadi tempat lahirnya bintang baru.',
+  rn: 'Awan debu yang memantulkan cahaya bintang di dekatnya.',
+  pn: 'Selubung gas yang dilepas bintang sekarat seukuran Matahari.',
+  snr: 'Sisa ledakan bintang masif (supernova).',
+  dn: 'Awan debu pekat yang menghalangi cahaya latar belakang.',
+};
+function dsoGroup(t) {
+  if (t === 'oc') return 'oc';
+  if (t === 'gc') return 'gc';
+  if (t === 'gg') return 'gg';
+  if (t === 'pn') return 'pn';
+  if (t === 'snr') return 'snr';
+  if (t === 'dn') return 'dn';
+  if (t === 'rn') return 'rn';
+  if (t === 'bn' || t === 'en' || t === 'sfr') return 'neb';
+  return 'galaxy';
+}
+
+function lonToRaHours(lon) { return ((((lon % 360) + 360) % 360)) / 15; }
+function skyBucketFromBv(bv) {
+  if (!isFinite(bv)) return 2;
+  if (bv < -0.1) return 0;
+  if (bv < 0.2) return 1;
+  if (bv < 0.5) return 2;
+  if (bv < 0.8) return 3;
+  if (bv < 1.2) return 4;
+  return 5;
+}
+// Suhu permukaan (K) dari indeks warna B-V — pendekatan Ballesteros (2012)
+function bvToTemperature(bv) {
+  return 4600 * (1 / (0.92 * bv + 1.7) + 1 / (0.92 * bv + 0.62));
+}
+
+// Ubah tiga berkas GeoJSON menjadi struktur ringan di skyCat. Defensif: entri rusak dilewati,
+// dan kalau hasilnya tidak masuk akal (mis. format berubah) dilempar error -> fallback ke data ringkas.
+function parseSkyCatalog(linesJson, starsJson, dsosJson) {
+  const lf = linesJson && Array.isArray(linesJson.features) ? linesJson.features : [];
+  const sf = starsJson && Array.isArray(starsJson.features) ? starsJson.features : [];
+  const df = dsosJson && Array.isArray(dsosJson.features) ? dsosJson.features : [];
+
+  const cons = [], vRa = [], vDec = [];
+  for (const f of lf) {
+    const g = f && f.geometry, p = (f && f.properties) || {};
+    if (!g || !Array.isArray(g.coordinates)) continue;
+    let lines = null;
+    if (g.type === 'MultiLineString') lines = g.coordinates;
+    else if (g.type === 'LineString') lines = [g.coordinates];
+    if (!lines) continue;
+    const polys = [];
+    for (const ln of lines) {
+      if (!Array.isArray(ln) || ln.length < 2) continue;
+      const start = vRa.length;
+      for (const pt of ln) {
+        if (!Array.isArray(pt) || !isFinite(pt[0]) || !isFinite(pt[1])) continue;
+        vRa.push(lonToRaHours(pt[0])); vDec.push(pt[1]);
+      }
+      const count = vRa.length - start;
+      if (count >= 2) polys.push([start, count]); else { vRa.length = start; vDec.length = start; }
+    }
+    if (!polys.length) continue;
+    const id = String(p.id || p.desig || '');
+    const name = String(p.name || id);
+    const label = CONST_ID_NAMES[id.toLowerCase()] || name;
+    cons.push({ id, name, label, rank: p.rank || 2, polys });
+  }
+
+  const n0 = sf.length;
+  const sRa = [], sDec = [], sMag = [], sBv = [], sName = [], sId = [];
+  for (const f of sf) {
+    const g = f && f.geometry, p = (f && f.properties) || {};
+    if (!g || !Array.isArray(g.coordinates)) continue;
+    const mag = Number(p.mag);
+    if (!isFinite(mag) || mag > 6.6 || mag >= 900) continue;
+    const lon = g.coordinates[0], lat = g.coordinates[1];
+    if (!isFinite(lon) || !isFinite(lat)) continue;
+    sRa.push(lonToRaHours(lon)); sDec.push(lat); sMag.push(mag);
+    const bv = parseFloat(p.bv);
+    sBv.push(isFinite(bv) ? bv : NaN);
+    sName.push(p.name && String(p.name).trim() ? String(p.name).trim() : '');
+    sId.push(f.id != null ? f.id : (p.id != null ? p.id : ''));
+  }
+
+  const dsos = [];
+  for (const f of df) {
+    const g = f && f.geometry, p = (f && f.properties) || {};
+    if (!g || !Array.isArray(g.coordinates)) continue;
+    const lon = g.coordinates[0], lat = g.coordinates[1];
+    if (!isFinite(lon) || !isFinite(lat)) continue;
+    const mag = Number(p.mag);
+    dsos.push({
+      id: String(f.id != null ? f.id : (p.id || '')), desig: String(p.desig || p.id || ''), type: String(p.type || 'g'),
+      mag: isFinite(mag) ? mag : 999, dim: p.dim != null ? String(p.dim) : '', name: String(p.name || ''),
+      ra: lonToRaHours(lon), dec: lat,
+    });
+  }
+
+  // Pemeriksaan kewarasan: katalog yang benar punya puluhan rasi dan ribuan bintang
+  if (cons.length < 40 || sRa.length < 1500) {
+    throw new Error(`Katalog tidak masuk akal (rasi=${cons.length}, bintang=${sRa.length}/${n0})`);
+  }
+
+  skyCat.cons = cons; skyCat.vRa = vRa; skyCat.vDec = vDec;
+  skyCat.sRa = sRa; skyCat.sDec = sDec; skyCat.sMag = sMag; skyCat.sBv = sBv; skyCat.sName = sName; skyCat.sId = sId;
+  skyCat.sBucket = new Uint8Array(sRa.length);
+  skyCat.starsByBucket = STAR_BUCKET_COLORS.map(() => []);
+  skyCat.brightStars = [];
+  for (let i = 0; i < sRa.length; i++) {
+    const b = skyBucketFromBv(sBv[i]);
+    skyCat.sBucket[i] = b;
+    skyCat.starsByBucket[b].push(i);
+    if (sMag[i] < 1.7) skyCat.brightStars.push(i);
+  }
+  skyCat.dsos = dsos;
+}
+
+function setSkyCatalogStatus(text) {
+  const el = document.getElementById('skymap-catalog-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.display = text ? 'block' : 'none';
+}
+
+async function loadSkyCatalog() {
+  if (skyCat.ready || skyCat.loading) return;
+  skyCat.loading = true; skyCat.failed = false;
+  setSkyCatalogStatus('⏳ Memuat katalog bintang & rasi lengkap…');
+  try {
+    const get = async file => {
+      const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), 20000) : null;
+      try {
+        const r = await fetch(SKY_DATA_BASE + file, ctl ? { signal: ctl.signal } : undefined);
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + file);
+        return await r.json();
+      } finally { if (timer) clearTimeout(timer); }
+    };
+    // Bintang & garis rasi wajib; objek langit dalam opsional (kalau gagal, peta tetap jalan tanpa itu)
+    const [lines, stars, dsos] = await Promise.all([
+      get(SKY_FILES.lines), get(SKY_FILES.stars), get(SKY_FILES.dsos).catch(() => null),
+    ]);
+    parseSkyCatalog(lines, stars, dsos);
+    skyCat.ready = true;
+    setSkyCatalogStatus('');
+    if (arActive && userLat !== null) computeFrozenSky(); // hitung ulang dengan katalog lengkap
+  } catch (e) {
+    skyCat.failed = true;
+    console.warn('[skymap] katalog lengkap gagal dimuat, memakai peta ringkas:', e);
+    setSkyCatalogStatus('⚠️ Katalog lengkap gagal dimuat — memakai peta ringkas');
+    setTimeout(() => setSkyCatalogStatus(''), 6000);
+  } finally {
+    skyCat.loading = false;
+  }
+}
+
+// Posisi dari RA/Dec -> [sinAlt, cosAlt, sinAz, cosAz] (dibekukan, supaya proyeksi per frame tanpa trigonometri berat)
+function packHorizontal(ras, decs, lat, lst) {
+  const n = ras.length, out = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const hz = equatorialToHorizontal(ras[i], decs[i], lat, lst);
+    const a = hz.alt * DEG, z = hz.az * DEG, o = i * 4;
+    out[o] = Math.sin(a); out[o + 1] = Math.cos(a); out[o + 2] = Math.sin(z); out[o + 3] = Math.cos(z);
+  }
+  return out;
+}
+
+function computeCatalogHorizontal(lat, lst) {
+  skyCat.hV = packHorizontal(skyCat.vRa, skyCat.vDec, lat, lst);
+  skyCat.hS = packHorizontal(skyCat.sRa, skyCat.sDec, lat, lst);
+  skyCat.hD = packHorizontal(skyCat.dsos.map(d => d.ra), skyCat.dsos.map(d => d.dec), lat, lst);
+  skyCat.frozenOk = true;
+}
+
+// Parameter proyeksi untuk satu frame (sama persis dengan altAzToXY, tapi dari nilai trig yang sudah dibekukan)
+function makeProjector(w, h) {
+  const centerAz = ((deviceHeading + skymapDragOffsetAz) % 360 + 360) % 360 * DEG;
+  const centerAlt = Math.max(-89, Math.min(89, deviceAlt + skymapDragOffsetAlt)) * DEG;
+  return {
+    w, h, sinAc: Math.sin(centerAlt), cosAc: Math.cos(centerAlt), sinZc: Math.sin(centerAz), cosZc: Math.cos(centerAz),
+    scale: Math.min(w, h) / (2 * Math.tan((skymapFOV * DEG) / 2)),
+  };
+}
+function projPacked(pk, i, out, P) {
+  const o = i * 4, sa = pk[o], ca = pk[o + 1], sz = pk[o + 2], cz = pk[o + 3];
+  const cd = cz * P.cosZc + sz * P.sinZc;   // cos(az - azPusat)
+  const sd = sz * P.cosZc - cz * P.sinZc;   // sin(az - azPusat)
+  const cosC = P.sinAc * sa + P.cosAc * ca * cd;
+  if (cosC <= 0.02) return false;
+  const x = P.w / 2 + (ca * sd / cosC) * P.scale;
+  const y = P.h / 2 - ((P.cosAc * sa - P.sinAc * ca * cd) / cosC) * P.scale;
+  if (x < -P.w * 0.5 || x > P.w * 1.5 || y < -P.h * 0.5 || y > P.h * 1.5) return false;
+  out[0] = x; out[1] = y;
+  return true;
+}
+
+function drawSkyCatalog(ctx, w, h, labelFontSize) {
+  const P = makeProjector(w, h), pt = [0, 0];
+  const TAU = Math.PI * 2;
+  const fovScale = 60 / skymapFOV;
+
+  // 1) Objek langit dalam (di bawah bintang)
+  if (skyCat.dsos.length && skyCat.hD) {
+    ctx.lineWidth = 1.2;
+    ctx.font = `${Math.max(8, labelFontSize - 1)}px Inter, sans-serif`;
+    ctx.textAlign = 'center';
+    for (let i = 0; i < skyCat.dsos.length; i++) {
+      const d = skyCat.dsos[i];
+      if (d.mag !== 999 && d.mag > 11) continue;
+      if (!projPacked(skyCat.hD, i, pt, P)) continue;
+      const g = dsoGroup(d.type);
+      const dimArc = parseFloat(d.dim);
+      const rPx = Math.max(5, Math.min(34, isFinite(dimArc) ? (dimArc / 60) * DEG * P.scale / 2 : 6));
+      ctx.save();
+      ctx.translate(pt[0], pt[1]);
+      let color = '#ffb3d9';
+      ctx.beginPath();
+      if (g === 'galaxy' || g === 'gg') { color = '#ffb3d9'; ctx.ellipse(0, 0, rPx, rPx * 0.5, -0.5, 0, TAU); }
+      else if (g === 'oc') { color = '#ffe08a'; ctx.setLineDash([3, 3]); ctx.arc(0, 0, rPx, 0, TAU); }
+      else if (g === 'gc') { color = '#ffd27f'; ctx.arc(0, 0, rPx, 0, TAU); ctx.moveTo(-rPx, 0); ctx.lineTo(rPx, 0); ctx.moveTo(0, -rPx); ctx.lineTo(0, rPx); }
+      else if (g === 'pn') { color = '#7ee0c8'; ctx.arc(0, 0, rPx * 0.6, 0, TAU); ctx.moveTo(rPx, 0); ctx.arc(0, 0, rPx, 0, TAU); }
+      else { color = '#7ee0c8'; ctx.moveTo(0, -rPx); ctx.lineTo(rPx, 0); ctx.lineTo(0, rPx); ctx.lineTo(-rPx, 0); ctx.closePath(); }
+      ctx.strokeStyle = color; ctx.globalAlpha = 0.85; ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+      ctx.fillStyle = color; ctx.globalAlpha = 0.8;
+      ctx.fillText(d.name || d.desig || d.id, pt[0], pt[1] + rPx + 11);
+      ctx.globalAlpha = 1;
+      skymapClickables.push({ x: pt[0], y: pt[1], r: Math.max(14, rPx + 6), type: 'dso', data: { i } });
+    }
+  }
+
+  // 2) Garis rasi (satu path per rasi) + hitung titik tengah untuk label
+  ctx.strokeStyle = 'rgba(124,158,255,0.38)';
+  ctx.lineWidth = 1.1;
+  ctx.shadowBlur = 0;
+  const labels = [];
+  for (const c of skyCat.cons) {
+    let seen = 0, cx = 0, cy = 0;
+    ctx.beginPath();
+    for (const [start, count] of c.polys) {
+      let prevVisible = false;
+      for (let k = 0; k < count; k++) {
+        const vis = projPacked(skyCat.hV, start + k, pt, P);
+        if (vis) {
+          seen++; cx += pt[0]; cy += pt[1];
+          if (prevVisible) ctx.lineTo(pt[0], pt[1]); else ctx.moveTo(pt[0], pt[1]);
+        }
+        prevVisible = vis;
+      }
+    }
+    ctx.stroke();
+    if (seen >= 2) labels.push({ text: c.label, x: cx / seen, y: cy / seen });
+  }
+
+  // 3) Bintang: dikelompokkan per warna (B-V) supaya fillStyle tidak berganti terus
+  const magLimit = 6.2;
+  for (let b = 0; b < STAR_BUCKET_COLORS.length; b++) {
+    ctx.fillStyle = STAR_BUCKET_COLORS[b];
+    for (const i of skyCat.starsByBucket[b]) {
+      const mag = skyCat.sMag[i];
+      if (mag > magLimit) continue;
+      if (!projPacked(skyCat.hS, i, pt, P)) continue;
+      const r = Math.max(0.55, 3.1 - 0.42 * mag);
+      if (r < 1) { ctx.fillRect(pt[0] - 0.6, pt[1] - 0.6, 1.2, 1.2); }
+      else { ctx.beginPath(); ctx.arc(pt[0], pt[1], r, 0, TAU); ctx.fill(); }
+      if (mag <= 4.2) skymapClickables.push({ x: pt[0], y: pt[1], r: Math.max(10, r + 7), type: 'cstar', data: { i } });
+    }
+  }
+  // Bintang paling terang diberi cahaya lembut
+  ctx.shadowBlur = 7;
+  for (const i of skyCat.brightStars) {
+    if (!projPacked(skyCat.hS, i, pt, P)) continue;
+    ctx.fillStyle = STAR_BUCKET_COLORS[skyCat.sBucket[i]];
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.beginPath(); ctx.arc(pt[0], pt[1], Math.max(1.6, 3.1 - 0.42 * skyCat.sMag[i]), 0, TAU); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  // 4) Nama bintang terang (kalau katalog menyediakan nama)
+  ctx.textAlign = 'center';
+  ctx.font = `${Math.max(8, labelFontSize - 1)}px Inter, sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  for (const i of skyCat.brightStars) {
+    const nm = skyCat.sName[i];
+    if (!nm || !projPacked(skyCat.hS, i, pt, P)) continue;
+    ctx.fillText(nm, pt[0], pt[1] - 9);
+  }
+
+  // 5) Label rasi
+  ctx.font = `${labelFontSize}px Inter, sans-serif`;
+  ctx.fillStyle = 'rgba(124,158,255,0.85)';
+  for (const l of labels) ctx.fillText(l.text, l.x, l.y - 4);
+  ctx.fillStyle = '#fff';
+}
+
+// ── Matahari & Bulan ──
+// Rumus presisi rendah (Astronomical Almanac / Meeus): Matahari ±0,01°, Bulan ±0,3° — jauh di bawah
+// ukuran piksel layar HP. Koordinat "of date"; selisih dengan bintang J2000 (~0,4°) tidak terlihat.
+function sunPositionNow(date) {
+  const n = toJulianDate(date) - 2451545.0;
+  const L = 280.460 + 0.9856474 * n;
+  const g = (357.528 + 0.9856003 * n) * DEG;
+  const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * DEG;
+  const eps = (23.439 - 0.0000004 * n) * DEG;
+  let ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam)) / DEG;
+  if (ra < 0) ra += 360;
+  const dec = Math.asin(Math.sin(eps) * Math.sin(lam)) / DEG;
+  return { ra: ra / 15, dec, lon: (((lam / DEG) % 360) + 360) % 360 };
+}
+
+function moonPositionNow(date) {
+  const T = (toJulianDate(date) - 2451545.0) / 36525.0;
+  const s = deg => Math.sin(deg * DEG), c = deg => Math.cos(deg * DEG);
+  const lon = 218.32 + 481267.881 * T + 6.29 * s(135.0 + 477198.87 * T) - 1.27 * s(259.3 - 413335.36 * T)
+    + 0.66 * s(235.7 + 890534.22 * T) + 0.21 * s(269.9 + 954397.74 * T) - 0.19 * s(357.5 + 35999.05 * T)
+    - 0.11 * s(186.5 + 966404.03 * T);
+  const lat = 5.13 * s(93.3 + 483202.02 * T) + 0.28 * s(228.2 + 960400.89 * T) - 0.28 * s(318.3 + 6003.15 * T)
+    - 0.17 * s(217.6 - 407332.21 * T);
+  const par = 0.9508 + 0.0518 * c(135.0 + 477198.87 * T) + 0.0095 * c(259.3 - 413335.36 * T)
+    + 0.0078 * c(235.7 + 890534.22 * T) + 0.0028 * c(269.9 + 954397.74 * T);
+  const l = c(lat) * c(lon);
+  const m = 0.9175 * c(lat) * s(lon) - 0.3978 * s(lat);
+  const nn = 0.3978 * c(lat) * s(lon) + 0.9175 * s(lat);
+  let ra = Math.atan2(m, l) / DEG;
+  if (ra < 0) ra += 360;
+  const dec = Math.asin(Math.max(-1, Math.min(1, nn))) / DEG;
+  return { ra: ra / 15, dec, lon: ((lon % 360) + 360) % 360, lat, parallax: par, distKm: 6378.14 / Math.sin(par * DEG) };
+}
+
+function moonPhaseName(elongDeg) {
+  const e = ((elongDeg % 360) + 360) % 360;
+  if (e < 22.5 || e >= 337.5) return 'Bulan Baru';
+  if (e < 67.5) return 'Bulan Sabit Muda (Hilal)';
+  if (e < 112.5) return 'Kuartal Pertama (separuh)';
+  if (e < 157.5) return 'Cembung Awal';
+  if (e < 202.5) return 'Purnama';
+  if (e < 247.5) return 'Cembung Akhir';
+  if (e < 292.5) return 'Kuartal Akhir (separuh)';
+  return 'Bulan Sabit Tua';
+}
+
+let skymapFrozenSun = null, skymapFrozenMoon = null;
+function computeSunMoon(date, lat, lst) {
+  const sp = sunPositionNow(date);
+  const sh = equatorialToHorizontal(sp.ra, sp.dec, lat, lst);
+  skymapFrozenSun = { name: 'Matahari', ra: sp.ra, dec: sp.dec, alt: sh.alt, az: sh.az, lon: sp.lon };
+
+  const mp = moonPositionNow(date);
+  const mh = equatorialToHorizontal(mp.ra, mp.dec, lat, lst);
+  // Paralaks: Bulan sedekat itu sehingga posisinya dari permukaan Bumi turun hingga ±1° dibanding dari pusat Bumi
+  const altTopo = mh.alt - mp.parallax * Math.cos(mh.alt * DEG);
+  // Elongasi (sudut Bulan-Matahari) -> persentase tersinari; elongasi bertanda untuk nama fase
+  const a1 = mp.ra * 15 * DEG, d1 = mp.dec * DEG, a2 = sp.ra * 15 * DEG, d2 = sp.dec * DEG;
+  const cosPsi = Math.sin(d1) * Math.sin(d2) + Math.cos(d1) * Math.cos(d2) * Math.cos(a1 - a2);
+  const illum = (1 - cosPsi) / 2;
+  const elong = ((mp.lon - sp.lon) % 360 + 360) % 360; // 0=baru, 90=kuartal pertama, 180=purnama
+  // Arah Matahari dilihat dari Bulan di layar (sudut dari "atas"/zenit ke kanan), untuk menggambar sisi terang
+  const aM = altTopo * DEG, aS = sh.alt * DEG, dz = (sh.az - mh.az) * DEG;
+  const bearing = Math.atan2(Math.sin(dz) * Math.cos(aS), Math.cos(aM) * Math.sin(aS) - Math.sin(aM) * Math.cos(aS) * Math.cos(dz));
+  skymapFrozenMoon = {
+    name: 'Bulan', ra: mp.ra, dec: mp.dec, alt: altTopo, az: mh.az, illum, elong, phase: moonPhaseName(elong),
+    distKm: mp.distKm, screenAngle: Math.atan2(-Math.cos(bearing), Math.sin(bearing)),
+  };
+}
+
+function drawSunMoon(ctx, w, h, labelFontSize) {
+  const TAU = Math.PI * 2;
+  ctx.textAlign = 'center';
+  ctx.font = `${labelFontSize}px Inter, sans-serif`;
+  const S = skymapFrozenSun, M = skymapFrozenMoon;
+  if (S) {
+    const p = altAzToXY(S.alt, S.az, w, h);
+    if (p) {
+      ctx.save();
+      ctx.globalAlpha = S.alt < 0 ? 0.55 : 1;
+      const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 30);
+      grd.addColorStop(0, 'rgba(255,214,102,0.95)'); grd.addColorStop(0.35, 'rgba(255,200,80,0.35)'); grd.addColorStop(1, 'rgba(255,200,80,0)');
+      ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(p.x, p.y, 30, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffd666'; ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fillText(S.alt < 0 ? '☀️ Matahari (di bawah horizon)' : '☀️ Matahari', p.x, p.y + 24);
+      ctx.restore();
+      skymapClickables.push({ x: p.x, y: p.y, r: 24, type: 'sun', data: S });
+    }
+  }
+  if (M) {
+    const p = altAzToXY(M.alt, M.az, w, h);
+    if (p) {
+      const r = 11; // diperbesar: ukuran asli Bulan hanya ±0,5° (beberapa piksel)
+      ctx.save();
+      ctx.globalAlpha = M.alt < 0 ? 0.55 : 1;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(M.screenAngle);
+      ctx.fillStyle = 'rgba(70,78,105,0.75)';
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+      const k = Math.max(0, Math.min(1, M.illum));
+      if (k > 0.01) {
+        ctx.fillStyle = '#f4f1e4';
+        ctx.shadowColor = '#f4f1e4'; ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false);
+        const rx = r * Math.abs(1 - 2 * k);
+        if (k < 0.5) ctx.ellipse(0, 0, rx, r, 0, Math.PI / 2, -Math.PI / 2, true);
+        else ctx.ellipse(0, 0, rx, r, 0, Math.PI / 2, Math.PI * 1.5, false);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = M.alt < 0 ? 0.55 : 1;
+      ctx.fillStyle = '#f4f1e4';
+      ctx.fillText(M.alt < 0 ? '🌙 Bulan (di bawah horizon)' : '🌙 Bulan', p.x, p.y + 24);
+      ctx.restore();
+      skymapClickables.push({ x: p.x, y: p.y, r: 22, type: 'moon', data: M });
+    }
+  }
+  ctx.fillStyle = '#fff';
+}
+
+// ── Panel info ──
+function skyDirName(az) {
+  const dirs = ['Utara', 'Timur Laut', 'Timur', 'Tenggara', 'Selatan', 'Barat Daya', 'Barat', 'Barat Laut'];
+  return dirs[Math.round((((az % 360) + 360) % 360) / 45) % 8];
+}
+function skyPositionLine(alt, az) {
+  return alt < 0
+    ? 'Saat ini berada di bawah horizon (belum/sudah tidak terlihat dari lokasimu).'
+    : `Saat ini di arah ${skyDirName(az)}, ${Math.round(alt)}° di atas horizon.`;
+}
+function showSkyInfoHtml(html) {
+  const panel = document.getElementById('skymap-info-panel');
+  panel.innerHTML = html;
+  panel.classList.add('show');
+}
+function showSunInfo() {
+  const S = skymapFrozenSun; if (!S) return;
+  showSkyInfoHtml(`
+    <h3>☀️ Matahari</h3>
+    <div class="info-sub">Bintang terdekat · jarak ±150 juta km</div>
+    <p>${apodEsc(skyPositionLine(S.alt, S.az))}</p>
+    <p style="margin-top:8px;">Matahari adalah bintang katai kuning dengan suhu permukaan ±5.800 K. Cahayanya butuh sekitar 8 menit 20 detik untuk sampai ke Bumi.</p>
+    <p style="margin-top:8px; color:#ffb347;">⚠️ Jangan pernah menatap Matahari langsung, apalagi lewat kamera atau teleskop tanpa filter surya.</p>`);
+}
+function showMoonInfo() {
+  const M = skymapFrozenMoon; if (!M) return;
+  showSkyInfoHtml(`
+    <h3>🌙 Bulan</h3>
+    <div class="info-sub">${apodEsc(M.phase)} · ${Math.round(M.illum * 100)}% tersinari</div>
+    <p>${apodEsc(skyPositionLine(M.alt, M.az))}</p>
+    <p style="margin-top:8px;"><strong>Jarak:</strong> ±${(Math.round(M.distKm / 1000) * 1000).toLocaleString('id-ID')} km dari Bumi (berubah antara ±357.000 dan ±406.000 km).</p>
+    <p style="margin-top:8px;">Bulan mengelilingi Bumi sekitar 29,5 hari sekali, dan fase yang kamu lihat bergantung pada sudut antara Bulan dan Matahari. Ukuran Bulan di peta diperbesar supaya fasenya terlihat.</p>`);
+}
+function nearestCatalogConstellation(ra, dec) {
+  let best = null, bestD = 1e9;
+  const a = ra * 15 * DEG, d = dec * DEG;
+  const sa = Math.sin(d), ca = Math.cos(d);
+  for (const c of skyCat.cons) {
+    for (const [start, count] of c.polys) {
+      for (let k = 0; k < count; k++) {
+        const a2 = skyCat.vRa[start + k] * 15 * DEG, d2 = skyCat.vDec[start + k] * DEG;
+        const cosd = sa * Math.sin(d2) + ca * Math.cos(d2) * Math.cos(a - a2);
+        const dist = Math.acos(Math.max(-1, Math.min(1, cosd)));
+        if (dist < bestD) { bestD = dist; best = c; }
+      }
+    }
+  }
+  return best;
+}
+function showCatalogStarInfo(i) {
+  const ra = skyCat.sRa[i], dec = skyCat.sDec[i], mag = skyCat.sMag[i], bv = skyCat.sBv[i];
+  const name = skyCat.sName[i] || (skyCat.sId[i] !== '' ? `HIP ${skyCat.sId[i]}` : 'Bintang');
+  const near = nearestCatalogConstellation(ra, dec);
+  const legacyId = near && LEGACY_BY_IAU[near.id.toLowerCase()];
+  const legacy = legacyId ? CONSTELLATIONS.find(c => c.id === legacyId) : null;
+  const hz = equatorialToHorizontal(ra, dec, userLat, skymapFrozenLST);
+  const bucket = skyBucketFromBv(bv);
+  const temp = isFinite(bv) ? Math.round(bvToTemperature(bv) / 100) * 100 : null;
+  showSkyInfoHtml(`
+    <h3>⭐ ${apodEsc(name)}</h3>
+    <div class="info-sub">${near ? 'Di sekitar rasi ' + apodEsc(near.label) : 'Bintang'}</div>
+    <p><strong>Magnitudo:</strong> ${mag.toFixed(2)} (semakin kecil/negatif = semakin terang)</p>
+    <p style="margin-top:6px;"><strong>Warna:</strong> ${STAR_BUCKET_NAMES[bucket]}${temp ? ` · suhu permukaan ±${temp.toLocaleString('id-ID')} K` : ''}</p>
+    <p style="margin-top:6px;">${apodEsc(skyPositionLine(hz.alt, hz.az))}</p>
+    ${legacy ? `<p style="margin-top:10px;">${legacy.mythology}</p><p style="margin-top:8px;"><strong>Terlihat:</strong> ${legacy.season} • Belahan ${legacy.hemisphere}</p>` : ''}`);
+}
+function showCatalogDsoInfo(i) {
+  const d = skyCat.dsos[i]; if (!d) return;
+  const hz = equatorialToHorizontal(d.ra, d.dec, userLat, skymapFrozenLST);
+  const group = dsoGroup(d.type);
+  const typeName = DSO_TYPE_ID[d.type] || 'Objek langit dalam';
+  const title = d.name || d.desig || d.id;
+  showSkyInfoHtml(`
+    <h3>✨ ${apodEsc(title)}</h3>
+    <div class="info-sub">${apodEsc(typeName)}${d.desig && d.name ? ' · ' + apodEsc(d.desig) : ''}</div>
+    <p>${DSO_TYPE_DESC[group] || DSO_TYPE_DESC.galaxy}</p>
+    <p style="margin-top:8px;"><strong>Kecerlangan:</strong> ${d.mag === 999 ? 'tidak tercatat' : 'magnitudo ' + d.mag.toFixed(1)}${d.dim ? ' · ukuran ' + apodEsc(d.dim) + ' menit busur' : ''}</p>
+    <p style="margin-top:6px;">${apodEsc(skyPositionLine(hz.alt, hz.az))}</p>
+    <p style="margin-top:6px; color:var(--text-muted); font-size:0.75rem;">Banyak objek langit dalam sangat redup — lebih jelas dilihat dengan binokular atau teleskop di tempat gelap.</p>`);
+}
 
 // Proyeksi gnomonic dari Alt/Az objek ke pixel layar, berdasarkan arah pandang kamera
 // (deviceHeading = azimuth tengah, deviceAlt = altitude tengah) + FOV kamera.
@@ -1260,6 +1832,10 @@ function drawSkymap() {
   // Bintang: pakai Alt/Az yang SUDAH dihitung sekali di computeFrozenSky() (skymapFrozenConstellations).
   // Di sini cuma proyeksi pixel (altAzToXY) yang murah dan memang harus jalan tiap frame supaya
   // ikut gerakan kompas secara responsif — tidak ada trig asin/acos berat yang diulang di sini.
+  const useCatalog = skyCat.ready && skyCat.frozenOk;
+  if (useCatalog) {
+    drawSkyCatalog(skymapCtx, w, h, labelFontSize);
+  } else {
   skymapCtx.strokeStyle = 'rgba(124,158,255,0.4)';
   skymapCtx.lineWidth = 1.2;
   skymapCtx.fillStyle = '#fff';
@@ -1302,6 +1878,7 @@ function drawSkymap() {
     }
   }
   skymapCtx.shadowBlur = 0;
+  }
 
   // Planet — Alt/Az sudah dihitung sekali juga (skymapFrozenPlanets), tinggal proyeksi
   for (const pl of (skymapFrozenPlanets || [])) {
@@ -1318,6 +1895,9 @@ function drawSkymap() {
     skymapCtx.fillText(pl.name, p.x, p.y - 10);
     skymapClickables.push({ x: p.x, y: p.y, r: 12, type: 'planet', data: pl });
   }
+
+  // Matahari & Bulan di atas segalanya
+  drawSunMoon(skymapCtx, w, h, labelFontSize);
 
   // Label kompas — DOM element di-cache, tidak query ulang tiap frame
   if (!skymapHeadingLabelEl) skymapHeadingLabelEl = document.getElementById('skymap-heading-label');
@@ -1449,6 +2029,7 @@ async function startSkyAR() {
     enterSkyFull(); // langsung layar penuh (sekaligus menyesuaikan ukuran kanvas)
     resizeSkymapCanvas();
     if (!skymapAnimId) skymapRenderLoop();
+    loadSkyCatalog(); // unduh 88 rasi + bintang + objek langit dalam di latar belakang (peta ringkas tampil dulu)
 
   } catch (err) {
     btn.textContent = 'Aktifkan Peta Langit';
@@ -1560,6 +2141,10 @@ function setupSkymap() {
     if (nearest) {
       if (nearest.type === 'star') showStarInfo(nearest.data.star, nearest.data.constellation);
       else if (nearest.type === 'planet') openPlanet3D(nearest.data.name);
+      else if (nearest.type === 'cstar') showCatalogStarInfo(nearest.data.i);
+      else if (nearest.type === 'dso') showCatalogDsoInfo(nearest.data.i);
+      else if (nearest.type === 'sun') showSunInfo();
+      else if (nearest.type === 'moon') showMoonInfo();
     } else if (skyFull) {
       document.getElementById('skymap-info-panel').classList.remove('show'); // layar penuh: ketuk area kosong = tutup info
     }
@@ -1638,11 +2223,40 @@ function onSkymapSearch(query) {
     }
   }
 
+  // Matahari & Bulan
+  if ('matahari'.includes(q) || 'sun'.includes(q)) results.unshift({ type: 'sun', label: '☀️ Matahari', sub: 'Bintang terdekat — ketuk untuk posisi & info' });
+  if ('bulan'.includes(q) || 'moon'.includes(q) || 'purnama'.includes(q)) results.unshift({ type: 'moon', label: '🌙 Bulan', sub: 'Fase & posisi sekarang' });
+
+  // Katalog lengkap: 88 rasi, bintang bernama, objek langit dalam
+  if (skyCat.ready) {
+    const have = new Set(results.map(r => String(r.label).toLowerCase()));
+    for (const c of skyCat.cons) {
+      if (LEGACY_BY_IAU[c.id.toLowerCase()]) continue; // 15 rasi ini sudah ada di data ringkas
+      if (c.label.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.id.toLowerCase() === q) {
+        results.push({ type: 'ccon', label: c.label, sub: 'Rasi Bintang', data: c });
+      }
+    }
+    for (let i = 0; i < skyCat.sName.length; i++) {
+      const nm = skyCat.sName[i];
+      if (nm && nm.toLowerCase().includes(q) && !have.has(nm.toLowerCase())) {
+        have.add(nm.toLowerCase());
+        results.push({ type: 'cstar', label: nm, sub: `Bintang · magnitudo ${skyCat.sMag[i].toFixed(1)}`, data: { i } });
+      }
+    }
+    for (let i = 0; i < skyCat.dsos.length; i++) {
+      const d = skyCat.dsos[i];
+      const nm = d.name || d.desig || d.id;
+      if (nm.toLowerCase().includes(q) || (d.desig && d.desig.toLowerCase().includes(q))) {
+        results.push({ type: 'dso', label: nm, sub: DSO_TYPE_ID[d.type] || 'Objek langit dalam', data: { i } });
+      }
+    }
+  }
+
   if (results.length === 0) {
     resultsEl.innerHTML = '<div class="skymap-result-item">Tidak ditemukan</div>';
   } else {
     resultsEl.innerHTML = results.slice(0, 8).map((r, i) =>
-      `<div class="skymap-result-item" onclick="onSearchResultClick(${i})"><div>${r.label}</div><div class="result-sub">${r.sub}</div></div>`
+      `<div class="skymap-result-item" onclick="onSearchResultClick(${i})"><div>${apodEsc(r.label)}</div><div class="result-sub">${apodEsc(r.sub)}</div></div>`
     ).join('');
     window._skymapSearchResults = results;
   }
@@ -1658,7 +2272,28 @@ function onSearchResultClick(i) {
     pointDirectionTo(r.data.star.ra, r.data.star.dec);
   } else if (r.type === 'planet') {
     openPlanet3D(r.data.name);
+  } else if (r.type === 'sun') {
+    showSunInfo();
+  } else if (r.type === 'moon') {
+    showMoonInfo();
+  } else if (r.type === 'cstar') {
+    showCatalogStarInfo(r.data.i);
+    pointDirectionTo(skyCat.sRa[r.data.i], skyCat.sDec[r.data.i]);
+  } else if (r.type === 'dso') {
+    showCatalogDsoInfo(r.data.i);
+  } else if (r.type === 'ccon') {
+    const c = r.data;
+    let x = 0, y = 0, z = 0, n = 0;
+    for (const [start, count] of c.polys) for (let k = 0; k < count; k++) {
+      const a = skyCat.vRa[start + k] * 15 * DEG, d = skyCat.vDec[start + k] * DEG;
+      x += Math.cos(d) * Math.cos(a); y += Math.cos(d) * Math.sin(a); z += Math.sin(d); n++;
+    }
+    const midRa = ((Math.atan2(y, x) / DEG + 360) % 360) / 15;
+    const midDec = Math.atan2(z, Math.hypot(x, y)) / DEG;
+    showSkyInfoHtml(`<h3>✦ ${apodEsc(c.label)}</h3><div class="info-sub">Rasi Bintang · ${apodEsc(c.name)}</div>`);
+    pointDirectionTo(midRa, midDec);
   } else if (r.type === 'constellation') {
+    showSkyInfoHtml(`<h3>✦ ${apodEsc(r.data.nameId)}</h3><div class="info-sub">Rasi Bintang</div>`);
     const midRa = r.data.stars.reduce((a, s) => a + s.ra, 0) / r.data.stars.length;
     const midDec = r.data.stars.reduce((a, s) => a + s.dec, 0) / r.data.stars.length;
     pointDirectionTo(midRa, midDec);
@@ -1682,6 +2317,7 @@ function pointDirectionTo(ra, dec) {
     ? `📍 Objek ini sedang di bawah horizon dari lokasimu — coba lagi nanti.`
     : `📍 Hadapkan HP ke arah ${dirName}, sekitar ${Math.round(alt)}° di atas horizon.`;
   panel.appendChild(hint);
+  panel.classList.add('show');
 }
 
 // ══════════════ RENDER 3D PLANET (Three.js) ══════════════
