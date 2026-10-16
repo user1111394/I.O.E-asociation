@@ -337,31 +337,97 @@ async function generateImageGemini(prompt) {
 // #PENCARIAN WEB (TAVILY)# — dipakai mode chat saat member menyalakan "Cari di web"
 // ═══════════════════════════════════════════════════════════════
 
+// ── Kartu gambar (tampil di bawah jawaban, diketuk = buka halaman sumber) ──
+// Tavily mengirim gambar di daftar terpisah (url + deskripsi) TANPA halaman asalnya, jadi gambar
+// dipasangkan ke hasil pencarian yang paling mirip. Gambar hanya lolos kalau relevan dengan pertanyaan.
+const IMAGE_CARD_MAX = 2;
+const IMG_STOPWORDS = new Set(['yang','dan','atau','dari','dengan','untuk','pada','adalah','itu','ini','apa','siapa','kapan','dimana','bagaimana','mengapa','kenapa','tentang','the','and','for','with','what','who','when','where','how','why','about','from','that','this','are','was','were']);
+
+function keywordSet(text) {
+  const out = new Set();
+  String(text || '').toLowerCase().split(/[^a-z0-9\u00C0-\u024F]+/).forEach(w => {
+    if (w.length >= 4 && !IMG_STOPWORDS.has(w)) out.add(w);
+  });
+  return out;
+}
+
+function overlapCount(a, b) {
+  let n = 0;
+  for (const w of a) if (b.has(w)) n++;
+  return n;
+}
+
+function isHttpsUrl(u) {
+  try { return new URL(String(u)).protocol === 'https:'; } catch (e) { return false; }
+}
+
+function buildImageCards(rawImages, results, query) {
+  if (!Array.isArray(rawImages) || !Array.isArray(results) || results.length === 0) return [];
+  const qWords = keywordSet(query);
+  const resultWords = results.map(r => keywordSet(`${r.title || ''} ${r.content || ''}`));
+  const cards = [];
+  const usedImg = new Set();
+  const usedPage = new Set();
+
+  for (const img of rawImages) {
+    if (cards.length >= IMAGE_CARD_MAX) break;
+    const src = typeof img === 'string' ? img : (img && img.url);
+    const desc = typeof img === 'string' ? '' : String((img && img.description) || '').trim();
+    if (!isHttpsUrl(src) || String(src).length > 1000 || usedImg.has(src)) continue;
+    // Tanpa deskripsi tidak bisa dinilai relevan -> lewati (lebih baik tanpa gambar daripada gambar acak)
+    if (!desc) continue;
+
+    const dWords = keywordSet(desc);
+    // Syarat relevan: deskripsi gambar nyambung dengan pertanyaan member
+    if (overlapCount(dWords, qWords) < 1) continue;
+
+    // Cari halaman sumber yang paling cocok dengan deskripsi gambar; kalau tidak ada yang cocok,
+    // pakai hasil teratas (sudah terbukti relevan dengan pertanyaan lewat pemeriksaan di atas).
+    let best = 0, bestScore = -1;
+    results.forEach((r, i) => {
+      if (!isHttpsUrl(r.url)) return;
+      const sc = overlapCount(dWords, resultWords[i]);
+      if (sc > bestScore) { bestScore = sc; best = i; }
+    });
+    const page = results[best];
+    if (!page || !isHttpsUrl(page.url)) continue;
+    if (usedPage.has(page.url)) continue; // dua kartu tidak boleh membuka halaman yang sama
+
+    usedImg.add(src);
+    usedPage.add(page.url);
+    cards.push({ src: String(src), url: String(page.url), caption: desc.slice(0, 80) });
+  }
+  return cards;
+}
+
 // Panggil Tavily. Hasil dipotong supaya tidak membengkakkan konteks model.
-// Mengembalikan { text, sources } — text untuk dibaca model, sources untuk ditampilkan ke member.
+// Mengembalikan { text, sources, images } — text untuk dibaca model, sources untuk ditampilkan ke member,
+// images = kartu gambar (bisa kosong).
 async function tavilySearch(query) {
   const key = process.env.TAVILY_API_KEY;
-  if (!key) return { text: 'Pencarian web tidak tersedia saat ini.', sources: [] };
+  if (!key) return { text: 'Pencarian web tidak tersedia saat ini.', sources: [], images: [] };
   try {
     const r = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({ query: String(query).slice(0, 300), search_depth: 'basic', max_results: 4 }),
+      body: JSON.stringify({ query: String(query).slice(0, 300), search_depth: 'basic', max_results: 4, include_images: true, include_image_descriptions: true }),
     });
     if (!r.ok) {
       console.error('[ai] Tavily gagal:', r.status);
-      return { text: 'Pencarian web gagal. Jawab dengan pengetahuanmu dan sebutkan bahwa informasi mungkin belum terkini.', sources: [] };
+      return { text: 'Pencarian web gagal. Jawab dengan pengetahuanmu dan sebutkan bahwa informasi mungkin belum terkini.', sources: [], images: [] };
     }
     const data = await r.json();
     const results = (data.results || []).slice(0, 4);
     const sources = results.map(x => ({ title: x.title, url: x.url }));
+    let images = [];
+    try { images = buildImageCards(data.images, results, query); } catch (e) { images = []; }
     const text = results
       .map((x, i) => `[${i + 1}] ${x.title}\n${String(x.content || '').slice(0, 500)}\nSumber: ${x.url}`)
       .join('\n\n') || 'Tidak ada hasil.';
-    return { text, sources };
+    return { text, sources, images };
   } catch (e) {
     console.error('[ai] Tavily error jaringan:', e.message);
-    return { text: 'Pencarian web gagal. Jawab dengan pengetahuanmu dan sebutkan bahwa informasi mungkin belum terkini.', sources: [] };
+    return { text: 'Pencarian web gagal. Jawab dengan pengetahuanmu dan sebutkan bahwa informasi mungkin belum terkini.', sources: [], images: [] };
   }
 }
 
@@ -796,6 +862,7 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
     ];
 
     let sources = [];
+    let imageCards = [];
     let searchCount = 0;
     let searchFailed = false;
 
@@ -810,6 +877,7 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
         const result = await tavilySearch(query);
         searchCount = 1;
         sources = result.sources;
+        imageCards = result.images || [];
         if (result.sources.length === 0) searchFailed = true;
         // Hasil disuntikkan sebagai pesan sistem TERAKHIR (tepat sebelum model menjawab).
         // Isinya berasal dari internet, jadi diberi label bahwa itu DATA, bukan perintah.
@@ -853,6 +921,7 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
     return res.status(200).json({
       reply,
       sources: sources.length ? sources : undefined,
+      images: imageCards.length ? imageCards : undefined,
       searched: useSearch ? searchCount > 0 : undefined,
       searchFailed: useSearch ? searchFailed : undefined,
       quota: DB_URL ? { used: newUsed, limit, isPremium } : undefined,
