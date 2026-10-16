@@ -540,6 +540,15 @@ MODE PENCARIAN AKTIF:
 - Kalau hasil tidak menjawab pertanyaan atau saling bertentangan, katakan terus terang. Jangan menutupinya dengan pengetahuan sendiri tanpa memberi tahu.
 - Jangan menulis daftar tautan sendiri di akhir jawaban; daftar sumber ditampilkan otomatis oleh sistem.`;
 
+// Aturan tambahan HANYA saat member menyalakan mode Reasoning (berpikir lebih dalam).
+const REASONING_RULES = `
+
+MODE REASONING AKTIF:
+- Member memilih berpikir lebih dalam untuk soal yang sulit. Selesaikan masalah langkah demi langkah dan periksa ulang hitunganmu sebelum menjawab.
+- Tulis langkah penting secara ringkas (jangan bertele-tele), lalu tutup dengan jawaban akhir yang jelas.
+- Kalau soalnya ternyata sederhana, jawab singkat saja.`;
+
+
 
 // ═══════════════════════════════════════════════════════════════
 // #MODE: GAMBAR AI# — handler imageMode (tombol "Gen. img")
@@ -815,6 +824,9 @@ async function handleSandboxMode({ body, availableKeys, DB_URL, deviceId }, res)
 // ═══════════════════════════════════════════════════════════════
 async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch }, res) {
   const { messages } = body;
+  // Mode Reasoning: chat biasa dengan usaha berpikir 'high'. Tidak digabung dengan pencarian web
+  // (frontend hanya mengizinkan satu mode aktif; di sini juga dijaga supaya tidak ada kombinasi aneh).
+  const useReasoning = body.reasoningMode === true && !useSearch;
 
   // ── Kuota chat harian (FAIL-OPEN: kalau Firebase gagal diakses, chat tetap lanjut supaya AI tidak mati total) ──
   let isPremium = false;
@@ -852,7 +864,9 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
     }
   }
 
-  const systemContent = useSearch ? SYSTEM_PROMPT + SEARCH_RULES : SYSTEM_PROMPT;
+  const systemContent = useSearch ? SYSTEM_PROMPT + SEARCH_RULES
+    : useReasoning ? SYSTEM_PROMPT + REASONING_RULES
+    : SYSTEM_PROMPT;
 
   try {
     // Percakapan yang dikirim ke model. Saat mode pencarian, pesan tool ditambahkan di sini.
@@ -890,9 +904,11 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
 
     const response = await callGroqRotating(availableKeys, {
       model: MODEL,
-      max_tokens: 2048, // gpt-oss memakai sebagian token untuk "berpikir", jadi 1024 sering terlalu sempit
-      temperature: 0.75,
-      reasoning_effort: 'medium',
+      // gpt-oss memakai sebagian token untuk "berpikir", jadi 1024 sering terlalu sempit.
+      // Mode Reasoning butuh lebih banyak ruang karena berpikirnya lebih panjang.
+      max_tokens: useReasoning ? 4096 : 2048,
+      temperature: useReasoning ? 0.5 : 0.75,
+      reasoning_effort: useReasoning ? 'high' : 'medium',
       messages: convo,
     });
     if (!response.ok) {
@@ -924,6 +940,7 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
       images: imageCards.length ? imageCards : undefined,
       searched: useSearch ? searchCount > 0 : undefined,
       searchFailed: useSearch ? searchFailed : undefined,
+      reasoning: useReasoning ? true : undefined,
       quota: DB_URL ? { used: newUsed, limit, isPremium } : undefined,
     });
   } catch (e) {
