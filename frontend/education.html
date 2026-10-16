@@ -60,6 +60,26 @@
   color:rgba(255,255,255,0.2); margin-top:10px;
 }
 
+/* APOD: video & kartu tautan (dipakai kalau media tidak bisa di-embed) */
+.apod-embed { position:relative; width:100%; aspect-ratio:16/9; background:#000; }
+.apod-embed iframe { position:absolute; inset:0; width:100%; height:100%; border:0; display:block; }
+.apod-video { width:100%; max-height:340px; display:block; background:#000; }
+.apod-linkcard {
+  position:relative; display:flex; align-items:center; justify-content:center;
+  min-height:140px; text-decoration:none; background:#05060f; overflow:hidden;
+  font-family:'Inter',sans-serif; text-align:center;
+}
+.apod-linkcard img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0.55; }
+.apod-link-cta {
+  position:relative; z-index:1; color:#fff; font-size:0.82rem; font-weight:600;
+  background:rgba(4,6,20,0.78); border:1px solid var(--border2);
+  padding:10px 18px; border-radius:24px; margin:20px;
+}
+.apod-more {
+  display:inline-block; margin-top:12px; font-family:'Inter',sans-serif; font-size:0.75rem;
+  color:var(--primary); text-decoration:none;
+}
+
 /* ── ISS ── */
 .iss-header {
   background:var(--bg-card); border:1px solid var(--border);
@@ -233,6 +253,37 @@
   text-align:center; margin-top:8px;
 }
 
+/* ── MODE LAYAR PENUH (aktif otomatis saat Peta Langit dinyalakan) ── */
+.skymap-canvas-wrap.ar-full {
+  position:fixed; inset:0; z-index:9000; width:100%; aspect-ratio:auto;
+  border:none; border-radius:0;
+}
+.skymap-exit-btn, .skymap-full-btn {
+  display:none; position:absolute; z-index:6; align-items:center; justify-content:center;
+  top:10px; width:38px; height:38px; border-radius:50%; cursor:pointer;
+  color:#fff; background:rgba(4,6,20,0.7); border:1px solid var(--border);
+  font-size:1rem; line-height:1; padding:0;
+}
+.skymap-exit-btn { left:10px; }
+.skymap-full-btn { right:10px; }
+.skymap-exit-btn:active, .skymap-full-btn:active { border-color:var(--primary); }
+.skymap-canvas-wrap.ar-full .skymap-exit-btn { display:flex; }
+.skymap-canvas-wrap.ar-on:not(.ar-full) .skymap-full-btn { display:flex; }
+body.sky-full { overflow:hidden; }
+/* Pencarian & panel info ikut melayang di atas peta saat layar penuh */
+body.sky-full .skymap-search {
+  position:fixed; left:12px; right:12px; bottom:12px; width:auto; margin:0; z-index:9001;
+  background:rgba(4,6,20,0.88); box-sizing:border-box;
+}
+body.sky-full .skymap-search-results {
+  position:fixed; left:12px; right:12px; bottom:64px; margin:0; z-index:9001;
+  max-height:40vh; overflow-y:auto; background:rgba(4,6,20,0.95); border-radius:var(--radius);
+}
+body.sky-full .skymap-info-panel {
+  position:fixed; left:12px; right:12px; bottom:64px; margin:0; z-index:9001;
+  max-height:45vh; overflow-y:auto; background:rgba(4,6,20,0.96);
+}
+
 /* ── LAYAR IZIN (permission gate) ── */
 .skymap-permission-gate {
   position:absolute; inset:0; z-index:10;
@@ -312,7 +363,7 @@
 /* ── MODAL RENDER 3D PLANET ── */
 .planet3d-overlay {
   position:fixed; inset:0; background:rgba(0,0,0,0.8);
-  display:none; align-items:center; justify-content:center; z-index:200;
+  display:none; align-items:center; justify-content:center; z-index:9100;
   padding:20px; backdrop-filter:blur(4px);
 }
 .planet3d-overlay.show { display:flex; }
@@ -433,6 +484,8 @@
 
     <div class="skymap-canvas-wrap">
       <canvas id="skymap-canvas"></canvas>
+      <button class="skymap-exit-btn" type="button" onclick="exitSkyFull()" aria-label="Keluar dari layar penuh">✕</button>
+      <button class="skymap-full-btn" type="button" onclick="enterSkyFull()" aria-label="Layar penuh">⛶</button>
 
       <!-- Layar permintaan izin — ditampilkan sebelum peta aktif -->
       <div class="skymap-permission-gate" id="skymap-permission-gate">
@@ -499,7 +552,7 @@ async function loadAPOD() {
   } catch(e) {
     // Fallback: gunakan NASA demo key langsung
     try {
-      const res = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY');
+      const res = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true');
       const d = await res.json();
       renderAPOD(d);
     } catch(e2) {
@@ -509,19 +562,102 @@ async function loadAPOD() {
   }
 }
 
+// Data APOD berasal dari luar, jadi teks di-escape dan hanya URL https yang dipakai.
+function apodEsc(v) {
+  return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+const APOD_PAGE = 'https://apod.nasa.gov/apod/astropix.html';
+function apodHttps(u) {
+  try {
+    const x = new URL(String(u || ''), 'https://apod.nasa.gov/');
+    if (x.protocol === 'http:') x.protocol = 'https:'; // situs NASA/YouTube/Vimeo semua melayani https
+    return x.protocol === 'https:' ? x.href : '';
+  } catch (e) { return ''; }
+}
+// Ubah tautan YouTube/Vimeo (watch, youtu.be, shorts, embed) jadi URL embed; selain itu '' (tidak bisa di-embed).
+function apodEmbedUrl(u) {
+  try {
+    const x = new URL(u);
+    const h = x.hostname.replace(/^www\./, '');
+    const ID = /^[\w-]{6,20}$/;
+    if (h === 'youtu.be') {
+      const id = x.pathname.slice(1).split('/')[0];
+      return ID.test(id) ? `https://www.youtube.com/embed/${id}` : '';
+    }
+    if (h === 'youtube.com' || h === 'm.youtube.com' || h === 'youtube-nocookie.com') {
+      let id = x.searchParams.get('v');
+      const m = x.pathname.match(/^\/(?:embed|shorts|live)\/([\w-]+)/);
+      if (!id && m) id = m[1];
+      return id && ID.test(id) ? `https://www.youtube.com/embed/${id}` : '';
+    }
+    if (h === 'vimeo.com' || h === 'player.vimeo.com') {
+      const m = x.pathname.match(/(\d{5,12})/);
+      return m ? `https://player.vimeo.com/video/${m[1]}` : '';
+    }
+  } catch (e) {}
+  return '';
+}
+// Gambar gagal dimuat: coba versi standar dulu (kalau tadinya HD), lalu ganti jadi tautan ke situs NASA.
+function apodImgFail(img) {
+  if (img.dataset.alt && img.src !== img.dataset.alt) { img.src = img.dataset.alt; return; }
+  const a = document.createElement('a');
+  a.className = 'apod-linkcard'; a.href = APOD_PAGE; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.innerHTML = '<span class="apod-link-cta">🖼️ Gambar tidak bisa dimuat — buka di situs NASA</span>';
+  img.replaceWith(a);
+}
+function apodLinkCard(href, thumb, label) {
+  return `<a class="apod-linkcard" href="${apodEsc(href)}" target="_blank" rel="noopener noreferrer">` +
+    (thumb ? `<img src="${apodEsc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '') +
+    `<span class="apod-link-cta">${apodEsc(label)}</span></a>`;
+}
+
 function renderAPOD(d) {
-  const media = d.media_type === 'video'
-    ? `<iframe class="apod-iframe" src="${d.url}" allowfullscreen></iframe>`
-    : `<img class="apod-img" src="${d.hdurl || d.url}" alt="${d.title}" loading="lazy">`;
+  d = d || {};
+  const url = apodHttps(d.url), hd = apodHttps(d.hdurl), thumb = apodHttps(d.thumbnail_url);
+  const type = String(d.media_type || '').toLowerCase();
+  let media = '';
+  let needsMore = false; // tampilkan tautan "buka di situs NASA" bila media tidak bisa tampil penuh di sini
+
+  if (type === 'video') {
+    if (/\.(mp4|webm|ogv)(\?|#|$)/i.test(url)) {
+      media = `<video class="apod-video" controls playsinline preload="metadata"${thumb ? ` poster="${apodEsc(thumb)}"` : ''} src="${apodEsc(url)}"></video>`;
+    } else if (apodEmbedUrl(url)) {
+      media = `<div class="apod-embed"><iframe src="${apodEsc(apodEmbedUrl(url))}" title="${apodEsc(d.title)}" loading="lazy" ` +
+        `allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen ` +
+        `referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+    } else {
+      media = apodLinkCard(url || APOD_PAGE, thumb, '▶ Tonton di situs NASA');
+      needsMore = true;
+    }
+  } else if (type === 'image' || /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(url)) {
+    const src = hd || url;
+    media = src
+      ? `<img class="apod-img" src="${apodEsc(src)}" ${hd && url && hd !== url ? `data-alt="${apodEsc(url)}" ` : ''}alt="${apodEsc(d.title)}" loading="lazy" onerror="apodImgFail(this)">`
+      : apodLinkCard(APOD_PAGE, thumb, 'Buka di situs NASA');
+  } else {
+    // media_type 'other' atau tidak dikenal: tidak bisa ditampilkan di sini
+    media = apodLinkCard(url || APOD_PAGE, thumb, 'Buka di situs NASA');
+    needsMore = true;
+  }
+
+  // Beberapa entri video hanya berisi teks cadangan pemutar ("enable JavaScript ... HTML5 video"),
+  // bukan penjelasan sungguhan. Tampilkan catatan yang berguna sebagai gantinya.
+  let explanation = String(d.explanation || '').trim();
+  if (!explanation || /enable javascript|html5 video|upgrading to a web browser/i.test(explanation)) {
+    explanation = 'Media hari ini tidak punya penjelasan teks di data APOD. Lihat selengkapnya di situs NASA.';
+    needsMore = true;
+  }
 
   document.getElementById('apod-content').innerHTML = `
     <div class="apod-card">
       ${media}
       <div class="apod-body">
-        <div class="apod-date">${d.date} · NASA APOD</div>
-        <div class="apod-title">${d.title}</div>
-        <div class="apod-copy">${d.explanation}</div>
-        ${d.copyright ? `<div class="apod-copyright">© ${d.copyright}</div>` : ''}
+        <div class="apod-date">${apodEsc(d.date)} · NASA APOD</div>
+        <div class="apod-title">${apodEsc(d.title)}</div>
+        <div class="apod-copy">${apodEsc(explanation)}</div>
+        ${d.copyright ? `<div class="apod-copyright">© ${apodEsc(d.copyright)}</div>` : ''}
+        ${needsMore ? `<a class="apod-more" href="${APOD_PAGE}" target="_blank" rel="noopener noreferrer">🔗 Buka di apod.nasa.gov ↗</a>` : ''}
       </div>
     </div>
   `;
@@ -1228,6 +1364,37 @@ function skymapRenderLoop(ts) {
   skymapAnimId = requestAnimationFrame(skymapRenderLoop);
 }
 
+// ── Layar penuh ──
+// Saat Peta Langit aktif, kanvas menutupi seluruh layar (position:fixed). Tombol Back HP keluar dari
+// layar penuh lebih dulu (lewat history API), baru kemudian meninggalkan halaman.
+let skyFull = false;
+function enterSkyFull() {
+  if (skyFull) return;
+  const wrap = document.querySelector('.skymap-canvas-wrap');
+  if (!wrap) return;
+  skyFull = true;
+  wrap.classList.add('ar-full');
+  document.body.classList.add('sky-full');
+  try { history.pushState({ skyAR: 1 }, ''); } catch (e) {}
+  // Sembunyikan juga bar browser kalau diizinkan (terbaik-usaha: sering ditolak bila gesture sudah kedaluwarsa)
+  try {
+    const el = document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {});
+  } catch (e) {}
+  resizeSkymapCanvas();
+}
+function exitSkyFull(fromPop) {
+  if (!skyFull) return;
+  skyFull = false;
+  const wrap = document.querySelector('.skymap-canvas-wrap');
+  if (wrap) wrap.classList.remove('ar-full');
+  document.body.classList.remove('sky-full');
+  try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {}); } catch (e) {}
+  if (fromPop !== true && history.state && history.state.skyAR) { try { history.back(); } catch (e) {} }
+  resizeSkymapCanvas();
+}
+window.addEventListener('popstate', () => { if (skyFull) exitSkyFull(true); });
+
 function resizeSkymapCanvas() {
   const wrap = skymapCanvas.parentElement;
   skymapCanvas.width = wrap.clientWidth;
@@ -1277,6 +1444,9 @@ async function startSkyAR() {
     document.getElementById('skymap-ar-status').classList.add('show');
     document.getElementById('skymap-hint').textContent = '💡 Arahkan HP ke langit — geser dikit buat penyesuaian halus, ketuk objek untuk info';
     arActive = true;
+    const arWrap = document.querySelector('.skymap-canvas-wrap');
+    if (arWrap) arWrap.classList.add('ar-on');
+    enterSkyFull(); // langsung layar penuh (sekaligus menyesuaikan ukuran kanvas)
     resizeSkymapCanvas();
     if (!skymapAnimId) skymapRenderLoop();
 
@@ -1390,6 +1560,8 @@ function setupSkymap() {
     if (nearest) {
       if (nearest.type === 'star') showStarInfo(nearest.data.star, nearest.data.constellation);
       else if (nearest.type === 'planet') openPlanet3D(nearest.data.name);
+    } else if (skyFull) {
+      document.getElementById('skymap-info-panel').classList.remove('show'); // layar penuh: ketuk area kosong = tutup info
     }
   }
 
