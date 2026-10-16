@@ -318,7 +318,7 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
     <span class="sheet-title">Tambah ke pesan</span>
     <button class="sheet-close" type="button" onclick="closeSheet()" aria-label="Tutup"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
-  <!-- File, Foto, dan Reasoning BELUM punya backend di ai.js, jadi dinonaktifkan (bukan pura-pura jalan).
+  <!-- File dan Foto BELUM punya backend di ai.js, jadi dinonaktifkan (bukan pura-pura jalan).
        Aktifkan dengan menghapus atribut disabled + menambah handler setelah backend-nya ada. -->
   <button class="sheet-item" type="button" disabled>
     <span class="si-icon">📄</span><span class="si-text"><span class="si-label">File</span><span class="si-desc">Lampirkan dokumen untuk dibahas</span></span><span class="si-state">Segera</span>
@@ -326,8 +326,8 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
   <button class="sheet-item" type="button" disabled>
     <span class="si-icon">📷</span><span class="si-text"><span class="si-label">Foto</span><span class="si-desc">Tanya tentang sebuah gambar</span></span><span class="si-state">Segera</span>
   </button>
-  <button class="sheet-item" type="button" disabled>
-    <span class="si-icon">🧠</span><span class="si-text"><span class="si-label">Reasoning</span><span class="si-desc">Berpikir lebih dalam untuk soal sulit</span></span><span class="si-state">Segera</span>
+  <button class="sheet-item" type="button" data-mode="reasoning" style="--c:#4cd6a3" onclick="pickSheetMode('reasoning')" aria-pressed="false">
+    <span class="si-icon">🧠</span><span class="si-text"><span class="si-label">Reasoning</span><span class="si-desc">Berpikir lebih dalam untuk soal sulit</span></span><span class="si-state"></span>
   </button>
   <button class="sheet-item" type="button" data-mode="image" style="--c:#ff9f5c" onclick="pickSheetMode('image')" aria-pressed="false">
     <span class="si-icon">🎨</span><span class="si-text"><span class="si-label">Gen. img</span><span class="si-desc">Gambar AI dari deskripsimu</span></span><span class="si-state"></span>
@@ -365,12 +365,14 @@ getDeviceId().then(id => { myDeviceId = id; });
 // boleh satu mode karena tiap mode menagih kuota & payload yang berbeda di ai.js.
 let sandboxMode = false;  // 3D model interaktif
 let render3dMode = false; // gambar 3D statis (render engine lokal)
+let reasoningMode = false; // chat dengan berpikir lebih dalam (reasoning_effort high)
 
 const DEFAULT_PLACEHOLDER = 'Tanya apa saja...';
 const MODES = {
   search:   { icon:'🌐', label:'Cari di web',  color:'#00c2ff', placeholder:'Cari di web...' },
   render3d: { icon:'🧱', label:'Gambar 3D',    color:'#e9b44c', placeholder:'Deskripsikan objek 3D...' },
   sandbox:  { icon:'🧊', label:'3D model',     color:'#7c5cff', placeholder:'Deskripsikan objek 3D...' },
+  reasoning:{ icon:'🧠', label:'Reasoning',    color:'#4cd6a3', placeholder:'Tanyakan soal yang butuh dipikirkan...' },
   image:    { icon:'🎨', label:'Gen. img',     color:'#ff9f5c', placeholder:'Deskripsikan gambar...' }, // gambar AI (FLUX via Cloudflare)
 };
 const CLOSE_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -380,6 +382,7 @@ function activeMode() {
   if (sandboxMode) return 'sandbox';
   if (render3dMode) return 'render3d';
   if (imageMode) return 'image';
+  if (reasoningMode) return 'reasoning';
   return null;
 }
 function setMode(key) {
@@ -387,6 +390,7 @@ function setMode(key) {
   imageMode = key === 'image';
   sandboxMode = key === 'sandbox';
   render3dMode = key === 'render3d';
+  reasoningMode = key === 'reasoning';
   syncModeUi();
 }
 function toggleMode(key) { setMode(activeMode() === key ? null : key); }
@@ -395,6 +399,7 @@ function toggleSearchMode()   { toggleMode('search'); }
 function toggleImageMode()    { toggleMode('image'); }
 function toggleSandboxMode()  { toggleMode('sandbox'); }
 function toggleRender3dMode() { toggleMode('render3d'); }
+function toggleReasoningMode() { toggleMode('reasoning'); }
 
 function clearTopic() {
   topic = '';
@@ -989,7 +994,7 @@ async function cosmosSend() {
     const res = await fetch(AI_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: convo, deviceId: myDeviceId, searchMode })
+      body: JSON.stringify({ messages: convo, deviceId: myDeviceId, searchMode, reasoningMode })
     });
     const data = await res.json();
 
