@@ -228,6 +228,19 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
   text-decoration:none; font-weight:600;
 }
 
+/* Kartu gambar dari web: 2 kartu sejajar, diketuk = buka halaman sumber */
+.img-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; max-width:420px; }
+.img-card { display:block; min-width:0; text-decoration:none; font-family:'Inter',sans-serif; }
+.img-card .img-thumb {
+  width:100%; aspect-ratio:4/3; object-fit:cover; display:block; box-sizing:border-box;
+  border-radius:12px; border:1px solid var(--border); background:var(--bg-card);
+}
+.img-card .img-cap {
+  margin-top:5px; font-size:0.7rem; line-height:1.4; color:var(--text-muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.img-card:hover .img-thumb { border-color:var(--border2); }
+
 /* Sumber web: chip bernomor */
 .cosmos-sources { margin-top:12px; font-family:'Inter',sans-serif; font-size:0.72rem; line-height:1.5; }
 .cosmos-sources-title { color:rgba(255,255,255,0.4); margin-bottom:6px; }
@@ -761,6 +774,23 @@ function downloadSandboxResult(frameWrap, prompt) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
+// Kartu gambar dari hasil pencarian web. Data berasal dari internet, jadi hanya URL https:// yang dipakai
+// dan semua teks di-escape. Kalau gambar gagal dimuat (diblokir situs asal), kartunya dibuang diam-diam.
+function renderImageCards(images) {
+  if (!Array.isArray(images) || images.length === 0) return '';
+  const cards = images.slice(0, 2).map(c => {
+    const src = String(c && c.src || '');
+    const url = String(c && c.url || '');
+    if (!/^https:\/\//i.test(src) || !/^https:\/\//i.test(url)) return '';
+    const cap = String(c.caption || '').slice(0, 80);
+    return `<a class="img-card" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer nofollow">` +
+      `<img class="img-thumb" src="${escAttr(src)}" alt="${escAttr(cap)}" loading="lazy" referrerpolicy="no-referrer" ` +
+      `onerror="var r=this.closest('.img-row');this.closest('.img-card').remove();if(r&&!r.children.length)r.remove();">` +
+      `<div class="img-cap">${escAttr(cap)}</div></a>`;
+  }).join('');
+  return cards ? `<div class="img-row">${cards}</div>` : '';
+}
+
 // Judul & URL sumber berasal dari internet, jadi TIDAK dipercaya: hanya URL https:// yang dijadikan
 // tautan (menolak javascript:, data:, dll), dan semua teks di-escape sebelum masuk innerHTML.
 function renderSources(sources) {
@@ -987,7 +1017,7 @@ async function cosmosSend() {
     const failNote = data.searchFailed
       ? '<div class="cosmos-sources"><div class="cosmos-sources-title">⚠️ Pencarian web tidak berhasil — jawaban ini belum diverifikasi dengan sumber.</div></div>'
       : '';
-    appendMsg('ai', '<p>' + md(reply) + '</p>' + renderSources(data.sources) + failNote);
+    appendMsg('ai', '<p>' + md(reply) + '</p>' + renderImageCards(data.images) + renderSources(data.sources) + failNote);
 
     // Tampilkan sisa kuota kalau mendekati batas
     if (data.quota) {
