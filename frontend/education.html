@@ -1044,6 +1044,9 @@ let skymapCanvas, skymapCtx;
 let userLat = null, userLon = null;
 let deviceHeading = null; // azimuth kompas (0=utara, searah jarum jam), null kalau belum ada data
 let deviceAlt = 0; // altitude arah pandang (derajat dari horizon), dari kemiringan device
+// Nilai MENTAH dari sensor (target). deviceHeading/deviceAlt di atas adalah nilai yang SUDAH dihaluskan
+// di render loop (skymapSmoothStep), jadi kehalusan tidak tergantung seberapa sering sensor mengirim data.
+let targetHeading = null, targetAlt = 0;
 let skymapFOV = 60; // derajat sudut pandang (field of view) kamera HP — representatif kamera umum
 let skymapClickables = []; // { x, y, r, type, data }
 let skymapDragOffsetAz = 0, skymapDragOffsetAlt = 0; // penyesuaian manual kecil (gesekan halus) di atas heading sensor
@@ -1191,7 +1194,36 @@ function drawSkymap() {
 }
 
 let skymapAnimId = null;
-function skymapRenderLoop() {
+let skymapLastTs = 0;
+// Konstanta waktu penghalusan (detik). Makin kecil = makin responsif tapi makin bergetar;
+// makin besar = makin mulus tapi terasa "tertinggal". 0.08 = sekitar 5 frame di 60fps.
+const SKYMAP_SMOOTH_TAU = 0.08;
+
+// Haluskan deviceHeading/deviceAlt menuju target sensor. Faktornya dihitung dari WAKTU antar-frame
+// (bukan angka tetap per event), jadi hasilnya sama di layar 60Hz maupun 120Hz dan tidak
+// terpengaruh sensor yang kadang mengirim data rapat, kadang jarang.
+function skymapSmoothStep(ts) {
+  if (targetHeading === null) return;
+  const now = (typeof ts === 'number') ? ts : performance.now();
+  const dt = skymapLastTs ? Math.min(0.1, Math.max(0, (now - skymapLastTs) / 1000)) : 0.016;
+  skymapLastTs = now;
+  const k = 1 - Math.exp(-dt / SKYMAP_SMOOTH_TAU);
+
+  if (deviceHeading === null) {
+    deviceHeading = targetHeading;
+    deviceAlt = targetAlt;
+    return;
+  }
+  // Selisih sudut diambil lewat jalur terpendek (359° -> 1° selisihnya 2°, bukan 358°)
+  let diff = targetHeading - deviceHeading;
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+  deviceHeading = (deviceHeading + diff * k + 360) % 360;
+  deviceAlt = deviceAlt + (targetAlt - deviceAlt) * k;
+}
+
+function skymapRenderLoop(ts) {
+  skymapSmoothStep(ts);
   drawSkymap();
   skymapAnimId = requestAnimationFrame(skymapRenderLoop);
 }
@@ -1267,40 +1299,72 @@ async function startSkyAR() {
 // (properti khusus iOS Safari yang sudah dikalibrasi ke utara asli, lebih akurat).
 // Referensi: alpha meningkat berlawanan arah jarum jam sedangkan kompas (bearing) searah
 // jarum jam, jadi non-iOS pakai (360 - alpha); iOS pakai webkitCompassHeading langsung.
+// Arah pandang kamera belakang HP (sumbu -Z perangkat) dari tiga sudut Euler W3C (alpha, beta, gamma).
+// Rotasi perangkat = Rz(alpha) · Rx(beta) · Ry(gamma); vektor ini diputar ke kerangka bumi
+// (x = timur, y = utara, z = atas). Beda dengan cara lama yang hanya memakai alpha: di dekat beta=90
+// (HP tegak, posisi paling wajar untuk melihat langit) alpha dan gamma saling "berbagi" putaran
+// horizontal, sehingga alpha saja menjadi tidak stabil dan gamma diabaikan. Dengan vektor ini
+// keduanya diperhitungkan sekaligus. Mengembalikan { az, alt, horiz } — horiz kecil = menatap
+// lurus ke atas/bawah, azimuth tidak berarti.
+function cameraDirFromEuler(alphaDeg, betaDeg, gammaDeg) {
+  const D = Math.PI / 180;
+  const a = (alphaDeg || 0) * D, b = (betaDeg || 0) * D, g = (gammaDeg || 0) * D;
+  const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+  const vx = -cA * sG - sA * sB * cG;
+  const vy = -sA * sG + cA * sB * cG;
+  const vz = -cB * cG;
+  const horiz = Math.hypot(vx, vy);
+  return {
+    az: (Math.atan2(vx, vy) / D + 360) % 360,
+    alt: Math.asin(Math.max(-1, Math.min(1, vz))) / D,
+    horiz,
+  };
+}
+
+let skymapOrientationBound = false;
 function setupOrientationListener() {
+  if (skymapOrientationBound) return; // jangan pasang listener dobel kalau fungsi dipanggil ulang
+  skymapOrientationBound = true;
   const calibWarning = document.getElementById('skymap-calib-warning');
 
-  window.addEventListener('deviceorientation', e => {
-    let heading;
+  // Chrome Android: event 'deviceorientation' biasa memberi alpha RELATIF (acuan awal sembarang, bukan
+  // utara). Yang terikat ke kompas adalah 'deviceorientationabsolute'. Kalau event itu ada, dipakai
+  // itu; event relatif diabaikan. Kalau ternyata tidak ada data absolut dalam 2 detik (HP tanpa
+  // magnetometer), jatuh balik ke event biasa supaya peta tetap jalan.
+  const hasAbsEvent = 'ondeviceorientationabsolute' in window;
+  let sawAbsolute = false;
+  let allowRelativeFallback = !hasAbsEvent;
+  if (hasAbsEvent) {
+    setTimeout(() => { if (!sawAbsolute) allowRelativeFallback = true; }, 2000);
+  }
+
+  function handle(e) {
+    // iOS: webkitCompassHeading sudah true-north; kemiringan dari beta seperti sebelumnya.
     if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-      heading = e.webkitCompassHeading; // iOS: sudah true-north, searah jarum jam
       if (calibWarning) calibWarning.style.display = (e.webkitCompassAccuracy > 15) ? 'block' : 'none';
-    } else if (e.alpha !== null) {
-      heading = (360 - e.alpha) % 360; // Android/standar: dibalik biar searah jarum jam kayak kompas
-    } else {
-      return; // tidak ada data arah sama sekali
+      targetHeading = e.webkitCompassHeading;
+      if (e.beta !== null) targetAlt = Math.max(-90, Math.min(90, e.beta - 90));
+      return;
     }
+    if (e.alpha === null || e.alpha === undefined) return; // tidak ada data arah sama sekali
 
-    // Smoothing ringan (exponential moving average) supaya pembacaan sensor yang sedikit
-    // "melompat" antar-event tidak langsung snap kasar di layar, tapi transisi lebih mulus.
-    // Heading butuh penanganan wrap-around khusus (contoh: dari 359° ke 1° itu selisihnya
-    // cuma 2°, bukan 358°, kalau dirata-rata langsung tanpa koreksi ini akan salah arah).
-    if (deviceHeading === null) {
-      deviceHeading = heading;
-    } else {
-      let diff = heading - deviceHeading;
-      if (diff > 180) diff -= 360;
-      if (diff < -180) diff += 360;
-      deviceHeading = (deviceHeading + diff * 0.35 + 360) % 360;
-    }
+    const cam = cameraDirFromEuler(e.alpha, e.beta, e.gamma);
+    targetAlt = Math.max(-90, Math.min(90, cam.alt));
+    // Kalau menatap hampir lurus ke atas/bawah, azimuth tidak terdefinisi -> pertahankan yang terakhir
+    if (cam.horiz > 0.1 || targetHeading === null) targetHeading = cam.az;
+  }
 
-    // beta = kemiringan depan-belakang (-180..180). Saat HP tegak lurus memotret ke depan
-    // (posisi wajar buat "mengarahkan ke langit"), beta ~90 = altitude 0 (horizon),
-    // beta ~180/-180 = altitude 90 (lurus ke atas/zenith).
-    if (e.beta !== null) {
-      const targetAlt = Math.max(-90, Math.min(90, e.beta - 90));
-      deviceAlt = deviceAlt + (targetAlt - deviceAlt) * 0.35;
-    }
+  if (hasAbsEvent) {
+    window.addEventListener('deviceorientationabsolute', e => {
+      if (e.alpha === null) return;
+      sawAbsolute = true;
+      handle(e);
+    }, true);
+  }
+  window.addEventListener('deviceorientation', e => {
+    const isIos = e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null;
+    if (!isIos && !(sawAbsolute ? false : allowRelativeFallback)) return;
+    handle(e);
   }, true);
 }
 
