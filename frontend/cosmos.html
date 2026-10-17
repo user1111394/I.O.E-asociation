@@ -228,6 +228,57 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
   text-decoration:none; font-weight:600;
 }
 
+/* Toolbar riwayat & sheet riwayat chat */
+.cosmos-toolbar {
+  display:flex; justify-content:flex-end; gap:8px; width:100%; max-width:760px; margin:0 auto;
+  padding:8px 14px 0; box-sizing:border-box; flex-shrink:0;
+}
+.tb-btn {
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer; padding:6px 12px;
+  font-family:'Inter',sans-serif; font-size:0.74rem; font-weight:600; color:var(--text-muted);
+  background:var(--bg-card); border:1px solid var(--border); border-radius:20px;
+}
+.tb-btn:hover { color:#fff; border-color:var(--border2); }
+.tb-btn:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.hist-backdrop {
+  position:fixed; inset:0; z-index:900; background:rgba(2,2,10,0.62);
+  opacity:0; pointer-events:none; transition:opacity 0.2s;
+}
+.hist-sheet {
+  position:fixed; left:0; right:0; bottom:0; z-index:901;
+  max-width:760px; margin:0 auto; box-sizing:border-box;
+  background:#0c0c1e; border-top:1px solid var(--border2); border-radius:22px 22px 0 0;
+  padding:6px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  max-height:80dvh; overflow-y:auto;
+  transform:translateY(105%); visibility:hidden;
+  transition:transform 0.25s ease, visibility 0s linear 0.25s;
+}
+body.hist-open .hist-backdrop { opacity:1; pointer-events:auto; }
+body.hist-open .hist-sheet { transform:none; visibility:visible; transition:transform 0.25s ease; }
+.hist-item {
+  display:flex; align-items:center; gap:6px; margin-bottom:8px;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:14px; overflow:hidden;
+}
+.hist-item.active { border-color:var(--primary); }
+.hist-open-btn {
+  all:unset; box-sizing:border-box; flex:1; min-width:0; cursor:pointer; padding:11px 14px;
+  font-family:'Inter',sans-serif; color:var(--text);
+}
+.hist-open-btn:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
+.hist-title { display:block; font-size:0.86rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hist-time { display:block; font-size:0.68rem; color:var(--text-muted); margin-top:2px; }
+.hist-del {
+  all:unset; box-sizing:border-box; cursor:pointer; width:42px; align-self:stretch; display:flex;
+  align-items:center; justify-content:center; color:var(--text-muted); font-size:0.95rem;
+}
+.hist-del:hover { color:#ff7a7a; background:rgba(255,80,80,0.08); }
+.hist-del:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
+.hist-note { font-family:'Inter',sans-serif; font-size:0.74rem; color:var(--text-muted); line-height:1.5; padding:6px 2px; }
+.hist-note a { color:var(--primary); }
+.hist-foot { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:6px 2px 0; }
+.hist-clear { all:unset; cursor:pointer; font-family:'Inter',sans-serif; font-size:0.72rem; color:#ff8a8a; padding:6px 2px; }
+.hist-clear:focus-visible { outline:2px solid var(--primary); }
+
 /* Kartu gambar dari web: 2 kartu sejajar, diketuk = buka halaman sumber */
 .img-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; max-width:420px; }
 .img-card { display:block; min-width:0; text-decoration:none; font-family:'Inter',sans-serif; }
@@ -266,6 +317,11 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
 <nav class="ioe-nav" id="ioe-nav"></nav>
 
 <div id="page-cosmos">
+
+  <div class="cosmos-toolbar">
+    <button class="tb-btn" type="button" onclick="histOpenSheet()" aria-haspopup="dialog">🕘 Riwayat</button>
+    <button class="tb-btn" type="button" onclick="histNewChat()">＋ Chat baru</button>
+  </div>
 
   <div id="cosmos-chat">
     <div class="welcome-cosmos" id="welcomeScreen">
@@ -309,6 +365,16 @@ body.sheet-open .sheet { transform:none; visibility:visible; transition:transfor
       </button>
     </div>
   </div>
+</div>
+
+<!-- Sheet riwayat chat -->
+<div class="hist-backdrop" onclick="histCloseSheet()"></div>
+<div class="hist-sheet" id="histSheet" role="dialog" aria-modal="true" aria-label="Riwayat chat">
+  <div class="sheet-head">
+    <span class="sheet-title">Riwayat chat</span>
+    <button class="sheet-close" type="button" onclick="histCloseSheet()" aria-label="Tutup">✕</button>
+  </div>
+  <div id="histBody"></div>
 </div>
 
 <!-- Bottom sheet tombol + : urutan mengikuti sketsa (file, foto, reasoning, gen. img, 3D model) -->
@@ -804,7 +870,7 @@ function renderSources(sources) {
     const url = String(s && s.url || '');
     const title = String(s && s.title || url).slice(0, 120);
     if (!/^https:\/\//i.test(url)) return '';
-    return `<a class="src-chip" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer nofollow"><b>${i + 1}</b><span>${escAttr(title)}</span></a>`;
+    return `<a class="src-chip" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer nofollow"><b>${Number(s && s.n) || i + 1}</b><span>${escAttr(title)}</span></a>`;
   }).join('');
   return items ? `<div class="cosmos-sources"><div class="cosmos-sources-title">🌐 Sumber</div><div class="src-row">${items}</div></div>` : '';
 }
@@ -817,7 +883,7 @@ function pickTopic(el) {
 }
 
 function md(t) {
-  return t
+  return escHtml(String(t || ''))
     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
     .replace(/\*(.+?)\*/g,'<em>$1</em>')
     .replace(/`([^`\n]+)`/g,'<code>$1</code>')
@@ -880,6 +946,7 @@ async function cosmosSend() {
     try {
       await runSandboxLoop(raw, statusEl, frameWrap);
       if (frameWrap.dataset.finalCode) {
+        histRecordMedia(raw, '🧊 Model 3D dibuat (model tidak disimpan di riwayat)');
         const dlBtn = document.createElement('a');
         dlBtn.href = '#'; dlBtn.className = 'sandbox-download-btn'; dlBtn.textContent = '⬇️ Download sebagai HTML';
         dlBtn.onclick = (e) => { e.preventDefault(); downloadSandboxResult(frameWrap, raw); };
@@ -914,6 +981,7 @@ async function cosmosSend() {
         statusEl.textContent = '⚠️ ' + (data.error || 'Gagal membuat gambar 3D.');
       } else if (isValidPngDataUri(data.render3dImage)) {
         statusEl.remove();
+        histRecordMedia(raw, '🖼️ Gambar 3D dibuat (gambar tidak disimpan di riwayat)');
         const imgWrap = document.createElement('div');
         imgWrap.className = 'render3d-image-wrap';
         const img = document.createElement('img');
@@ -970,6 +1038,7 @@ async function cosmosSend() {
         appendMsg('ai', '⚠️ ' + (data.error || 'Gagal membuat gambar.'), 'err');
       } else {
         const imgHtml = renderGeneratedImage(data.image);
+        if (imgHtml) histRecordMedia(raw, '🎨 Gambar dibuat dengan Gen. img (gambar tidak disimpan di riwayat)');
         appendMsg('ai', imgHtml
           ? imgHtml + `<div class="media-caption">🎨 ${escHtml(raw)}</div>`
           : '⚠️ Gambar diterima tapi formatnya tidak valid.');
@@ -1023,6 +1092,7 @@ async function cosmosSend() {
       ? '<div class="cosmos-sources"><div class="cosmos-sources-title">⚠️ Pencarian web tidak berhasil — jawaban ini belum diverifikasi dengan sumber.</div></div>'
       : '';
     appendMsg('ai', '<p>' + md(reply) + '</p>' + renderImageCards(data.images) + renderSources(data.sources) + failNote);
+    histRecordTurn(raw, reply, data);
 
     // Tampilkan sisa kuota kalau mendekati batas
     if (data.quota) {
@@ -1036,13 +1106,198 @@ async function cosmosSend() {
     hideTyping(); convo.pop();
     appendMsg('ai',
       '⚠️ <strong>Gagal terhubung ke AI.</strong><br>' +
-      '<small>' + e.message + '</small><br>' +
+      '<small>' + escHtml(e.message) + '</small><br>' +
       '<small style="color:rgba(255,255,255,0.3)">Pastikan backend sudah di-deploy di Vercel.</small>',
       'err');
   }
   busy = false;
   document.getElementById('cosmos-sendBtn').disabled = false;
   document.getElementById('cosmos-inp').focus();
+}
+
+// ══════════ RIWAYAT CHAT (Firestore per akun, lewat server) ══════════
+// Hanya chat TEKS (chat biasa, Cari di web, Reasoning) yang disimpan isinya. Hasil Gen. img / Gambar 3D /
+// 3D model tidak disimpan (besar); di riwayat hanya muncul penanda singkat. Browser tidak pernah
+// mengakses Firestore langsung: semua lewat /api/ai (action 'chat-history') yang memverifikasi sesi.
+const HIST = { id: null, msgs: [], saving: false, pending: false, dirty: false, disabled: '', timer: null, list: null,
+  gen: 0,          // naik setiap ganti percakapan; balasan simpan dari percakapan LAMA tidak boleh menimpa id yang baru
+  inflight: null,  // promise penyimpanan yang sedang berjalan
+  switching: false };
+const WELCOME_HTML = (document.getElementById('welcomeScreen') || { outerHTML: '' }).outerHTML;
+
+function histSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem('ioe_account_session') || 'null');
+    return s && s.memberId && s.sessionToken ? s : null;
+  } catch (e) { return null; }
+}
+async function histApi(op, extra) {
+  const s = histSession();
+  if (!s) { const e = new Error('Belum login'); e.status = 401; throw e; }
+  const r = await fetch(AI_ENDPOINT, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'chat-history', op, memberId: s.memberId, sessionToken: s.sessionToken, ...extra }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.ok) { const e = new Error(d.error || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+  return d;
+}
+
+// Catat satu giliran chat teks yang BERHASIL (dipanggil setelah balasan AI diterima)
+function histRecordTurn(raw, reply, data) {
+  HIST.msgs.push({ r: 'u', t: raw, tp: topic || undefined });
+  const a = { r: 'a', t: reply };
+  if (data && Array.isArray(data.sources) && data.sources.length) a.s = data.sources.slice(0, 6).map(s => ({ n: s.n, title: s.title, url: s.url }));
+  if (data && Array.isArray(data.images) && data.images.length) a.i = data.images.slice(0, 2).map(x => ({ src: x.src, url: x.url, caption: x.caption }));
+  HIST.msgs.push(a);
+  histSaveSoon();
+}
+// Catat hasil media (gambar/3D) sebagai penanda saja — isinya tidak disimpan
+function histRecordMedia(raw, label) {
+  HIST.msgs.push({ r: 'u', t: raw, k: 'media' });
+  HIST.msgs.push({ r: 'a', t: label, k: 'media' });
+  histSaveSoon();
+}
+function histSaveSoon() {
+  if (HIST.disabled || !histSession()) return;
+  HIST.dirty = true;
+  clearTimeout(HIST.timer);
+  HIST.timer = setTimeout(histSaveNow, 700);
+}
+function histSaveNow() {
+  clearTimeout(HIST.timer);
+  if (HIST.disabled || !histSession() || !HIST.msgs.length) { HIST.dirty = false; return Promise.resolve(); }
+  if (HIST.saving) { HIST.pending = true; return HIST.inflight; }
+  HIST.saving = true; HIST.dirty = false;
+  const gen = HIST.gen;
+  HIST.inflight = (async () => {
+    try {
+      const d = await histApi('save', { chatId: HIST.id || undefined, messages: HIST.msgs });
+      if (gen === HIST.gen) HIST.id = d.id; // abaikan kalau pengguna sudah pindah ke percakapan lain
+      HIST.list = null;                     // daftar perlu dimuat ulang
+    } catch (e) {
+      if (e.status === 503) HIST.disabled = 'Riwayat chat belum aktif di server.';
+      else if (e.status === 401) HIST.disabled = 'Sesi login berakhir — masuk lagi untuk menyimpan riwayat.';
+      else if (e.status === 413) HIST.disabled = 'Percakapan ini terlalu panjang untuk disimpan. Mulai chat baru.';
+      console.warn('[riwayat] gagal menyimpan:', e.message);
+    }
+    HIST.saving = false;
+    if (HIST.pending) { HIST.pending = false; if (gen === HIST.gen) histSaveSoon(); }
+  })();
+  return HIST.inflight;
+}
+// Pastikan semua yang sudah dicatat benar-benar terkirim sebelum pindah percakapan
+async function histFlush() {
+  clearTimeout(HIST.timer);
+  if (HIST.saving) await HIST.inflight;
+  if (HIST.dirty) await histSaveNow();
+}
+
+function histResetView() {
+  HIST.gen++; HIST.pending = false; HIST.dirty = false;
+  convo = []; HIST.id = null; HIST.msgs = []; HIST.disabled = '';
+  clearTimeout(HIST.timer);
+  document.getElementById('cosmos-chat').innerHTML = WELCOME_HTML;
+  topic = ''; syncModeUi();
+}
+async function histNewChat() {
+  if (busy || HIST.switching) return;
+  HIST.switching = true;
+  try { await histFlush(); } catch (e) {}
+  histResetView();
+  HIST.switching = false;
+}
+
+function histTimeAgo(ms) {
+  if (!ms) return '';
+  const diff = Date.now() - ms, m = Math.floor(diff / 60000);
+  if (m < 1) return 'Baru saja';
+  if (m < 60) return m + ' menit lalu';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' jam lalu';
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'Kemarin';
+  if (d < 7) return d + ' hari lalu';
+  return new Date(ms).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function histOpenSheet() {
+  document.body.classList.add('hist-open');
+  histRenderSheet();
+}
+function histCloseSheet() { document.body.classList.remove('hist-open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') histCloseSheet(); });
+
+async function histRenderSheet() {
+  const body = document.getElementById('histBody');
+  if (!histSession()) {
+    body.innerHTML = '<div class="hist-note">Masuk ke akun I.O.E untuk menyimpan riwayat chat dan melanjutkannya di perangkat mana pun.<br><br><a href="login.html">Masuk sekarang →</a></div>';
+    return;
+  }
+  if (HIST.disabled) { body.innerHTML = '<div class="hist-note">' + escHtml(HIST.disabled) + '</div>'; return; }
+  body.innerHTML = '<div class="hist-note">Memuat riwayat…</div>';
+  try {
+    if (!HIST.list) HIST.list = (await histApi('list')).chats;
+  } catch (e) {
+    if (e.status === 503) HIST.disabled = 'Riwayat chat belum aktif di server.';
+    body.innerHTML = '<div class="hist-note">' + escHtml(e.status === 503 ? HIST.disabled : 'Gagal memuat riwayat: ' + e.message) + '</div>';
+    return;
+  }
+  const chats = HIST.list || [];
+  if (!chats.length) { body.innerHTML = '<div class="hist-note">Belum ada riwayat. Percakapan teksmu akan tersimpan di sini otomatis.</div>' + histFootHtml(false); return; }
+  body.innerHTML = chats.map(c =>
+    `<div class="hist-item${c.id === HIST.id ? ' active' : ''}">` +
+      `<button class="hist-open-btn" type="button" onclick="histOpenChat('${escAttr(c.id)}')">` +
+        `<span class="hist-title">${escHtml(c.title)}</span><span class="hist-time">${escHtml(histTimeAgo(c.updatedAt))}</span></button>` +
+      `<button class="hist-del" type="button" aria-label="Hapus percakapan" onclick="histDeleteChat('${escAttr(c.id)}')">🗑</button>` +
+    `</div>`).join('') + histFootHtml(true);
+}
+function histFootHtml(canClear) {
+  return '<div class="hist-foot"><span class="hist-note">Hanya teks yang disimpan. Gambar & model 3D tidak.</span>' +
+    (canClear ? '<button class="hist-clear" type="button" onclick="histClearAll()">Hapus semua</button>' : '') + '</div>';
+}
+
+async function histOpenChat(id) {
+  if (busy || HIST.switching) return;
+  HIST.switching = true;
+  histCloseSheet();
+  const chat = document.getElementById('cosmos-chat');
+  try {
+    try { await histFlush(); } catch (e) {}
+    const d = await histApi('get', { chatId: id });
+    histResetView();
+    HIST.id = d.id; HIST.msgs = d.messages;
+    document.getElementById('welcomeScreen')?.remove();
+    // Susun ulang konteks untuk model (tanpa penanda media; dibatasi 20 pesan terakhir supaya ringan)
+    convo = d.messages.filter(m => m.k !== 'media').map(m => m.r === 'u'
+      ? { role: 'user', content: m.tp ? `[Topik: ${m.tp}] ${m.t}` : m.t }
+      : { role: 'assistant', content: m.t }).slice(-20);
+    for (const m of d.messages) {
+      if (m.r === 'u') appendMsg('user', escHtml(m.t));
+      else appendMsg('ai', m.k === 'media'
+        ? '<small style="color:rgba(255,255,255,0.45)">' + escHtml(m.t) + '</small>'
+        : '<p>' + md(m.t) + '</p>' + renderImageCards(m.i) + renderSources(m.s));
+    }
+    chat.scrollTop = chat.scrollHeight;
+  } catch (e) {
+    appendMsg('ai', '⚠️ Gagal membuka percakapan: ' + escHtml(e.message), 'err');
+  }
+  HIST.switching = false;
+}
+async function histDeleteChat(id) {
+  if (!confirm('Hapus percakapan ini?')) return;
+  try {
+    await histApi('delete', { chatId: id });
+    if (id === HIST.id) { HIST.id = null; } // percakapan aktif jadi "belum tersimpan"; simpan berikutnya membuat yang baru
+    HIST.list = null; histRenderSheet();
+  } catch (e) { alert('Gagal menghapus: ' + e.message); }
+}
+async function histClearAll() {
+  if (!confirm('Hapus SEMUA riwayat chat? Ini tidak bisa dibatalkan.')) return;
+  try {
+    await histApi('clear');
+    HIST.id = null; HIST.list = null; histRenderSheet();
+  } catch (e) { alert('Gagal menghapus: ' + e.message); }
 }
 
 function useSug(el) {
