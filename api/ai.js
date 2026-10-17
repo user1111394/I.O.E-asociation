@@ -24,6 +24,7 @@
 // #IMPORT# — modul yang dipakai
 // ═══════════════════════════════════════════════════════════════
 import { renderSceneToPng, SceneValidationError } from './_render3d/renderScene.js';
+import { handleChatHistory } from './_history/chatHistory.js';
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -524,8 +525,7 @@ ATURAN:
 - Selalu antusias dan penuh semangat dalam berbagi ilmu!
 
 KEJUJURAN (WAJIB):
-- Kamu saat ini HANYA bisa menjawab lewat teks. Kamu TIDAK bisa merender model 3D, membuat atau menampilkan gambar, menjalankan kode, atau membuka tautan. Kalau member memintanya, katakan terus terang belum bisa; jangan pura-pura bisa dan jangan mengganti dengan tabel tautan.
-- JANGAN mengarang tautan (URL), judul buku, nama penulis, atau artikel jurnal. Kalau kamu tidak yakin sebuah sumber benar-benar ada, jangan sebutkan.
+- Lewat chat biasa kamu HANYA menjawab dengan teks. Kamu TIDAK bisa membuat atau menampilkan gambar, merender model 3D, menjalankan kode, atau membuka tautan.\n- Kalau member memintanya, tolak dalam 1–2 kalimat saja: tanpa tutorial, tanpa daftar \"sumber belajar\", tanpa tabel tautan, tanpa pura-pura bisa. Lalu arahkan ke tombol + di kolom input: \"Gen. img\" untuk membuat gambar, \"Gambar 3D\" untuk ilustrasi 3D sederhana, \"3D model\" untuk model 3D interaktif, \"Cari di web\" untuk informasi terbaru. Tawarkan juga untuk menjelaskan topiknya lewat teks.\n- JANGAN mengarang tautan (URL), judul buku, nama penulis, atau artikel jurnal. Kalau kamu tidak yakin sebuah sumber benar-benar ada, jangan sebutkan.
 - Untuk tanggal, angka, dan urutan peristiwa sejarah yang presisi, sampaikan hanya kalau kamu yakin. Kalau ragu, katakan ragu dan sarankan member menyalakan tombol "Cari di web" untuk verifikasi.
 - Jangan menyebut daftar "kemampuan"-mu sebagai fitur yang sudah ada kalau hanya berasal dari instruksi ini.`;
 
@@ -822,6 +822,17 @@ async function handleSandboxMode({ body, availableKeys, DB_URL, deviceId }, res)
 // ═══════════════════════════════════════════════════════════════
 // #MODE: CHAT# — handler chat biasa (+ pencarian web kalau "Cari di web" dinyalakan)
 // ═══════════════════════════════════════════════════════════════
+// Kumpulkan nomor sumber yang dikutip di teks jawaban: "[1]", "[2][3]", "[1, 3]" -> Set {1,2,3}
+function extractCitedNumbers(text) {
+  const out = new Set();
+  const re = /\[(\d{1,2}(?:\s*[,;]\s*\d{1,2})*)\]/g;
+  let m;
+  while ((m = re.exec(String(text || ''))) !== null) {
+    m[1].split(/[,;]/).forEach(x => { const n = parseInt(x, 10); if (n > 0) out.add(n); });
+  }
+  return out;
+}
+
 async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch }, res) {
   const { messages } = body;
   // Mode Reasoning: chat biasa dengan usaha berpikir 'high'. Tidak digabung dengan pencarian web
@@ -920,9 +931,17 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
 
     const reply = data?.choices?.[0]?.message?.content || '';
 
+    // Nomori sumber SEPERTI YANG DILIHAT MODEL ([1], [2], ...) sebelum dibersihkan, supaya nomor di
+    // jawaban tetap cocok dengan nomor chip di layar.
+    sources = sources.map((s, i) => ({ ...s, n: i + 1 }));
     // Buang sumber ganda (URL sama) supaya daftar yang tampil ke member rapi
     const seen = new Set();
     sources = sources.filter(s => s.url && !seen.has(s.url) && seen.add(s.url));
+    // Tampilkan hanya sumber yang benar-benar dikutip model lewat [n] di jawabannya
+    if (useSearch && sources.length) {
+      const cited = extractCitedNumbers(reply);
+      sources = sources.filter(s => cited.has(s.n));
+    }
 
     // Tambah pemakaian kuota harian (hanya kalau request berhasil)
     let newUsed = used + 1;
@@ -957,6 +976,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Riwayat chat (Firestore per akun): tidak butuh kunci Groq maupun deviceId, jadi dicek paling awal.
+  if (req.body && req.body.action === 'chat-history') return handleChatHistory(req.body, res);
 
   const availableKeys = collectGroqKeys();
   if (availableKeys.length === 0) {
