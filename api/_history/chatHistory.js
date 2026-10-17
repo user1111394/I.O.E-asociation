@@ -9,8 +9,9 @@
 //    allow read, write: if false;
 //  - Struktur: users/{memberId}/chats/{chatId}  -> tiap akun punya "folder" sendiri.
 //
-// Env yang dibutuhkan (nama baru, dipasang sendiri oleh pemilik di Vercel):
-//    FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
+// Env yang dibutuhkan — CUKUP SATU:
+//    FIREBASE_SERVICE_ACCOUNT = isi lengkap file JSON kunci service account (tempel apa adanya)
+// (Alternatif lama tetap didukung: FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY)
 // Env Upstash yang sudah ada: KV_REST_API_URL, KV_REST_API_TOKEN
 
 import { createSign, randomBytes } from 'node:crypto';
@@ -54,6 +55,29 @@ async function verifyMember(memberId, sessionToken) {
   return account;
 }
 
+// ───────────────────────── Kredensial service account ─────────────────────────
+let credCache = { raw: null, value: null };
+function getServiceAccount() {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (raw) {
+    if (credCache.raw === raw) return credCache.value;
+    let value = null;
+    try {
+      let txt = String(raw).trim();
+      if (txt.startsWith("'") && txt.endsWith("'")) txt = txt.slice(1, -1); // kalau tertempel dengan tanda kutip tunggal
+      const j = JSON.parse(txt);
+      if (j && j.project_id && j.client_email && j.private_key) {
+        value = { projectId: String(j.project_id), email: String(j.client_email), key: String(j.private_key) };
+      }
+    } catch (e) { value = null; }
+    credCache = { raw, value };
+    if (!value) console.error('[history] FIREBASE_SERVICE_ACCOUNT bukan JSON kunci service account yang valid');
+    return value;
+  }
+  const projectId = process.env.FIREBASE_PROJECT_ID, email = process.env.FIREBASE_CLIENT_EMAIL, key = process.env.FIREBASE_PRIVATE_KEY;
+  return projectId && email && key ? { projectId, email, key } : null;
+}
+
 // ───────────────────────── Token service account Google ─────────────────────────
 let tokenCache = { token: null, exp: 0 };
 
@@ -85,11 +109,9 @@ export function buildServiceAccountJwt(email, privateKey, nowSec) {
 }
 
 async function getAccessToken() {
-  const email = process.env.FIREBASE_CLIENT_EMAIL;
-  const keyRaw = process.env.FIREBASE_PRIVATE_KEY;
-  if (!process.env.FIREBASE_PROJECT_ID || !email || !keyRaw) {
-    throw new HistoryError(503, 'Riwayat chat belum dikonfigurasi di server');
-  }
+  const cred = getServiceAccount();
+  if (!cred) throw new HistoryError(503, 'Riwayat chat belum dikonfigurasi di server');
+  const email = cred.email, keyRaw = cred.key;
   const nowMs = Date.now();
   if (tokenCache.token && tokenCache.exp - 60_000 > nowMs) return tokenCache.token;
 
@@ -116,7 +138,7 @@ async function getAccessToken() {
 
 // ───────────────────────── Firestore REST ─────────────────────────
 function fsBase() {
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(process.env.FIREBASE_PROJECT_ID)}/databases/(default)/documents`;
+  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(getServiceAccount().projectId)}/databases/(default)/documents`;
 }
 
 async function fsRequest(method, path, { query = '', body } = {}) {
