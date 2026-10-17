@@ -672,16 +672,20 @@ loadAPOD();
 
 // ══════════════ ISS TRACKER ══════════════
 async function fetchISS() {
+  const valid = d => d && typeof d.lat === 'number' && typeof d.lng === 'number';
   try {
-    const res = await fetch('/api/iss');
+    const res = await fetch('/api/cron-cleanup?type=iss'); // endpoint gabungan (dulu /api/iss, sudah dihapus)
+    if (!res.ok) throw new Error('API error');
     const d = await res.json();
+    if (!valid(d)) throw new Error('Data ISS tidak valid');
     updateISS(d);
   } catch(e) {
-    // Fallback direct
+    // Fallback langsung ke sumber data bila server kita bermasalah
     try {
       const res = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
       const d = await res.json();
-      updateISS({ lat: d.latitude, lng: d.longitude, alt: d.altitude, vel: d.velocity });
+      const u = { lat: d.latitude, lng: d.longitude, alt: d.altitude, vel: d.velocity };
+      if (valid(u)) updateISS(u);
     } catch(e2) {}
   }
 }
