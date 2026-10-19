@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time Machine — I.O.E Hub</title>
+<link rel="stylesheet" href="css/global.css">
+<style>
+body { overflow:hidden; }
+#page-tm {
+  display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden;
+  padding-top:var(--nav-h); box-sizing:border-box;
+}
+.tm-wrap { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; width:100%; max-width:760px; margin:0 auto; padding:18px 16px 24px; box-sizing:border-box; }
+.tm-head { text-align:center; margin-bottom:18px; }
+.tm-head .tm-ico { font-size:2.4rem; display:block; margin-bottom:8px; }
+.tm-head h1 { font-family:'Space Grotesk',sans-serif; font-size:1.2rem; color:#fff; margin:0 0 6px; }
+.tm-head p { font-family:'Inter',sans-serif; font-size:0.84rem; color:var(--text-muted); line-height:1.6; margin:0; }
+.tm-step-title { font-family:'Inter',sans-serif; font-size:0.66rem; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.35); margin:4px 2px 10px; }
+
+.tm-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+@media (min-width:560px) { .tm-grid { grid-template-columns:1fr 1fr 1fr; } }
+.tm-card {
+  all:unset; box-sizing:border-box; cursor:pointer; display:flex; flex-direction:column; gap:4px;
+  padding:14px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:16px;
+  font-family:'Inter',sans-serif; color:var(--text); min-height:112px;
+  transition:border-color .15s, transform .15s;
+}
+.tm-card:hover { border-color:var(--border2); transform:translateY(-1px); }
+.tm-card:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.tm-card .c-ico { font-size:1.7rem; line-height:1; }
+.tm-card .c-name { font-size:0.86rem; font-weight:700; color:#fff; line-height:1.3; }
+.tm-card .c-sub { font-size:0.7rem; color:var(--text-muted); line-height:1.4; }
+.tm-card .c-tag { font-size:0.62rem; color:var(--gold); margin-top:auto; }
+.tm-list { display:flex; flex-direction:column; gap:10px; }
+.tm-list .tm-card { flex-direction:row; align-items:center; gap:12px; min-height:0; }
+.tm-list .c-ico { font-size:1.9rem; }
+.tm-eraBox { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:14px; font-family:'Inter',sans-serif; }
+.tm-eraBox b { color:#fff; font-size:0.9rem; }
+.tm-eraBox span { display:block; color:var(--text-muted); font-size:0.78rem; line-height:1.55; margin-top:4px; }
+
+.tm-back { all:unset; cursor:pointer; font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--primary); padding:4px 2px; margin-bottom:10px; display:inline-block; }
+.tm-back:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+
+/* ── Ruang chat ── */
+#tm-chatview { display:none; flex-direction:column; flex:1; min-height:0; }
+#tm-chatview.on { display:flex; }
+.tm-bar { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); max-width:760px; width:100%; margin:0 auto; box-sizing:border-box; }
+.tm-bar .b-ava { font-size:1.6rem; }
+.tm-bar .b-txt { flex:1; min-width:0; font-family:'Inter',sans-serif; }
+.tm-bar .b-name { font-size:0.88rem; font-weight:700; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tm-bar .b-sub { font-size:0.68rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tm-pill { all:unset; cursor:pointer; font-family:'Inter',sans-serif; font-size:0.7rem; font-weight:600; color:var(--text-muted); background:var(--bg-card); border:1px solid var(--border); border-radius:18px; padding:6px 11px; white-space:nowrap; }
+.tm-pill:hover { color:#fff; border-color:var(--border2); }
+.tm-pill:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.tm-disclaimer { max-width:760px; width:100%; margin:0 auto; padding:6px 16px 0; box-sizing:border-box; font-family:'Inter',sans-serif; font-size:0.66rem; color:rgba(255,255,255,0.38); }
+#tm-msgs {
+  flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; max-width:760px; width:100%; margin:0 auto;
+  padding:14px 16px 8px; box-sizing:border-box; display:flex; flex-direction:column; gap:14px;
+}
+.tm-msg { display:flex; gap:9px; align-items:flex-start; font-family:'Inter',sans-serif; }
+.tm-msg.user { justify-content:flex-end; }
+.tm-msg .m-ava { font-size:1.35rem; line-height:1.2; flex-shrink:0; }
+.tm-bubble { max-width:84%; font-size:0.9rem; line-height:1.65; color:var(--text); white-space:pre-wrap; word-break:break-word; }
+.tm-msg.user .tm-bubble { background:rgba(124,158,255,0.14); border:1px solid var(--border2); border-radius:16px 16px 4px 16px; padding:9px 13px; color:#fff; }
+.tm-msg.ai .tm-bubble { background:rgba(240,200,120,0.07); border:1px solid rgba(240,200,120,0.18); border-radius:4px 16px 16px 16px; padding:9px 13px; }
+.tm-msg.err .tm-bubble { color:#ff9a9a; border-color:rgba(255,120,120,0.3); background:rgba(255,80,80,0.06); }
+.tm-note { font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--text-muted); text-align:center; line-height:1.6; padding:6px 10px; }
+.tm-fact { font-family:'Inter',sans-serif; font-size:0.82rem; line-height:1.6; color:#ffe9a8; background:rgba(255,214,102,0.07); border:1px solid rgba(255,214,102,0.25); border-radius:14px; padding:10px 14px; }
+.tm-fact b { display:block; font-size:0.66rem; letter-spacing:0.08em; text-transform:uppercase; color:rgba(255,214,102,0.7); margin-bottom:3px; }
+.tm-dots { display:inline-flex; gap:4px; padding:4px 0; }
+.tm-dots span { width:6px; height:6px; border-radius:50%; background:var(--text-muted); animation:tmdot 1.2s infinite ease-in-out; }
+.tm-dots span:nth-child(2) { animation-delay:.15s; } .tm-dots span:nth-child(3) { animation-delay:.3s; }
+@keyframes tmdot { 0%,80%,100% { opacity:.25; transform:scale(.8); } 40% { opacity:1; transform:scale(1); } }
+@media (prefers-reduced-motion: reduce) { .tm-dots span { animation:none; opacity:.7; } }
+
+.tm-input { max-width:760px; width:100%; margin:0 auto; padding:8px 14px calc(12px + env(safe-area-inset-bottom, 0px)); box-sizing:border-box; flex-shrink:0; }
+.tm-row { display:flex; align-items:flex-end; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:24px; padding:6px 6px 6px 16px; }
+.tm-row:focus-within { border-color:var(--primary); }
+.tm-row textarea { all:unset; flex:1; min-width:0; font-family:'Inter',sans-serif; font-size:0.9rem; color:#fff; line-height:1.5; max-height:110px; padding:6px 0; resize:none; }
+.tm-row textarea::placeholder { color:rgba(255,255,255,0.3); }
+.tm-send { all:unset; cursor:pointer; width:38px; height:38px; border-radius:50%; background:var(--primary); color:#000; display:flex; align-items:center; justify-content:center; font-size:1.05rem; font-weight:700; flex-shrink:0; }
+.tm-send:disabled { opacity:.4; cursor:default; }
+.tm-send:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+.tm-foot { display:flex; justify-content:space-between; font-family:'Inter',sans-serif; font-size:0.66rem; color:rgba(255,255,255,0.32); padding:6px 6px 0; }
+.tm-state { font-family:'Inter',sans-serif; font-size:0.84rem; color:var(--text-muted); text-align:center; padding:30px 10px; line-height:1.7; }
+.tm-retry { all:unset; cursor:pointer; margin-top:10px; display:inline-block; color:var(--primary); border:1px solid var(--border2); border-radius:18px; padding:7px 16px; font-size:0.8rem; }
+.tm-retry:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+</style>
+</head>
+<body>
+<div class="astro-bg"><div class="astro-orb orb-1"></div><div class="astro-orb orb-2"></div><div class="astro-orb orb-3"></div></div>
+<nav class="ioe-nav" id="ioe-nav"></nav>
+
+<div id="page-tm">
+  <!-- Langkah 1 & 2: pilih era, pilih karakter -->
+  <div class="tm-wrap" id="tm-pick" aria-live="polite"></div>
+
+  <!-- Langkah 3: ruang chat -->
+  <div id="tm-chatview">
+    <div class="tm-bar">
+      <button class="tm-pill" type="button" onclick="tmBackToChars()" aria-label="Kembali ke daftar karakter">← Ganti</button>
+      <span class="b-ava" id="tm-ava" aria-hidden="true"></span>
+      <div class="b-txt"><div class="b-name" id="tm-name"></div><div class="b-sub" id="tm-sub"></div></div>
+      <button class="tm-pill" type="button" id="tm-factbtn" onclick="tmShowFact()">💡 Fakta</button>
+    </div>
+    <div class="tm-disclaimer">🎭 Simulasi AI — jawaban tokoh bukan sumber sejarah resmi. Cek tombol 💡 Fakta untuk fakta terverifikasi.</div>
+    <div id="tm-msgs" role="log" aria-live="polite"></div>
+    <div class="tm-input">
+      <div class="tm-row">
+        <textarea id="tm-text" rows="1" maxlength="500" placeholder="Sapa dia…" aria-label="Pesan untuk tokoh"></textarea>
+        <button class="tm-send" id="tm-sendbtn" type="button" onclick="tmSend()" aria-label="Kirim">➤</button>
+      </div>
+      <div class="tm-foot"><span id="tm-quota"></span><span>Maks. 500 karakter</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/nav.js"></script>
+<script src="js/device.js"></script>
+<script>
+buildNav('timemachine.html');
+const AI_ENDPOINT = '/api/ai';
+
+// ── State ──
+let ERAS = null, curEra = null, curChar = null, convo = [], busy = false, factIdx = 0, myDeviceId = '';
+getDeviceId().then(id => { myDeviceId = id; });
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+const $ = id => document.getElementById(id);
+
+// ── Muat daftar era dari server (data publik; prompt tidak pernah sampai ke browser) ──
+async function tmLoad() {
+  const box = $('tm-pick');
+  box.innerHTML = '<div class="tm-state">⏳ Menyiapkan mesin waktu…</div>';
+  try {
+    const r = await fetch(AI_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'timemachine-list' }) });
+    const d = await r.json();
+    if (!r.ok || !Array.isArray(d.eras) || !d.eras.length) throw new Error('data kosong');
+    ERAS = d.eras;
+    tmRenderEras();
+  } catch (e) {
+    box.innerHTML = '<div class="tm-state">Mesin waktu belum bisa dihidupkan.<br><button class="tm-retry" type="button" onclick="tmLoad()">Coba lagi</button></div>';
+  }
+}
+
+function tmHead() {
+  return '<div class="tm-head"><span class="tm-ico">⏳</span><h1>I.O.E Time Machine</h1>' +
+    '<p>Pilih zaman, lalu ngobrol langsung dengan tokoh di masanya. Cara seru belajar sejarah!</p></div>';
+}
+
+function tmRenderEras() {
+  curEra = null; curChar = null;
+  $('tm-chatview').classList.remove('on'); $('tm-pick').style.display = '';
+  $('tm-pick').innerHTML = tmHead() + '<div class="tm-step-title">1 · Pilih zaman</div><div class="tm-grid">' +
+    ERAS.map(e => `<button class="tm-card" type="button" data-era="${esc(e.id)}"><span class="c-ico">${esc(e.ikon)}</span>` +
+      `<span class="c-name">${esc(e.nama)}</span><span class="c-sub">${esc(e.lokasi)}</span><span class="c-tag">${esc(e.tahunLabel)}</span></button>`).join('') + '</div>';
+  $('tm-pick').querySelectorAll('[data-era]').forEach(b => b.addEventListener('click', () => tmPickEra(b.dataset.era)));
+}
+
+function tmPickEra(id, fromPop) {
+  curEra = ERAS.find(e => e.id === id);
+  if (!curEra) return;
+  $('tm-chatview').classList.remove('on'); $('tm-pick').style.display = '';
+  $('tm-pick').innerHTML = tmHead() +
+    '<button class="tm-back" type="button" id="tm-back1">← Pilih zaman lain</button>' +
+    `<div class="tm-eraBox"><b>${esc(curEra.ikon)} ${esc(curEra.nama)} · ${esc(curEra.tahunLabel)}</b><span>${esc(curEra.latar)}</span></div>` +
+    '<div class="tm-step-title">2 · Pilih tokoh yang mau diajak bicara</div><div class="tm-list">' +
+    curEra.karakter.map(c => `<button class="tm-card" type="button" data-char="${esc(c.id)}"><span class="c-ico">${esc(c.avatar)}</span>` +
+      `<span><span class="c-name">${esc(c.nama)}</span><br><span class="c-sub">${esc(c.profesi)}${c.fiksi ? ' · tokoh rekaan' : ''}</span></span></button>`).join('') + '</div>';
+  $('tm-back1').addEventListener('click', () => history.back());
+  $('tm-pick').querySelectorAll('[data-char]').forEach(b => b.addEventListener('click', () => tmPickChar(b.dataset.char)));
+  if (!fromPop) history.pushState({ tm: 'era' }, '');
+}
+
+function tmBackToChars() { history.back(); }
+
+function tmPickChar(id, fromPop) {
+  curChar = curEra.karakter.find(c => c.id === id);
+  if (!curChar) return;
+  convo = []; busy = false; factIdx = 0;
+  $('tm-pick').style.display = 'none';
+  $('tm-chatview').classList.add('on');
+  $('tm-ava').textContent = curChar.avatar;
+  $('tm-name').textContent = curChar.nama;
+  $('tm-sub').textContent = curEra.tahunLabel + ' · ' + curEra.lokasi;
+  $('tm-msgs').innerHTML = '';
+  $('tm-quota').textContent = '';
+  const intro = document.createElement('div');
+  intro.className = 'tm-note';
+  intro.textContent = `Kamu tiba di ${curEra.lokasi}, ${curEra.tahunLabel}. Di depanmu berdiri ${curChar.nama}${curChar.fiksi ? ' (tokoh rekaan)' : ''}, ${curChar.profesi}. Sapa dia!`;
+  $('tm-msgs').appendChild(intro);
+  $('tm-text').value = ''; $('tm-text').placeholder = 'Sapa ' + curChar.nama + '…';
+  $('tm-sendbtn').disabled = false;
+  if (!fromPop) history.pushState({ tm: 'chat' }, '');
+  setTimeout(() => $('tm-text').focus(), 50);
+}
+
+// Tombol Back HP: chat -> daftar tokoh -> daftar zaman
+window.addEventListener('popstate', e => {
+  const st = e.state && e.state.tm;
+  if (!ERAS) return;
+  if (st === 'chat' && curEra && curChar) return;
+  if (st === 'era' && curEra) { tmPickEra(curEra.id, true); return; }
+  tmRenderEras();
+});
+
+function addMsg(kind, text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tm-msg ' + kind;
+  if (kind !== 'user') { const a = document.createElement('div'); a.className = 'm-ava'; a.textContent = kind === 'ai' ? curChar.avatar : '⚠️'; wrap.appendChild(a); }
+  const b = document.createElement('div'); b.className = 'tm-bubble'; b.textContent = text; // textContent: teks AI tidak pernah dianggap HTML
+  wrap.appendChild(b);
+  $('tm-msgs').appendChild(wrap);
+  $('tm-msgs').scrollTop = $('tm-msgs').scrollHeight;
+  return wrap;
+}
+
+function tmShowFact() {
+  if (!curEra) return;
+  const f = curEra.facts[factIdx % curEra.facts.length]; factIdx++;
+  const d = document.createElement('div'); d.className = 'tm-fact';
+  const b = document.createElement('b'); b.textContent = '💡 Fakta sejarah';
+  d.appendChild(b); d.appendChild(document.createTextNode(f));
+  $('tm-msgs').appendChild(d); $('tm-msgs').scrollTop = $('tm-msgs').scrollHeight;
+}
+
+async function tmSend() {
+  if (busy || !curChar) return;
+  const ta = $('tm-text'), raw = ta.value.trim();
+  if (!raw) return;
+  busy = true; $('tm-sendbtn').disabled = true; ta.value = ''; ta.style.height = '';
+  addMsg('user', raw);
+  convo.push({ role: 'user', content: raw });
+  const typing = document.createElement('div'); typing.className = 'tm-msg ai';
+  typing.innerHTML = '<div class="m-ava"></div><div class="tm-bubble"><span class="tm-dots"><span></span><span></span><span></span></span></div>';
+  typing.querySelector('.m-ava').textContent = curChar.avatar;
+  $('tm-msgs').appendChild(typing); $('tm-msgs').scrollTop = $('tm-msgs').scrollHeight;
+  try {
+    const r = await fetch(AI_ENDPOINT, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timeMachineMode: true, eraId: curEra.id, characterId: curChar.id, deviceId: myDeviceId, messages: convo.slice(-12) }),
+    });
+    const d = await r.json().catch(() => ({}));
+    typing.remove();
+    if (!r.ok) {
+      convo.pop();
+      let msg = d.error || 'Terjadi kesalahan';
+      if (r.status === 429 && d.quota) msg += ` (${d.quota.used}/${d.quota.limit}). ${d.resetInfo || ''}`;
+      addMsg('err', msg);
+    } else {
+      convo.push({ role: 'assistant', content: d.reply });
+      addMsg('ai', d.reply);
+      if (d.quota) $('tm-quota').textContent = `Sisa pesan hari ini: ${Math.max(0, d.quota.limit - d.quota.used)}/${d.quota.limit}`;
+    }
+  } catch (e) {
+    typing.remove(); convo.pop();
+    addMsg('err', 'Gagal terhubung ke server. Cek koneksi lalu coba lagi.');
+  }
+  busy = false; $('tm-sendbtn').disabled = false; ta.focus();
+}
+
+$('tm-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tmSend(); } });
+$('tm-text').addEventListener('input', e => { const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 110) + 'px'; });
+
+tmLoad();
+</script>
+</body>
+</html>
