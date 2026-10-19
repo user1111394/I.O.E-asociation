@@ -16,7 +16,9 @@
 //  10. #MODE: GAMBAR 3D#             — handler render3dMode   (tombol "Gambar 3D", render engine lokal)
 //  11. #MODE: SANDBOX 3D#            — handler sandboxMode    (tombol "3D model", Three.js + evaluasi Qwen)
 //  12. #MODE: CHAT#                  — handler chat biasa + pencarian web
-//  13. #ROUTER#                      — handler utama: validasi awal lalu arahkan ke mode yang tepat
+//  13. #MODE: TIME MACHINE#          — handler timeMachineMode (permainan peran sejarah; data di _timemachine/eras.js)
+//  14. #ROUTER#                      — handler utama: validasi awal lalu arahkan ke mode yang tepat
+// Tambahan di router: action 'chat-history' (api/_history/chatHistory.js) dan action 'timemachine-list'.
 // ═══════════════════════════════════════════════════════════════
 
 
@@ -25,6 +27,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { renderSceneToPng, SceneValidationError } from './_render3d/renderScene.js';
 import { handleChatHistory } from './_history/chatHistory.js';
+import { getEra, getCharacter, publicEras, buildSystemPrompt, sanitizeTmMessages, cleanTmReply } from './_timemachine/eras.js';
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -59,6 +62,19 @@ const IMAGE_PROMPT_TRANSLATE = true;
 const SANDBOX_QUOTA_REGULAR = 5;
 const SANDBOX_QUOTA_PREMIUM = 15;
 const SANDBOX_MAX_ROUNDS = 3;
+
+// Time Machine (permainan peran sejarah): kuota PESAN per hari, dicatat di Firebase node timemachine_usage/{deviceId}/{tanggal}.
+// Mesin AI: Groq 120B secara bawaan. Urutan bila diaktifkan: TM_LLM_URL (server kompatibel OpenAI, mis. Ollama) ->
+// Gemini (env TM_ENGINE=gemini) -> Groq. Groq selalu menjadi cadangan terakhir.
+const TM_QUOTA_REGULAR = 30;
+const TM_QUOTA_PREMIUM = 80;
+const TM_MAX_TOKENS = 220;
+const TM_LLM_TIMEOUT_MS = 25000;
+// Mesin Gemini untuk Time Machine (TEKS, bukan gambar): HANYA aktif kalau env TM_ENGINE=gemini.
+// Model bisa diganti lewat env TM_GEMINI_MODEL tanpa mengubah kode. Memakai GEMINI_API_KEY_1..5 yang sudah ada.
+const TM_GEMINI_MODEL_DEFAULT = 'gemini-3.1-flash-lite-preview';
+const TM_GEMINI_TIMEOUT_MS = 15000;
+const TM_GEMINI_MAX_OUTPUT = 800;
 const VISION_MODEL = 'qwen/qwen3.8-27b';
 
 const MODEL = 'openai/gpt-oss-120b';
@@ -969,6 +985,152 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
 
 
 // ═══════════════════════════════════════════════════════════════
+// #MODE: TIME MACHINE# — permainan peran dengan tokoh sejarah (data & prompt di _timemachine/eras.js)
+// Browser hanya mengirim eraId + characterId + riwayat chat; prompt peran disusun di sini (server).
+// Kuota per PESAN, FAIL-OPEN seperti chat biasa (database gagal -> tetap jalan; Groq punya batas sendiri).
+// ═══════════════════════════════════════════════════════════════
+// Teks lewat Gemini (generateContent). Kunci dicoba satu per satu (urutan acak) kalau kena 429/401/403.
+// CATATAN: batas Gemini berlaku per PROJECT Google, bukan per kunci — kunci dari project yang sama berbagi jatah.
+// Hasil kosong (mis. diblokir filter keamanan) dianggap gagal supaya pemanggil jatuh ke Groq.
+async function generateTextGemini(system, msgs, charName) {
+  const keys = getGeminiKeys().sort(() => Math.random() - 0.5);
+  if (keys.length === 0) return { ok: false, reason: 'not_configured' };
+  const model = process.env.TM_GEMINI_MODEL || TM_GEMINI_MODEL_DEFAULT;
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    generationConfig: { maxOutputTokens: TM_GEMINI_MAX_OUTPUT, temperature: 0.7 },
+  });
+  for (const key of keys) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), TM_GEMINI_TIMEOUT_MS);
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, body, signal: ctl.signal,
+      });
+      if (r.status === 429 || r.status === 401 || r.status === 403) {
+        const errText = await r.text().catch(() => '');
+        console.error(`[ai] Gemini teks key ditolak (${r.status}):`, errText.slice(0, 300));
+        continue; // coba key berikutnya
+      }
+      if (!r.ok) {
+        const errText = await r.text().catch(() => '');
+        console.error('[ai] Gemini teks gagal:', r.status, errText.slice(0, 300));
+        return { ok: false, reason: 'upstream_error' };
+      }
+      const data = await r.json();
+      // Ambil hanya teks jawaban (bagian "thought" = ringkasan pikiran model, tidak ditampilkan)
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const text = cleanTmReply(parts.filter(p => p && typeof p.text === 'string' && !p.thought).map(p => p.text).join(''), charName);
+      if (!text) {
+        console.error('[ai] Gemini teks kosong. finishReason:', data?.candidates?.[0]?.finishReason, '| blockReason:', data?.promptFeedback?.blockReason);
+        return { ok: false, reason: 'empty' };
+      }
+      return { ok: true, text };
+    } catch (e) {
+      console.error('[ai] Gemini teks error:', e.name === 'AbortError' ? 'timeout' : e.message);
+      return { ok: false, reason: 'network' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { ok: false, reason: 'all_keys_rejected' };
+}
+
+async function callTimeMachineLLM(groqKeys, system, msgs, charName) {
+  const customUrl = String(process.env.TM_LLM_URL || '').replace(/\/+$/, '');
+  if (customUrl) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), TM_LLM_TIMEOUT_MS);
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (process.env.TM_LLM_KEY) headers.Authorization = `Bearer ${process.env.TM_LLM_KEY}`;
+      const r = await fetch(`${customUrl}/v1/chat/completions`, {
+        method: 'POST', headers, signal: ctl.signal,
+        body: JSON.stringify({
+          model: process.env.TM_LLM_MODEL || 'llama3.2:3b',
+          messages: [{ role: 'system', content: system }, ...msgs],
+          max_tokens: TM_MAX_TOKENS, temperature: 0.7, stream: false,
+        }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const text = cleanTmReply(d?.choices?.[0]?.message?.content, charName);
+        if (text) return { ok: true, text, engine: 'custom' };
+        console.error('[ai] TM_LLM membalas kosong, pakai Groq');
+      } else {
+        console.error('[ai] TM_LLM status', r.status, 'pakai Groq');
+      }
+    } catch (e) {
+      console.error('[ai] TM_LLM gagal/lambat, pakai Groq:', e.name === 'AbortError' ? 'timeout' : e.message);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (String(process.env.TM_ENGINE || '').toLowerCase() === 'gemini') {
+    const g = await generateTextGemini(system, msgs, charName);
+    if (g.ok) return { ok: true, text: g.text, engine: 'gemini' };
+    console.error('[ai] Gemini tidak dipakai (' + g.reason + '), pakai Groq');
+  }
+  try {
+    const response = await callGroqRotating(groqKeys, {
+      model: MODEL, max_tokens: 700, temperature: 0.7, reasoning_effort: 'low',
+      messages: [{ role: 'system', content: system }, ...msgs],
+    });
+    if (!response || !response.ok) {
+      const err = response ? await response.json().catch(() => ({})) : {};
+      console.error('[ai] Groq (time machine) gagal:', response && response.status, JSON.stringify(err?.error || err).slice(0, 200));
+      return { ok: false, status: response ? response.status : 502 };
+    }
+    const data = await response.json();
+    const text = cleanTmReply(data?.choices?.[0]?.message?.content, charName);
+    return text ? { ok: true, text, engine: 'groq' } : { ok: false, status: 502 };
+  } catch (e) {
+    console.error('[ai] Time machine error:', e.message);
+    return { ok: false, status: 502 };
+  }
+}
+
+async function handleTimeMachineMode({ body, availableKeys, DB_URL, deviceId }, res) {
+  const era = getEra(body.eraId);
+  const ch = getCharacter(era, body.characterId);
+  if (!ch) return res.status(400).json({ error: 'Era atau karakter tidak dikenal' });
+  const msgs = sanitizeTmMessages(body.messages);
+  if (!msgs) return res.status(400).json({ error: 'Pesan tidak valid' });
+
+  let used = 0, limit = TM_QUOTA_REGULAR, isPremium = false;
+  const day = todayKey();
+  if (DB_URL) {
+    try {
+      ({ used, limit, isPremium } = await readDailyQuota(DB_URL, deviceId, 'timemachine_usage', day, TM_QUOTA_REGULAR, TM_QUOTA_PREMIUM));
+      if (used >= limit) {
+        return res.status(429).json({
+          error: 'Kuota Time Machine hari ini sudah habis',
+          quota: { used, limit, isPremium },
+          resetInfo: RESET_INFO,
+        });
+      }
+    } catch (e) {
+      console.error('[ai] Gagal membaca kuota time machine (lanjut):', e.message);
+    }
+  }
+
+  const out = await callTimeMachineLLM(availableKeys, buildSystemPrompt(era, ch), msgs, ch.nama);
+  if (!out.ok) {
+    const status = out.status === 429 ? 429 : 502;
+    return res.status(status).json({ error: status === 429 ? 'Layanan AI sedang sibuk, coba lagi sebentar.' : 'Tokoh sedang tidak bisa menjawab. Coba lagi sebentar.' });
+  }
+
+  const newUsed = used + 1;
+  if (DB_URL) {
+    try { await writeDailyUsage(DB_URL, 'timemachine_usage', deviceId, day, newUsed); }
+    catch (e) { console.error('[ai] Gagal mencatat pemakaian time machine:', e.message); }
+  }
+  return res.status(200).json({ reply: out.text, quota: { used: newUsed, limit, isPremium } });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
 // #ROUTER# — pintu masuk: validasi awal, lalu arahkan ke handler mode yang sesuai.
 // Urutan mode: gambar AI -> gambar 3D -> sandbox 3D -> chat biasa (default).
 // ═══════════════════════════════════════════════════════════════
@@ -979,6 +1141,12 @@ export default async function handler(req, res) {
 
   // Riwayat chat (Firestore per akun): tidak butuh kunci Groq maupun deviceId, jadi dicek paling awal.
   if (req.body && req.body.action === 'chat-history') return handleChatHistory(req.body, res);
+
+  // Time Machine: daftar era & karakter (data publik, tanpa prompt) — tidak butuh kunci Groq maupun deviceId.
+  if (req.body && req.body.action === 'timemachine-list') {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.status(200).json({ eras: publicEras() });
+  }
 
   const availableKeys = collectGroqKeys();
   if (availableKeys.length === 0) {
@@ -1000,6 +1168,7 @@ export default async function handler(req, res) {
   }
 
   const ctx = { body, availableKeys, DB_URL, deviceId, useSearch };
+  if (body.timeMachineMode === true) return handleTimeMachineMode(ctx, res);
   if (imageMode === true) return handleImageMode(ctx, res);
   if (render3dMode === true) return handleRender3dMode(ctx, res);
   if (sandboxMode === true) return handleSandboxMode(ctx, res);
