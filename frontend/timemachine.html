@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="css/global.css">
 <style>
 body { overflow:hidden; }
+/* Mode tanam (di dalam tab Education Hub): tanpa navigasi & latar sendiri */
+body.embed .ioe-nav, body.embed .astro-bg { display:none; }
+body.embed #page-tm { padding-top:0; }
 #page-tm {
   display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden;
   padding-top:var(--nav-h); box-sizing:border-box;
@@ -119,7 +122,8 @@ body { overflow:hidden; }
 <script src="js/nav.js"></script>
 <script src="js/device.js"></script>
 <script>
-buildNav('timemachine.html');
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+if (EMBED) document.body.classList.add('embed'); else buildNav('timemachine.html');
 const AI_ENDPOINT = '/api/ai';
 
 // ── State ──
