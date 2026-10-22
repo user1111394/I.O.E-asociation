@@ -3,273 +3,539 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Time Machine — I.O.E Hub</title>
-<link rel="stylesheet" href="css/global.css">
+<title>KRONOS — Mesin Waktu | I.O.E Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
 <style>
-body { overflow:hidden; }
-/* Mode tanam (di dalam tab Education Hub): tanpa navigasi & latar sendiri */
-body.embed .ioe-nav, body.embed .astro-bg { display:none; }
-body.embed #page-tm { padding-top:0; }
-#page-tm {
-  display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden;
-  padding-top:var(--nav-h); box-sizing:border-box;
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --amber:#ffb300; --amber-glow:#ff6f00;
+  --dark:#050810; --panel:rgba(10,15,30,0.92);
+  --border:rgba(255,179,0,0.3); --text:#e8d5a3;
 }
-.tm-wrap { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; width:100%; max-width:760px; margin:0 auto; padding:18px 16px 24px; box-sizing:border-box; }
-.tm-head { text-align:center; margin-bottom:18px; }
-.tm-head .tm-ico { font-size:2.4rem; display:block; margin-bottom:8px; }
-.tm-head h1 { font-family:'Space Grotesk',sans-serif; font-size:1.2rem; color:#fff; margin:0 0 6px; }
-.tm-head p { font-family:'Inter',sans-serif; font-size:0.84rem; color:var(--text-muted); line-height:1.6; margin:0; }
-.tm-step-title { font-family:'Inter',sans-serif; font-size:0.66rem; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.35); margin:4px 2px 10px; }
+body { font-family:'Share Tech Mono',ui-monospace,monospace; background:var(--dark); color:var(--text); min-height:100vh; min-height:100dvh; overflow-x:hidden; }
+#bgCanvas { position:fixed; top:0; left:0; width:100%; height:100%; z-index:0; }
 
-.tm-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-@media (min-width:560px) { .tm-grid { grid-template-columns:1fr 1fr 1fr; } }
-.tm-card {
-  all:unset; box-sizing:border-box; cursor:pointer; display:flex; flex-direction:column; gap:4px;
-  padding:14px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:16px;
-  font-family:'Inter',sans-serif; color:var(--text); min-height:112px;
-  transition:border-color .15s, transform .15s;
+.screen { position:relative; z-index:10; min-height:100vh; min-height:100dvh; display:none; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
+.screen.active { display:flex; }
+
+/* ── LOGO ── */
+.logo { font-family:'Orbitron',system-ui,sans-serif; font-size:clamp(2.5rem,8vw,5rem); font-weight:900; color:var(--amber); text-shadow:0 0 30px var(--amber),0 0 60px var(--amber-glow); letter-spacing:.3em; animation:logoPulse 3s ease-in-out infinite; }
+.logo-sub { font-size:clamp(.55rem,1.8vw,.8rem); letter-spacing:.5em; color:rgba(255,179,0,.5); text-align:center; margin-top:-6px; }
+@keyframes logoPulse { 0%,100%{text-shadow:0 0 30px var(--amber),0 0 60px var(--amber-glow);} 50%{text-shadow:0 0 50px var(--amber),0 0 100px var(--amber-glow),0 0 150px #ff3d00;} }
+
+/* ── PANEL ── */
+.panel { background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:28px 32px; width:100%; max-width:520px; position:relative; backdrop-filter:blur(20px); box-shadow:0 0 40px rgba(255,179,0,.05),inset 0 0 40px rgba(0,0,0,.5); }
+.panel::before { content:''; position:absolute; top:-1px; left:20px; right:20px; height:2px; background:linear-gradient(90deg,transparent,var(--amber),transparent); }
+.panel-title { font-family:'Orbitron',system-ui,sans-serif; font-size:.7rem; letter-spacing:.4em; color:var(--amber); margin-bottom:20px; opacity:.8; }
+.input-group { margin-bottom:16px; }
+.input-group label { display:block; font-size:.65rem; letter-spacing:.3em; color:rgba(255,179,0,.6); margin-bottom:6px; }
+.input-group input { width:100%; background:rgba(0,0,0,.4); border:1px solid var(--border); border-radius:3px; color:var(--amber); font-family:'Share Tech Mono',ui-monospace,monospace; font-size:.9rem; padding:10px 14px; outline:none; transition:border-color .3s,box-shadow .3s; }
+.input-group input:focus { border-color:var(--amber); box-shadow:0 0 15px rgba(255,179,0,.2); }
+.input-group input::placeholder { color:rgba(255,179,0,.25); }
+.date-row { display:grid; grid-template-columns:1fr 1fr 2fr; gap:10px; }
+.btn { width:100%; padding:14px; background:transparent; border:1px solid var(--amber); border-radius:3px; color:var(--amber); font-family:'Orbitron',system-ui,sans-serif; font-size:.75rem; font-weight:700; letter-spacing:.3em; cursor:pointer; transition:all .3s; position:relative; overflow:hidden; }
+.btn::before { content:''; position:absolute; top:0; left:-100%; width:100%; height:100%; background:linear-gradient(90deg,transparent,rgba(255,179,0,.15),transparent); transition:left .5s; }
+.btn:hover::before { left:100%; }
+.btn:hover { background:rgba(255,179,0,.1); box-shadow:0 0 25px rgba(255,179,0,.3); transform:translateY(-1px); }
+.btn:active { transform:translateY(0); }
+.btn-primary { background:rgba(255,179,0,.08); font-size:.85rem; padding:16px; margin-top:8px; letter-spacing:.5em; }
+
+/* ── TRAVEL ── */
+#travelScreen { gap:20px; }
+.wormhole { position:relative; width:280px; height:280px; }
+.wormhole-ring { position:absolute; border-radius:50%; border:2px solid var(--amber); top:50%; left:50%; transform:translate(-50%,-50%) scale(0); animation:ringExpand .8s ease-out infinite; box-shadow:0 0 20px var(--amber); }
+@keyframes ringExpand { 0%{transform:translate(-50%,-50%) scale(0);opacity:1;} 100%{transform:translate(-50%,-50%) scale(1);opacity:0;} }
+.travel-year { font-family:'Orbitron',system-ui,sans-serif; font-size:clamp(2.5rem,10vw,5rem); font-weight:900; color:var(--amber); text-shadow:0 0 40px var(--amber); text-align:center; }
+.travel-text { font-family:'Orbitron',system-ui,sans-serif; font-size:.75rem; letter-spacing:.5em; color:var(--amber); text-align:center; }
+.loading-dots::after { content:'...'; animation:dots 1.2s steps(3,end) infinite; }
+@keyframes dots { 0%,100%{content:'.'} 33%{content:'..'} 66%{content:'...'} }
+
+/* ── ERA SCREEN ── */
+#eraScreen { justify-content:flex-start; padding:0; align-items:stretch; }
+.era-header { padding:18px 28px; display:flex; align-items:center; justify-content:space-between; background:rgba(0,0,0,.7); backdrop-filter:blur(10px); border-bottom:1px solid var(--border); flex-wrap:wrap; gap:10px; }
+.era-title { font-family:'Orbitron',system-ui,sans-serif; font-weight:900; font-size:clamp(1rem,4vw,1.5rem); color:var(--amber); text-shadow:0 0 20px rgba(255,179,0,.5); }
+.era-subtitle { font-size:.6rem; letter-spacing:.3em; color:rgba(255,179,0,.5); margin-top:3px; }
+.back-btn { width:auto; padding:8px 18px; font-size:.6rem; letter-spacing:.3em; }
+.mode-tabs { display:flex; border-bottom:1px solid var(--border); background:rgba(0,0,0,.5); }
+.mode-tab { flex:1; padding:13px; text-align:center; font-family:'Orbitron',system-ui,sans-serif; font-size:.65rem; letter-spacing:.3em; color:rgba(255,179,0,.4); cursor:pointer; border:none; background:none; transition:all .3s; border-bottom:2px solid transparent; }
+.mode-tab:hover { color:var(--amber); }
+.mode-tab.active { color:var(--amber); border-bottom-color:var(--amber); background:rgba(255,179,0,.05); }
+.era-content { flex:1; overflow-y:auto; padding:24px 28px; max-width:900px; width:100%; margin:0 auto; display:flex; flex-direction:column; }
+.journal-title { font-family:'Cinzel',Georgia,serif; font-size:clamp(1.1rem,4vw,1.7rem); color:var(--amber); margin-bottom:16px; }
+.journal-body { font-size:.88rem; line-height:1.95; color:var(--text); white-space:pre-wrap; }
+.section-label { font-size:.62rem; letter-spacing:.3em; color:rgba(255,179,0,.45); margin-bottom:14px; }
+.figures-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+.figure-card { background:rgba(0,0,0,.4); border:1px solid var(--border); border-radius:4px; padding:16px; cursor:pointer; transition:all .25s; position:relative; overflow:hidden; }
+.figure-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--amber); transform:scaleY(0); transition:transform .25s; }
+.figure-card:hover::before { transform:scaleY(1); }
+.figure-card:hover { border-color:var(--amber); background:rgba(255,179,0,.06); transform:translateX(4px); }
+.figure-name { font-family:'Orbitron',system-ui,sans-serif; font-size:.78rem; font-weight:700; color:var(--amber); margin-bottom:3px; }
+.figure-role { font-size:.62rem; letter-spacing:.15em; color:rgba(255,179,0,.5); }
+.figure-desc { font-size:.68rem; margin-top:7px; color:rgba(232,213,163,.55); line-height:1.45; }
+.figure-arrow { position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:.9rem; color:rgba(255,179,0,.3); transition:all .25s; }
+.figure-card:hover .figure-arrow { color:var(--amber); right:10px; }
+
+/* ── CHAT SCREEN ── */
+#chatScreen { justify-content:flex-start; padding:0; align-items:stretch; height:100vh; height:100dvh; min-height:0; overflow:hidden; }
+.chat-header { padding:16px 24px; display:flex; align-items:center; gap:16px; background:rgba(0,0,0,.8); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.chat-back-btn { width:auto; padding:8px 16px; font-size:.6rem; letter-spacing:.2em; flex-shrink:0; }
+.chat-figure-info { flex:1; }
+.chat-figure-name { font-family:'Orbitron',system-ui,sans-serif; font-size:clamp(.9rem,3vw,1.3rem); font-weight:900; color:var(--amber); text-shadow:0 0 15px rgba(255,179,0,.4); }
+.chat-figure-role { font-size:.6rem; letter-spacing:.25em; color:rgba(255,179,0,.5); margin-top:2px; }
+.chat-figure-years { font-size:.58rem; letter-spacing:.2em; color:rgba(255,179,0,.35); margin-top:1px; }
+.chat-avatar { width:48px; height:48px; border-radius:50%; border:2px solid var(--border); background:rgba(255,179,0,.08); display:flex; align-items:center; justify-content:center; font-size:1.4rem; flex-shrink:0; }
+.chat-era-badge { font-size:.55rem; letter-spacing:.2em; color:rgba(255,179,0,.4); padding:4px 10px; border:1px solid rgba(255,179,0,.2); border-radius:20px; white-space:nowrap; }
+
+.chat-main { flex:1; min-height:0; display:flex; flex-direction:column; max-width:860px; width:100%; margin:0 auto; padding:20px 24px; overflow:hidden; }
+.chat-messages { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:14px; padding-bottom:10px; scroll-behavior:smooth; }
+.chat-messages::-webkit-scrollbar { width:4px; }
+.chat-messages::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.msg { max-width:75%; padding:12px 16px; border-radius:6px; font-size:.85rem; line-height:1.65; animation:msgIn .3s ease-out; }
+@keyframes msgIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.msg.user { align-self:flex-end; background:rgba(255,179,0,.12); border:1px solid rgba(255,179,0,.25); color:var(--amber); border-bottom-right-radius:2px; }
+.msg.ai { align-self:flex-start; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); color:var(--text); border-bottom-left-radius:2px; }
+.msg-sender { font-size:.58rem; letter-spacing:.2em; opacity:.5; margin-bottom:5px; font-family:'Orbitron',system-ui,sans-serif; }
+.msg.ai .msg-sender { color:var(--amber); }
+.chat-input-area { padding-top:14px; border-top:1px solid var(--border); display:flex; gap:10px; margin-top:10px; }
+.chat-input-area input { flex:1; background:rgba(0,0,0,.5); border:1px solid var(--border); border-radius:4px; color:var(--amber); font-family:'Share Tech Mono',ui-monospace,monospace; font-size:.88rem; padding:12px 16px; outline:none; transition:border-color .3s; }
+.chat-input-area input:focus { border-color:var(--amber); box-shadow:0 0 12px rgba(255,179,0,.15); }
+.chat-input-area input::placeholder { color:rgba(255,179,0,.22); }
+.send-btn { width:auto; padding:12px 22px; font-size:.7rem; letter-spacing:.2em; }
+
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-track { background:rgba(0,0,0,.2); }
+::-webkit-scrollbar-thumb { background:rgba(255,179,0,.2); border-radius:3px; }
+body::after { content:''; position:fixed; top:0; left:0; right:0; bottom:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px); pointer-events:none; z-index:9999; }
+#setupScreen { gap:16px; }
+@media(max-width:500px){ .panel{padding:18px;} .era-content,.chat-main{padding:14px 16px;} .era-header,.chat-header{padding:12px 16px;} .figures-grid{grid-template-columns:1fr;} }
+
+/* ── TAMBAHAN I.O.E ── */
+button, select, input { font:inherit; }
+.btn:focus-visible, .mode-tab:focus-visible, .figure-pick:focus-visible, .figure-wiki:focus-visible, .home-link:focus-visible, .chip:focus-visible,
+.input-group input:focus-visible, .input-group select:focus-visible, .chat-input-area input:focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
+.home-link { position:absolute; top:14px; left:16px; z-index:20; font-size:.62rem; letter-spacing:.2em; color:rgba(255,179,0,.6); text-decoration:none; padding:6px 4px; }
+.home-link:hover { color:var(--amber); }
+body.embed .home-link { display:none; }
+.opt { opacity:.5; letter-spacing:.1em; }
+.input-group select { width:100%; background:rgba(0,0,0,.4); border:1px solid var(--border); border-radius:3px; color:var(--amber); font-size:.9rem; padding:10px 8px; outline:none; }
+.input-group select option { background:#0a0f1e; color:var(--amber); }
+.date-row { grid-template-columns:1fr 1.5fr 2.2fr; }
+.year-wrap { display:flex; gap:6px; }
+.year-wrap input { flex:1; min-width:0; }
+.year-wrap select { width:64px; flex-shrink:0; }
+.hint { font-size:.6rem; letter-spacing:.05em; line-height:1.5; color:rgba(232,213,163,.45); margin:-2px 0 8px; }
+.err { min-height:1.1em; font-size:.68rem; letter-spacing:.08em; color:#ff8a65; margin:2px 0 6px; line-height:1.5; }
+.chips-label { font-size:.58rem; letter-spacing:.3em; color:rgba(255,179,0,.45); margin:18px 0 8px; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; }
+.chip { background:transparent; border:1px solid var(--border); border-radius:14px; color:rgba(255,179,0,.75); font-size:.66rem; letter-spacing:.05em; padding:6px 11px; cursor:pointer; transition:all .2s; }
+.chip:hover { border-color:var(--amber); color:var(--amber); background:rgba(255,179,0,.06); }
+.quota-line { font-size:.6rem; letter-spacing:.15em; color:rgba(255,179,0,.4); margin-top:14px; min-height:1em; }
+.disclaimer { max-width:520px; font-size:.6rem; line-height:1.6; letter-spacing:.05em; color:rgba(232,213,163,.45); text-align:center; }
+.wormhole { margin:0 auto; }
+.travel-cancel { width:auto; padding:8px 20px; font-size:.6rem; letter-spacing:.3em; margin-top:6px; }
+.travel-err { max-width:420px; text-align:center; font-size:.8rem; line-height:1.7; color:#ffab91; display:none; }
+.travel-err.on { display:block; }
+.badge { display:inline-block; font-size:.52rem; letter-spacing:.15em; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle; }
+.badge.warn { color:#ffab91; border:1px solid rgba(255,138,101,.5); }
+.badge.ok { color:#a5d6a7; border:1px solid rgba(129,199,132,.45); }
+.badge.no { color:#ffe082; border:1px solid rgba(255,224,130,.4); }
+.journal-meta { margin:-6px 0 16px; font-size:.62rem; letter-spacing:.12em; color:rgba(255,179,0,.55); }
+.journal-body { white-space:normal; }
+.j-h { font-family:'Orbitron',system-ui,sans-serif; font-size:.64rem; letter-spacing:.3em; color:var(--amber); margin:22px 0 8px; opacity:.85; }
+.j-p { margin:0 0 12px; }
+.j-ul { margin:0 0 12px 18px; }
+.j-ul li { margin-bottom:6px; }
+.cite { font-size:.65em; color:var(--amber); margin-left:1px; }
+.sources { margin-top:20px; padding-top:14px; border-top:1px solid var(--border); }
+.sources a { display:block; font-size:.7rem; color:rgba(255,179,0,.8); text-decoration:none; padding:5px 0; word-break:break-word; }
+.sources a:hover { color:var(--amber); text-decoration:underline; }
+.fig-note { font-size:.75rem; line-height:1.7; color:rgba(232,213,163,.7); padding:14px 0; }
+.figure-card { padding:0; cursor:default; display:flex; flex-direction:column; }
+.figure-pick { all:unset; box-sizing:border-box; display:block; cursor:pointer; padding:16px 34px 12px 16px; flex:1; font-family:'Share Tech Mono',ui-monospace,monospace; }
+.figure-head { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.figure-emoji { font-size:1.5rem; line-height:1; }
+.figure-years { font-size:.6rem; letter-spacing:.12em; color:rgba(255,179,0,.4); margin-top:2px; }
+.figure-wiki { display:block; padding:8px 16px; border-top:1px solid rgba(255,179,0,.12); font-size:.6rem; letter-spacing:.15em; color:rgba(255,179,0,.55); text-decoration:none; }
+.figure-wiki:hover { color:var(--amber); background:rgba(255,179,0,.05); }
+.figure-arrow { top:42%; }
+.chat-foot { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:.56rem; letter-spacing:.1em; color:rgba(232,213,163,.4); padding-top:8px; line-height:1.5; }
+.msg { white-space:pre-wrap; word-break:break-word; }
+.msg.err { color:#ffab91; border-color:rgba(255,138,101,.35); background:rgba(255,138,101,.06); }
+.chat-input-area button:disabled { opacity:.4; cursor:default; }
+@media(max-width:500px){
+  .date-row { grid-template-columns:1fr 1.3fr 2fr; gap:6px; }
+  .input-group input, .input-group select { padding:10px 6px; font-size:.82rem; }
+  .logo { letter-spacing:.2em; }
+  .msg { max-width:88%; }
+  .chat-era-badge { display:none; }
+  .wormhole { width:220px; height:220px; }
 }
-.tm-card:hover { border-color:var(--border2); transform:translateY(-1px); }
-.tm-card:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-.tm-card .c-ico { font-size:1.7rem; line-height:1; }
-.tm-card .c-name { font-size:0.86rem; font-weight:700; color:#fff; line-height:1.3; }
-.tm-card .c-sub { font-size:0.7rem; color:var(--text-muted); line-height:1.4; }
-.tm-card .c-tag { font-size:0.62rem; color:var(--gold); margin-top:auto; }
-.tm-list { display:flex; flex-direction:column; gap:10px; }
-.tm-list .tm-card { flex-direction:row; align-items:center; gap:12px; min-height:0; }
-.tm-list .c-ico { font-size:1.9rem; }
-.tm-eraBox { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:14px; font-family:'Inter',sans-serif; }
-.tm-eraBox b { color:#fff; font-size:0.9rem; }
-.tm-eraBox span { display:block; color:var(--text-muted); font-size:0.78rem; line-height:1.55; margin-top:4px; }
-
-.tm-back { all:unset; cursor:pointer; font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--primary); padding:4px 2px; margin-bottom:10px; display:inline-block; }
-.tm-back:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-
-/* ── Ruang chat ── */
-#tm-chatview { display:none; flex-direction:column; flex:1; min-height:0; }
-#tm-chatview.on { display:flex; }
-.tm-bar { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); max-width:760px; width:100%; margin:0 auto; box-sizing:border-box; }
-.tm-bar .b-ava { font-size:1.6rem; }
-.tm-bar .b-txt { flex:1; min-width:0; font-family:'Inter',sans-serif; }
-.tm-bar .b-name { font-size:0.88rem; font-weight:700; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.tm-bar .b-sub { font-size:0.68rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.tm-pill { all:unset; cursor:pointer; font-family:'Inter',sans-serif; font-size:0.7rem; font-weight:600; color:var(--text-muted); background:var(--bg-card); border:1px solid var(--border); border-radius:18px; padding:6px 11px; white-space:nowrap; }
-.tm-pill:hover { color:#fff; border-color:var(--border2); }
-.tm-pill:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-.tm-disclaimer { max-width:760px; width:100%; margin:0 auto; padding:6px 16px 0; box-sizing:border-box; font-family:'Inter',sans-serif; font-size:0.66rem; color:rgba(255,255,255,0.38); }
-#tm-msgs {
-  flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; max-width:760px; width:100%; margin:0 auto;
-  padding:14px 16px 8px; box-sizing:border-box; display:flex; flex-direction:column; gap:14px;
+@media (prefers-reduced-motion: reduce) {
+  .logo, .wormhole-ring, .msg, .loading-dots::after { animation:none !important; }
+  .wormhole-ring { transform:translate(-50%,-50%) scale(.6); opacity:.5; }
 }
-.tm-msg { display:flex; gap:9px; align-items:flex-start; font-family:'Inter',sans-serif; }
-.tm-msg.user { justify-content:flex-end; }
-.tm-msg .m-ava { font-size:1.35rem; line-height:1.2; flex-shrink:0; }
-.tm-bubble { max-width:84%; font-size:0.9rem; line-height:1.65; color:var(--text); white-space:pre-wrap; word-break:break-word; }
-.tm-msg.user .tm-bubble { background:rgba(124,158,255,0.14); border:1px solid var(--border2); border-radius:16px 16px 4px 16px; padding:9px 13px; color:#fff; }
-.tm-msg.ai .tm-bubble { background:rgba(240,200,120,0.07); border:1px solid rgba(240,200,120,0.18); border-radius:4px 16px 16px 16px; padding:9px 13px; }
-.tm-msg.err .tm-bubble { color:#ff9a9a; border-color:rgba(255,120,120,0.3); background:rgba(255,80,80,0.06); }
-.tm-note { font-family:'Inter',sans-serif; font-size:0.78rem; color:var(--text-muted); text-align:center; line-height:1.6; padding:6px 10px; }
-.tm-fact { font-family:'Inter',sans-serif; font-size:0.82rem; line-height:1.6; color:#ffe9a8; background:rgba(255,214,102,0.07); border:1px solid rgba(255,214,102,0.25); border-radius:14px; padding:10px 14px; }
-.tm-fact b { display:block; font-size:0.66rem; letter-spacing:0.08em; text-transform:uppercase; color:rgba(255,214,102,0.7); margin-bottom:3px; }
-.tm-dots { display:inline-flex; gap:4px; padding:4px 0; }
-.tm-dots span { width:6px; height:6px; border-radius:50%; background:var(--text-muted); animation:tmdot 1.2s infinite ease-in-out; }
-.tm-dots span:nth-child(2) { animation-delay:.15s; } .tm-dots span:nth-child(3) { animation-delay:.3s; }
-@keyframes tmdot { 0%,80%,100% { opacity:.25; transform:scale(.8); } 40% { opacity:1; transform:scale(1); } }
-@media (prefers-reduced-motion: reduce) { .tm-dots span { animation:none; opacity:.7; } }
-
-.tm-input { max-width:760px; width:100%; margin:0 auto; padding:8px 14px calc(12px + env(safe-area-inset-bottom, 0px)); box-sizing:border-box; flex-shrink:0; }
-.tm-row { display:flex; align-items:flex-end; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:24px; padding:6px 6px 6px 16px; }
-.tm-row:focus-within { border-color:var(--primary); }
-.tm-row textarea { all:unset; flex:1; min-width:0; font-family:'Inter',sans-serif; font-size:0.9rem; color:#fff; line-height:1.5; max-height:110px; padding:6px 0; resize:none; }
-.tm-row textarea::placeholder { color:rgba(255,255,255,0.3); }
-.tm-send { all:unset; cursor:pointer; width:38px; height:38px; border-radius:50%; background:var(--primary); color:#000; display:flex; align-items:center; justify-content:center; font-size:1.05rem; font-weight:700; flex-shrink:0; }
-.tm-send:disabled { opacity:.4; cursor:default; }
-.tm-send:focus-visible { outline:2px solid #fff; outline-offset:2px; }
-.tm-foot { display:flex; justify-content:space-between; font-family:'Inter',sans-serif; font-size:0.66rem; color:rgba(255,255,255,0.32); padding:6px 6px 0; }
-.tm-state { font-family:'Inter',sans-serif; font-size:0.84rem; color:var(--text-muted); text-align:center; padding:30px 10px; line-height:1.7; }
-.tm-retry { all:unset; cursor:pointer; margin-top:10px; display:inline-block; color:var(--primary); border:1px solid var(--border2); border-radius:18px; padding:7px 16px; font-size:0.8rem; }
-.tm-retry:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 </style>
 </head>
 <body>
-<div class="astro-bg"><div class="astro-orb orb-1"></div><div class="astro-orb orb-2"></div><div class="astro-orb orb-3"></div></div>
-<nav class="ioe-nav" id="ioe-nav"></nav>
+<canvas id="bgCanvas" aria-hidden="true"></canvas>
 
-<div id="page-tm">
-  <!-- Langkah 1 & 2: pilih era, pilih karakter -->
-  <div class="tm-wrap" id="tm-pick" aria-live="polite"></div>
+<!-- ═══ LAYAR 1: KOORDINAT ═══ -->
+<div class="screen active" id="setupScreen">
+  <a class="home-link" href="education.html">⟵ EDUCATION HUB</a>
+  <div>
+    <div class="logo">KRONOS</div>
+    <div class="logo-sub">MESIN WAKTU · I.O.E</div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">▸ KOORDINAT TEMPORAL</div>
+    <div class="date-row">
+      <div class="input-group"><label for="inDay">TGL</label>
+        <input id="inDay" type="number" inputmode="numeric" min="1" max="31" placeholder="17" autocomplete="off"></div>
+      <div class="input-group"><label for="inMonth">BULAN</label>
+        <select id="inMonth"><option value="">—</option></select></div>
+      <div class="input-group"><label for="inYear">TAHUN</label>
+        <div class="year-wrap">
+          <input id="inYear" type="number" inputmode="numeric" min="1" max="5000" placeholder="1945" autocomplete="off">
+          <select id="inEra" aria-label="Masehi atau Sebelum Masehi"><option value="M">M</option><option value="SM">SM</option></select>
+        </div></div>
+    </div>
+    <div class="hint">Tanggal dan bulan boleh dikosongkan untuk membaca satu tahun penuh.</div>
+    <div class="err" id="setupErr" role="alert"></div>
+    <button class="btn btn-primary" id="goBtn" type="button">⚡ AKTIFKAN</button>
+    <div class="chips-label">CONTOH TUJUAN</div>
+    <div class="chips" id="chips"></div>
+    <div class="quota-line" id="travelQuota"></div>
+  </div>
+  <div class="disclaimer">🎭 Simulasi pembelajaran. Jurnal dan tokoh disusun AI sehingga bisa keliru — periksa ke sumber lain. Jangkauan: 5000 SM sampai hari ini.</div>
+</div>
 
-  <!-- Langkah 3: ruang chat -->
-  <div id="tm-chatview">
-    <div class="tm-bar">
-      <button class="tm-pill" type="button" onclick="tmBackToChars()" aria-label="Kembali ke daftar karakter">← Ganti</button>
-      <span class="b-ava" id="tm-ava" aria-hidden="true"></span>
-      <div class="b-txt"><div class="b-name" id="tm-name"></div><div class="b-sub" id="tm-sub"></div></div>
-      <button class="tm-pill" type="button" id="tm-factbtn" onclick="tmShowFact()">💡 Fakta</button>
+<!-- ═══ LAYAR 2: PERJALANAN ═══ -->
+<div class="screen" id="travelScreen">
+  <div class="travel-text" id="travelText">MEMBUKA GERBANG WAKTU</div>
+  <div class="wormhole" id="wormhole" aria-hidden="true"></div>
+  <div class="travel-year" id="travelYear" aria-live="off"></div>
+  <div class="travel-text"><span class="loading-dots" id="travelDots">MENEMBUS RUANG-WAKTU</span></div>
+  <div class="travel-err" id="travelErr" role="alert"></div>
+  <button class="btn travel-cancel" id="travelCancel" type="button">BATAL</button>
+</div>
+
+<!-- ═══ LAYAR 3: ERA ═══ -->
+<div class="screen" id="eraScreen">
+  <div class="era-header">
+    <div><div class="era-title" id="eraTitle"></div><div class="era-subtitle" id="eraSub"></div></div>
+    <button class="btn back-btn" id="eraBack" type="button">⟵ KEMBALI</button>
+  </div>
+  <div class="mode-tabs" role="tablist">
+    <button class="mode-tab active" id="tabJournal" role="tab" aria-selected="true" type="button">📜 JURNAL SEJARAH</button>
+    <button class="mode-tab" id="tabFigures" role="tab" aria-selected="false" type="button">🗣️ BICARA DENGAN TOKOH</button>
+  </div>
+  <div class="era-content" id="eraContent"></div>
+</div>
+
+<!-- ═══ LAYAR 4: CHAT ═══ -->
+<div class="screen" id="chatScreen">
+  <div class="chat-header">
+    <button class="btn chat-back-btn" id="chatBack" type="button">⟵ TOKOH</button>
+    <div class="chat-avatar" id="chatAvatar" aria-hidden="true"></div>
+    <div class="chat-figure-info">
+      <div class="chat-figure-name" id="chatName"></div>
+      <div class="chat-figure-role" id="chatRole"></div>
+      <div class="chat-figure-years" id="chatYears"></div>
     </div>
-    <div class="tm-disclaimer">🎭 Simulasi AI — jawaban tokoh bukan sumber sejarah resmi. Cek tombol 💡 Fakta untuk fakta terverifikasi.</div>
-    <div id="tm-msgs" role="log" aria-live="polite"></div>
-    <div class="tm-input">
-      <div class="tm-row">
-        <textarea id="tm-text" rows="1" maxlength="500" placeholder="Sapa dia…" aria-label="Pesan untuk tokoh"></textarea>
-        <button class="tm-send" id="tm-sendbtn" type="button" onclick="tmSend()" aria-label="Kirim">➤</button>
-      </div>
-      <div class="tm-foot"><span id="tm-quota"></span><span>Maks. 500 karakter</span></div>
+    <div class="chat-era-badge" id="chatEra"></div>
+  </div>
+  <div class="chat-main">
+    <div class="chat-messages" id="chatMessages" role="log" aria-live="polite"></div>
+    <div class="chat-input-area">
+      <input type="text" id="chatInput" maxlength="500" placeholder="Tanyakan sesuatu pada tokoh ini…" aria-label="Pesan untuk tokoh" autocomplete="off">
+      <button class="btn send-btn" id="sendBtn" type="button">KIRIM</button>
     </div>
+    <div class="chat-foot"><span id="chatQuota"></span><span>🎭 Simulasi AI — bukan sumber sejarah resmi</span></div>
   </div>
 </div>
 
-<script src="js/nav.js"></script>
 <script src="js/device.js"></script>
 <script>
-const EMBED = new URLSearchParams(location.search).get('embed') === '1';
-if (EMBED) document.body.classList.add('embed'); else buildNav('timemachine.html');
-const AI_ENDPOINT = '/api/ai';
-
-// ── State ──
-let ERAS = null, curEra = null, curChar = null, convo = [], busy = false, factIdx = 0, myDeviceId = '';
-getDeviceId().then(id => { myDeviceId = id; });
-
-function esc(s) {
-  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
+(() => {
+'use strict';
 const $ = id => document.getElementById(id);
+const API = '/api/ai';
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+if (EMBED) document.body.classList.add('embed');
+const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const state = { deviceId: '', data: null, figure: null, chat: [], busy: false, abort: null, screen: 'setup', travelUsed: null };
 
-// ── Muat daftar era dari server (data publik; prompt tidak pernah sampai ke browser) ──
-async function tmLoad() {
-  const box = $('tm-pick');
-  box.innerHTML = '<div class="tm-state">⏳ Menyiapkan mesin waktu…</div>';
-  try {
-    const r = await fetch(AI_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'timemachine-list' }) });
-    const d = await r.json();
-    if (!r.ok || !Array.isArray(d.eras) || !d.eras.length) throw new Error('data kosong');
-    ERAS = d.eras;
-    tmRenderEras();
-  } catch (e) {
-    box.innerHTML = '<div class="tm-state">Mesin waktu belum bisa dihidupkan.<br><button class="tm-retry" type="button" onclick="tmLoad()">Coba lagi</button></div>';
-  }
+// ── Utilitas ──
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function httpsOnly(u) { try { return new URL(String(u)).protocol === 'https:' ? String(u) : ''; } catch (e) { return ''; } }
+async function ensureDeviceId() {
+  if (state.deviceId) return state.deviceId;
+  try { if (typeof window.getDeviceId === 'function') { const id = await window.getDeviceId(); if (id) return (state.deviceId = String(id)); } } catch (e) {}
+  let id = '';
+  try { id = localStorage.getItem('tm_device') || ''; if (!id) { id = 'tm-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('tm_device', id); } }
+  catch (e) { id = 'tm-' + Math.random().toString(36).slice(2); }
+  return (state.deviceId = id);
+}
+async function api(body, signal) {
+  const deviceId = await ensureDeviceId();
+  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify({ timeMachineMode: true, deviceId, ...body }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(d.error || 'Terjadi kesalahan'); e.status = r.status; e.data = d; throw e; }
+  return d;
 }
 
-function tmHead() {
-  return '<div class="tm-head"><span class="tm-ico">⏳</span><h1>I.O.E Time Machine</h1>' +
-    '<p>Pilih zaman, lalu ngobrol langsung dengan tokoh di masanya. Cara seru belajar sejarah!</p></div>';
+// ── Layar & riwayat (tombol Back HP) ──
+function showScreen(name) {
+  if (state.screen === 'travel' && name !== 'travel' && state.abort) { state.abort.abort(); state.abort = null; }
+  state.screen = name;
+  for (const id of ['setup', 'travel', 'era', 'chat']) $(id + 'Screen').classList.toggle('active', id === name);
+  if (name === 'setup') setTheme('setup');
+  window.scrollTo(0, 0);
 }
-
-function tmRenderEras() {
-  curEra = null; curChar = null;
-  $('tm-chatview').classList.remove('on'); $('tm-pick').style.display = '';
-  $('tm-pick').innerHTML = tmHead() + '<div class="tm-step-title">1 · Pilih zaman</div><div class="tm-grid">' +
-    ERAS.map(e => `<button class="tm-card" type="button" data-era="${esc(e.id)}"><span class="c-ico">${esc(e.ikon)}</span>` +
-      `<span class="c-name">${esc(e.nama)}</span><span class="c-sub">${esc(e.lokasi)}</span><span class="c-tag">${esc(e.tahunLabel)}</span></button>`).join('') + '</div>';
-  $('tm-pick').querySelectorAll('[data-era]').forEach(b => b.addEventListener('click', () => tmPickEra(b.dataset.era)));
-}
-
-function tmPickEra(id, fromPop) {
-  curEra = ERAS.find(e => e.id === id);
-  if (!curEra) return;
-  $('tm-chatview').classList.remove('on'); $('tm-pick').style.display = '';
-  $('tm-pick').innerHTML = tmHead() +
-    '<button class="tm-back" type="button" id="tm-back1">← Pilih zaman lain</button>' +
-    `<div class="tm-eraBox"><b>${esc(curEra.ikon)} ${esc(curEra.nama)} · ${esc(curEra.tahunLabel)}</b><span>${esc(curEra.latar)}</span></div>` +
-    '<div class="tm-step-title">2 · Pilih tokoh yang mau diajak bicara</div><div class="tm-list">' +
-    curEra.karakter.map(c => `<button class="tm-card" type="button" data-char="${esc(c.id)}"><span class="c-ico">${esc(c.avatar)}</span>` +
-      `<span><span class="c-name">${esc(c.nama)}</span><br><span class="c-sub">${esc(c.profesi)}${c.fiksi ? ' · tokoh rekaan' : ''}</span></span></button>`).join('') + '</div>';
-  $('tm-back1').addEventListener('click', () => history.back());
-  $('tm-pick').querySelectorAll('[data-char]').forEach(b => b.addEventListener('click', () => tmPickChar(b.dataset.char)));
-  if (!fromPop) history.pushState({ tm: 'era' }, '');
-}
-
-function tmBackToChars() { history.back(); }
-
-function tmPickChar(id, fromPop) {
-  curChar = curEra.karakter.find(c => c.id === id);
-  if (!curChar) return;
-  convo = []; busy = false; factIdx = 0;
-  $('tm-pick').style.display = 'none';
-  $('tm-chatview').classList.add('on');
-  $('tm-ava').textContent = curChar.avatar;
-  $('tm-name').textContent = curChar.nama;
-  $('tm-sub').textContent = curEra.tahunLabel + ' · ' + curEra.lokasi;
-  $('tm-msgs').innerHTML = '';
-  $('tm-quota').textContent = '';
-  const intro = document.createElement('div');
-  intro.className = 'tm-note';
-  intro.textContent = `Kamu tiba di ${curEra.lokasi}, ${curEra.tahunLabel}. Di depanmu berdiri ${curChar.nama}${curChar.fiksi ? ' (tokoh rekaan)' : ''}, ${curChar.profesi}. Sapa dia!`;
-  $('tm-msgs').appendChild(intro);
-  $('tm-text').value = ''; $('tm-text').placeholder = 'Sapa ' + curChar.nama + '…';
-  $('tm-sendbtn').disabled = false;
-  if (!fromPop) history.pushState({ tm: 'chat' }, '');
-  setTimeout(() => $('tm-text').focus(), 50);
-}
-
-// Tombol Back HP: chat -> daftar tokoh -> daftar zaman
 window.addEventListener('popstate', e => {
   const st = e.state && e.state.tm;
-  if (!ERAS) return;
-  if (st === 'chat' && curEra && curChar) return;
-  if (st === 'era' && curEra) { tmPickEra(curEra.id, true); return; }
-  tmRenderEras();
+  if (st === 'chat' && state.figure) showScreen('chat');
+  else if (st === 'era' && state.data) { showScreen('era'); }
+  else showScreen('setup');
 });
+try { history.replaceState({ tm: 'setup' }, ''); } catch (e) {}
 
-function addMsg(kind, text) {
-  const wrap = document.createElement('div');
-  wrap.className = 'tm-msg ' + kind;
-  if (kind !== 'user') { const a = document.createElement('div'); a.className = 'm-ava'; a.textContent = kind === 'ai' ? curChar.avatar : '⚠️'; wrap.appendChild(a); }
-  const b = document.createElement('div'); b.className = 'tm-bubble'; b.textContent = text; // textContent: teks AI tidak pernah dianggap HTML
-  wrap.appendChild(b);
-  $('tm-msgs').appendChild(wrap);
-  $('tm-msgs').scrollTop = $('tm-msgs').scrollHeight;
-  return wrap;
+// ── Latar partikel per zaman ──
+const THEMES = {
+  setup:         { rgb: '255,179,0',   n: 70, mode: 'drift', speed: .15 },
+  prehistoric:   { rgb: '255,110,40',  n: 80, mode: 'rise',  speed: .5 },
+  ancient:       { rgb: '255,200,90',  n: 70, mode: 'drift', speed: .2 },
+  classical:     { rgb: '255,225,150', n: 60, mode: 'fall',  speed: .2 },
+  medieval:      { rgb: '255,140,60',  n: 70, mode: 'rise',  speed: .3 },
+  renaissance:   { rgb: '240,200,120', n: 60, mode: 'drift', speed: .15 },
+  enlightenment: { rgb: '255,215,130', n: 50, mode: 'drift', speed: .2 },
+  modern:        { rgb: '190,170,140', n: 70, mode: 'fall',  speed: .6 },
+  twentieth:     { rgb: '160,200,255', n: 60, mode: 'fall',  speed: 1 },
+  contemporary:  { rgb: '80,220,255',  n: 80, mode: 'rise',  speed: .9 },
+};
+const bg = { canvas: $('bgCanvas'), ctx: $('bgCanvas').getContext('2d'), theme: THEMES.setup, parts: [], raf: 0, w: 0, h: 0 };
+function bgResize() { bg.w = bg.canvas.width = window.innerWidth; bg.h = bg.canvas.height = window.innerHeight; }
+function bgSeed() {
+  bg.parts = Array.from({ length: bg.theme.n }, () => ({ x: Math.random() * bg.w, y: Math.random() * bg.h, r: .6 + Math.random() * 1.8, a: .15 + Math.random() * .55, v: .3 + Math.random() }));
 }
-
-function tmShowFact() {
-  if (!curEra) return;
-  const f = curEra.facts[factIdx % curEra.facts.length]; factIdx++;
-  const d = document.createElement('div'); d.className = 'tm-fact';
-  const b = document.createElement('b'); b.textContent = '💡 Fakta sejarah';
-  d.appendChild(b); d.appendChild(document.createTextNode(f));
-  $('tm-msgs').appendChild(d); $('tm-msgs').scrollTop = $('tm-msgs').scrollHeight;
-}
-
-async function tmSend() {
-  if (busy || !curChar) return;
-  const ta = $('tm-text'), raw = ta.value.trim();
-  if (!raw) return;
-  busy = true; $('tm-sendbtn').disabled = true; ta.value = ''; ta.style.height = '';
-  addMsg('user', raw);
-  convo.push({ role: 'user', content: raw });
-  const typing = document.createElement('div'); typing.className = 'tm-msg ai';
-  typing.innerHTML = '<div class="m-ava"></div><div class="tm-bubble"><span class="tm-dots"><span></span><span></span><span></span></span></div>';
-  typing.querySelector('.m-ava').textContent = curChar.avatar;
-  $('tm-msgs').appendChild(typing); $('tm-msgs').scrollTop = $('tm-msgs').scrollHeight;
-  try {
-    const r = await fetch(AI_ENDPOINT, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeMachineMode: true, eraId: curEra.id, characterId: curChar.id, deviceId: myDeviceId, messages: convo.slice(-12) }),
-    });
-    const d = await r.json().catch(() => ({}));
-    typing.remove();
-    if (!r.ok) {
-      convo.pop();
-      let msg = d.error || 'Terjadi kesalahan';
-      if (r.status === 429 && d.quota) msg += ` (${d.quota.used}/${d.quota.limit}). ${d.resetInfo || ''}`;
-      addMsg('err', msg);
-    } else {
-      convo.push({ role: 'assistant', content: d.reply });
-      addMsg('ai', d.reply);
-      if (d.quota) $('tm-quota').textContent = `Sisa pesan hari ini: ${Math.max(0, d.quota.limit - d.quota.used)}/${d.quota.limit}`;
+function setTheme(key) { bg.theme = THEMES[key] || THEMES.setup; bgSeed(); if (REDUCED) bgFrame(true); }
+function bgFrame(once) {
+  const { ctx, w, h, theme: t } = bg;
+  ctx.clearRect(0, 0, w, h);
+  const g = ctx.createRadialGradient(w / 2, h * .4, 0, w / 2, h * .4, Math.max(w, h) * .8);
+  g.addColorStop(0, 'rgba(' + t.rgb + ',0.07)'); g.addColorStop(1, 'rgba(5,8,16,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  for (const p of bg.parts) {
+    if (!once) {
+      if (t.mode === 'rise') p.y -= t.speed * p.v; else if (t.mode === 'fall') p.y += t.speed * p.v;
+      else { p.x += (Math.random() - .5) * t.speed * 2; p.y += (Math.random() - .5) * t.speed * 2; }
+      if (p.y < -5) p.y = h + 5; if (p.y > h + 5) p.y = -5; if (p.x < -5) p.x = w + 5; if (p.x > w + 5) p.x = -5;
     }
-  } catch (e) {
-    typing.remove(); convo.pop();
-    addMsg('err', 'Gagal terhubung ke server. Cek koneksi lalu coba lagi.');
+    ctx.beginPath(); ctx.fillStyle = 'rgba(' + t.rgb + ',' + p.a + ')'; ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
   }
-  busy = false; $('tm-sendbtn').disabled = false; ta.focus();
+  if (!once && !REDUCED) bg.raf = requestAnimationFrame(() => bgFrame(false));
 }
+window.addEventListener('resize', () => { bgResize(); bgSeed(); });
+bgResize(); setTheme('setup'); if (!REDUCED) bgFrame(false);
 
-$('tm-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tmSend(); } });
-$('tm-text').addEventListener('input', e => { const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 110) + 'px'; });
+// ── Layar 1: koordinat ──
+const CHIPS = [
+  { t: 'Piramida Giza', y: 2570, e: 'SM' }, { t: 'Parthenon', y: 432, e: 'SM' }, { t: 'Roma era Trajan', y: 113, e: 'M' },
+  { t: 'Majapahit', y: 1350, e: 'M' }, { t: 'Renaisans', y: 1504, e: 'M' }, { t: 'Proklamasi RI', y: 1945, m: 8, d: 17, e: 'M' },
+];
+const monthSel = $('inMonth');
+MONTHS.forEach((n, i) => { const o = el('option', '', n); o.value = String(i + 1); monthSel.appendChild(o); });
+CHIPS.forEach(c => {
+  const b = el('button', 'chip', c.t); b.type = 'button';
+  b.addEventListener('click', () => { $('inDay').value = c.d || ''; monthSel.value = c.m ? String(c.m) : ''; $('inYear').value = String(c.y); $('inEra').value = c.e; $('setupErr').textContent = ''; $('goBtn').focus(); });
+  $('chips').appendChild(b);
+});
+function readInput() {
+  let y = parseInt($('inYear').value, 10); let era = $('inEra').value;
+  if (isNaN(y)) return { error: 'Isi tahun tujuan dulu.' };
+  if (y < 0) { y = -y; era = 'SM'; $('inEra').value = 'SM'; $('inYear').value = String(y); }   // kalau mengetik minus
+  if (y === 0) return { error: 'Tidak ada tahun 0 dalam penanggalan sejarah. Pakai 1 SM atau 1 M.' };
+  const year = era === 'SM' ? -y : y;
+  const dRaw = $('inDay').value.trim(), mRaw = monthSel.value;
+  const day = dRaw === '' ? null : Number(dRaw), month = mRaw === '' ? null : Number(mRaw);
+  if (day !== null && month === null) return { error: 'Pilih bulannya juga kalau mengisi tanggal.' };
+  if (year > new Date().getFullYear()) return { error: 'Mesin waktu ini hanya bisa menuju masa lalu.' };
+  if (year < -5000) return { error: 'Terlalu jauh. Batasnya 5000 SM.' };
+  return { year, month, day };
+}
+function updateTravelQuota(q) {
+  $('travelQuota').textContent = q ? 'SISA PERJALANAN HARI INI: ' + Math.max(0, q.limit - q.used) + '/' + q.limit : '';
+}
+$('goBtn').addEventListener('click', startTravel);
+['inDay', 'inYear'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') startTravel(); }));
 
-tmLoad();
+// ── Layar 2: perjalanan ──
+let yearTimer = 0;
+function buildWormhole() {
+  const w = $('wormhole'); w.textContent = '';
+  for (let i = 0; i < 6; i++) {
+    const r = el('div', 'wormhole-ring'); const s = 40 + i * 44;
+    r.style.width = s + 'px'; r.style.height = s + 'px'; r.style.animationDelay = (i * .13) + 's'; w.appendChild(r);
+  }
+}
+function animateYear(from, to, ms) {
+  clearInterval(yearTimer);
+  const t0 = performance.now(), out = $('travelYear');
+  const fmt = v => { const n = Math.round(v); return n < 0 ? Math.abs(n) + ' SM' : n + ' M'; };
+  out.textContent = fmt(from);
+  if (REDUCED) { out.textContent = fmt(to); return; }
+  yearTimer = setInterval(() => {
+    const p = Math.min(1, (performance.now() - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+    out.textContent = fmt(from + (to - from) * e);
+    if (p >= 1) clearInterval(yearTimer);
+  }, 40);
+}
+async function startTravel() {
+  if (state.screen !== 'setup' || state.busy) return;
+  const inp = readInput();
+  $('setupErr').textContent = inp.error || '';
+  if (inp.error) return;
+  state.busy = true;
+  showScreen('travel'); buildWormhole();
+  $('travelErr').classList.remove('on'); $('travelErr').textContent = '';
+  $('travelText').textContent = 'MEMBUKA GERBANG WAKTU'; $('travelDots').style.display = '';
+  $('travelCancel').textContent = 'BATAL';
+  animateYear(new Date().getFullYear(), inp.year, 2600);
+  state.abort = new AbortController();
+  const minWait = new Promise(r => setTimeout(r, REDUCED ? 300 : 2800));
+  try {
+    const [d] = await Promise.all([api({ tmAction: 'travel', year: inp.year, month: inp.month, day: inp.day }, state.abort.signal), minWait]);
+    state.abort = null; state.data = d; state.figure = null; state.chat = [];
+    updateTravelQuota(d.quota);
+    renderEra(); setTheme(d.era.key);
+    showScreen('era'); history.pushState({ tm: 'era' }, '');
+  } catch (e) {
+    if (e.name === 'AbortError') { state.busy = false; return; }
+    clearInterval(yearTimer);
+    $('travelText').textContent = 'GERBANG WAKTU TERTUTUP'; $('travelDots').style.display = 'none';
+    $('travelErr').textContent = (e.message || 'Gagal terhubung.') + (e.status === 429 && e.data && e.data.resetInfo ? ' ' + e.data.resetInfo : '');
+    $('travelErr').classList.add('on'); $('travelCancel').textContent = '⟵ KEMBALI';
+    if (e.data && e.data.quota) updateTravelQuota(e.data.quota);
+  }
+  state.busy = false;
+}
+$('travelCancel').addEventListener('click', () => { clearInterval(yearTimer); showScreen('setup'); });
+
+// ── Layar 3: era (jurnal + tokoh) ──
+function addText(node, text) {
+  for (const part of String(text).split(/(\[\d{1,2}\])/)) {
+    if (/^\[\d{1,2}\]$/.test(part)) node.appendChild(el('sup', 'cite', part));
+    else if (part) node.appendChild(document.createTextNode(part));
+  }
+}
+function renderJournalBody(text) {
+  const frag = document.createDocumentFragment(); let ul = null, para = [];
+  const flush = () => { if (para.length) { const p = el('p', 'j-p'); addText(p, para.join(' ')); frag.appendChild(p); para = []; } };
+  const hdr = /^\s*\**\s*(GAMBARAN ERA|PERISTIWA PENTING|KEHIDUPAN SEHARI-HARI)\s*\**\s*:?\s*\**\s*$/i;
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { flush(); ul = null; continue; }
+    const h = line.match(hdr);
+    if (h) { flush(); ul = null; frag.appendChild(el('div', 'j-h', h[1].toUpperCase())); continue; }
+    const b = line.match(/^[•\-*]\s+(.*)$/);
+    if (b) { flush(); if (!ul) { ul = el('ul', 'j-ul'); frag.appendChild(ul); } const li = el('li'); addText(li, b[1].replace(/\*\*/g, '')); ul.appendChild(li); continue; }
+    ul = null; para.push(line.replace(/\*\*/g, '').replace(/^#+\s*/, ''));
+  }
+  flush(); return frag;
+}
+function renderEra() {
+  const d = state.data;
+  $('eraTitle').textContent = d.era.name; $('eraSub').textContent = d.dateLabel.toUpperCase();
+  setTab('journal');
+}
+function setTab(tab) {
+  $('tabJournal').classList.toggle('active', tab === 'journal'); $('tabJournal').setAttribute('aria-selected', String(tab === 'journal'));
+  $('tabFigures').classList.toggle('active', tab === 'figures'); $('tabFigures').setAttribute('aria-selected', String(tab === 'figures'));
+  const c = $('eraContent'); c.textContent = '';
+  const d = state.data;
+  if (tab === 'journal') {
+    if (!d.journal) { c.appendChild(el('div', 'fig-note', d.journalError || 'Jurnal tidak tersedia.')); return; }
+    c.appendChild(el('div', 'journal-title', d.journal.title));
+    const meta = el('div', 'journal-meta');
+    meta.appendChild(document.createTextNode('JURNAL DISUSUN AI '));
+    const badge = el('span', 'badge ' + (d.journal.grounded ? 'ok' : 'no'), d.journal.grounded ? '✓ MERUJUK SUMBER WEB' : '⚠ TANPA SUMBER — PERIKSA ULANG');
+    meta.appendChild(badge); c.appendChild(meta);
+    const body = el('div', 'journal-body'); body.appendChild(renderJournalBody(d.journal.body)); c.appendChild(body);
+    const srcs = (d.journal.sources || []).filter(s => httpsOnly(s.url));
+    if (srcs.length) {
+      const box = el('div', 'sources'); box.appendChild(el('div', 'section-label', 'SUMBER'));
+      for (const s of srcs) { const a = el('a', '', '[' + s.n + '] ' + s.title); a.href = s.url; a.target = '_blank'; a.rel = 'noopener noreferrer nofollow'; box.appendChild(a); }
+      c.appendChild(box);
+    }
+  } else {
+    c.appendChild(el('div', 'section-label', 'TOKOH PADA MASA INI — DAFTAR DIBUAT AI, PERIKSA KE SUMBER LAIN'));
+    if (d.figuresNote) c.appendChild(el('div', 'fig-note', d.figuresNote));
+    const grid = el('div', 'figures-grid');
+    for (const f of d.figures || []) {
+      const card = el('div', 'figure-card');
+      const pick = el('button', 'figure-pick'); pick.type = 'button';
+      const head = el('div', 'figure-head'); head.appendChild(el('span', 'figure-emoji', f.emoji || '👤'));
+      const nm = el('div'); const n1 = el('div', 'figure-name', f.name);
+      if (f.controversial) n1.appendChild(el('span', 'badge warn', '⚠ KONTROVERSIAL'));
+      nm.appendChild(n1); nm.appendChild(el('div', 'figure-years', f.years)); head.appendChild(nm);
+      pick.appendChild(head); pick.appendChild(el('div', 'figure-role', f.role));
+      if (f.description) pick.appendChild(el('div', 'figure-desc', f.description));
+      pick.appendChild(el('span', 'figure-arrow', '→'));
+      pick.addEventListener('click', () => openChat(f));
+      const wiki = el('a', 'figure-wiki', '🔎 CEK DI WIKIPEDIA'); wiki.target = '_blank'; wiki.rel = 'noopener noreferrer';
+      wiki.href = 'https://id.wikipedia.org/w/index.php?search=' + encodeURIComponent(f.name);
+      card.appendChild(pick); card.appendChild(wiki); grid.appendChild(card);
+    }
+    c.appendChild(grid);
+  }
+}
+$('tabJournal').addEventListener('click', () => setTab('journal'));
+$('tabFigures').addEventListener('click', () => setTab('figures'));
+$('eraBack').addEventListener('click', () => history.back());
+
+// ── Layar 4: chat ──
+function addMsg(kind, text, sender) {
+  const m = el('div', 'msg ' + kind);
+  if (sender) m.appendChild(el('div', 'msg-sender', sender));
+  m.appendChild(el('div', '', text));
+  $('chatMessages').appendChild(m); $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
+  return m;
+}
+function openChat(f) {
+  state.figure = f; state.chat = [];
+  $('chatAvatar').textContent = f.emoji || '👤'; $('chatName').textContent = f.name; $('chatRole').textContent = f.role.toUpperCase();
+  $('chatYears').textContent = f.years; $('chatEra').textContent = state.data.era.name + ' · ' + state.data.dateLabel;
+  $('chatMessages').textContent = ''; $('chatQuota').textContent = '';
+  if (f.controversial) addMsg('ai err', 'Tokoh ini kontroversial dalam sejarah. Jawabannya hanya simulasi; kekejaman yang terdokumentasi tidak dibenarkan.', 'CATATAN SISTEM');
+  addMsg('ai', 'Salam, pelancong dari masa depan. Aku ' + f.name + ', ' + f.role + '. Apa yang ingin kau tanyakan?', f.name.toUpperCase());
+  $('chatInput').value = '';
+  showScreen('chat'); history.pushState({ tm: 'chat' }, '');
+  setTimeout(() => $('chatInput').focus(), 80);
+}
+async function sendChat() {
+  if (state.busy || !state.figure) return;
+  const text = $('chatInput').value.trim(); if (!text) return;
+  state.busy = true; $('sendBtn').disabled = true; $('chatInput').value = '';
+  addMsg('user', text, 'KAMU'); state.chat.push({ role: 'user', content: text });
+  const typing = addMsg('ai', '', state.figure.name.toUpperCase()); typing.lastChild.classList.add('loading-dots');
+  try {
+    const d = await api({ tmAction: 'chat', figureToken: state.figure.token, messages: state.chat.slice(-12) });
+    typing.remove(); state.chat.push({ role: 'assistant', content: d.reply });
+    addMsg('ai', d.reply, state.figure.name.toUpperCase());
+    if (d.quota) $('chatQuota').textContent = 'SISA PESAN HARI INI: ' + Math.max(0, d.quota.limit - d.quota.used) + '/' + d.quota.limit;
+  } catch (e) {
+    typing.remove(); state.chat.pop();
+    addMsg('ai err', (e.message || 'Gagal terhubung.') + (e.status === 429 && e.data && e.data.resetInfo ? ' ' + e.data.resetInfo : ''), 'SISTEM');
+  }
+  state.busy = false; $('sendBtn').disabled = false; $('chatInput').focus();
+}
+$('sendBtn').addEventListener('click', sendChat);
+$('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+$('chatBack').addEventListener('click', () => history.back());
+})();
 </script>
 </body>
 </html>
