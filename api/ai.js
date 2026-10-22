@@ -16,9 +16,9 @@
 //  10. #MODE: GAMBAR 3D#             — handler render3dMode   (tombol "Gambar 3D", render engine lokal)
 //  11. #MODE: SANDBOX 3D#            — handler sandboxMode    (tombol "3D model", Three.js + evaluasi Qwen)
 //  12. #MODE: CHAT#                  — handler chat biasa + pencarian web
-//  13. #MODE: TIME MACHINE#          — handler timeMachineMode (permainan peran sejarah; data di _timemachine/eras.js)
+//  13. #MODE: TIME MACHINE#          — handler timeMachineMode (KRONOS: perjalanan tanggal bebas, jurnal, tokoh, chat; logika di _timemachine/kronos.js)
 //  14. #ROUTER#                      — handler utama: validasi awal lalu arahkan ke mode yang tepat
-// Tambahan di router: action 'chat-history' (api/_history/chatHistory.js) dan action 'timemachine-list'.
+// Tambahan di router: action 'chat-history' (api/_history/chatHistory.js).
 // ═══════════════════════════════════════════════════════════════
 
 
@@ -27,7 +27,12 @@
 // ═══════════════════════════════════════════════════════════════
 import { renderSceneToPng, SceneValidationError } from './_render3d/renderScene.js';
 import { handleChatHistory } from './_history/chatHistory.js';
-import { getEra, getCharacter, publicEras, buildSystemPrompt, sanitizeTmMessages, cleanTmReply } from './_timemachine/eras.js';
+import { createHash } from 'node:crypto';
+import {
+  parseTravelInput, getEraInfo, figureCountFor, buildJournalPrompts, parseJournal, journalSearchQuery,
+  buildFiguresPrompts, parseFiguresJson, validateFigures, signFigure, verifyFigure,
+  buildChatSystemPrompt, sanitizeTmMessages, cleanTmReply,
+} from './_timemachine/kronos.js';
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -68,6 +73,9 @@ const SANDBOX_MAX_ROUNDS = 3;
 // Gemini (env TM_ENGINE=gemini) -> Groq. Groq selalu menjadi cadangan terakhir.
 const TM_QUOTA_REGULAR = 30;
 const TM_QUOTA_PREMIUM = 80;
+// Perjalanan waktu (jurnal + daftar tokoh = 1 pencarian web + 2 panggilan AI), dicatat di timemachine_travel/{deviceId}/{tanggal}.
+const TM_TRAVEL_REGULAR = 8;
+const TM_TRAVEL_PREMIUM = 20;
 const TM_MAX_TOKENS = 220;
 const TM_LLM_TIMEOUT_MS = 25000;
 // Mesin Gemini untuk Time Machine (TEKS, bukan gambar): HANYA aktif kalau env TM_ENGINE=gemini.
@@ -985,25 +993,36 @@ async function handleChatMode({ body, availableKeys, DB_URL, deviceId, useSearch
 
 
 // ═══════════════════════════════════════════════════════════════
-// #MODE: TIME MACHINE# — permainan peran dengan tokoh sejarah (data & prompt di _timemachine/eras.js)
-// Browser hanya mengirim eraId + characterId + riwayat chat; prompt peran disusun di sini (server).
-// Kuota per PESAN, FAIL-OPEN seperti chat biasa (database gagal -> tetap jalan; Groq punya batas sendiri).
+// #MODE: TIME MACHINE# — KRONOS: perjalanan ke tanggal bebas -> jurnal sejarah + daftar tokoh -> chat dengan tokoh
+// (logika & prompt di _timemachine/kronos.js). Browser hanya mengirim tanggal dan "token tokoh" bertanda tangan server.
+// Kuota (perjalanan & pesan) FAIL-OPEN seperti chat biasa: database gagal -> tetap jalan; Groq/Gemini punya batas sendiri.
 // ═══════════════════════════════════════════════════════════════
+// Kunci penanda tangan token tokoh. Dari env TM_SECRET kalau ada; kalau tidak, diturunkan dari kunci Groq pertama
+// (tetap rahasia di server). Mengganti kunci Groq hanya membuat token lama tidak berlaku — tidak masalah (umur token 24 jam).
+function tmSecret(keys) {
+  const base = process.env.TM_SECRET || (keys && keys[0]) || '';
+  return base ? createHash('sha256').update('ioe-time-machine|' + base).digest('hex') : '';
+}
+
 // Teks lewat Gemini (generateContent). Kunci dicoba satu per satu (urutan acak) kalau kena 429/401/403.
 // CATATAN: batas Gemini berlaku per PROJECT Google, bukan per kunci — kunci dari project yang sama berbagi jatah.
 // Hasil kosong (mis. diblokir filter keamanan) dianggap gagal supaya pemanggil jatuh ke Groq.
-async function generateTextGemini(system, msgs, charName) {
+async function generateTextGemini(system, msgs, charName, opts = {}) {
   const keys = getGeminiKeys().sort(() => Math.random() - 0.5);
   if (keys.length === 0) return { ok: false, reason: 'not_configured' };
   const model = process.env.TM_GEMINI_MODEL || TM_GEMINI_MODEL_DEFAULT;
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: system }] },
     contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-    generationConfig: { maxOutputTokens: TM_GEMINI_MAX_OUTPUT, temperature: 0.7 },
+    generationConfig: {
+      maxOutputTokens: opts.maxTokens || TM_GEMINI_MAX_OUTPUT,
+      temperature: opts.temperature ?? 0.7,
+      ...(opts.json ? { responseMimeType: 'application/json' } : {}),
+    },
   });
   for (const key of keys) {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), TM_GEMINI_TIMEOUT_MS);
+    const timer = setTimeout(() => ctl.abort(), opts.timeoutMs || TM_GEMINI_TIMEOUT_MS);
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, body, signal: ctl.signal,
@@ -1021,7 +1040,7 @@ async function generateTextGemini(system, msgs, charName) {
       const data = await r.json();
       // Ambil hanya teks jawaban (bagian "thought" = ringkasan pikiran model, tidak ditampilkan)
       const parts = data?.candidates?.[0]?.content?.parts || [];
-      const text = cleanTmReply(parts.filter(p => p && typeof p.text === 'string' && !p.thought).map(p => p.text).join(''), charName);
+      const text = cleanTmReply(parts.filter(p => p && typeof p.text === 'string' && !p.thought).map(p => p.text).join(''), charName, opts.maxChars || 900);
       if (!text) {
         console.error('[ai] Gemini teks kosong. finishReason:', data?.candidates?.[0]?.finishReason, '| blockReason:', data?.promptFeedback?.blockReason);
         return { ok: false, reason: 'empty' };
@@ -1037,9 +1056,11 @@ async function generateTextGemini(system, msgs, charName) {
   return { ok: false, reason: 'all_keys_rejected' };
 }
 
-async function callTimeMachineLLM(groqKeys, system, msgs, charName) {
+// Rantai mesin: (TM_LLM_URL, hanya untuk chat) -> Gemini (kalau TM_ENGINE=gemini) -> Groq (selalu ada).
+// opts: { maxTokens, effort, temperature, maxChars, json, useCustom, timeoutMs }
+async function callTimeMachineLLM(groqKeys, system, msgs, charName, opts = {}) {
   const customUrl = String(process.env.TM_LLM_URL || '').replace(/\/+$/, '');
-  if (customUrl) {
+  if (customUrl && opts.useCustom !== false) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), TM_LLM_TIMEOUT_MS);
     try {
@@ -1050,31 +1071,31 @@ async function callTimeMachineLLM(groqKeys, system, msgs, charName) {
         body: JSON.stringify({
           model: process.env.TM_LLM_MODEL || 'llama3.2:3b',
           messages: [{ role: 'system', content: system }, ...msgs],
-          max_tokens: TM_MAX_TOKENS, temperature: 0.7, stream: false,
+          max_tokens: opts.maxTokens || TM_MAX_TOKENS, temperature: opts.temperature ?? 0.7, stream: false,
         }),
       });
       if (r.ok) {
         const d = await r.json();
-        const text = cleanTmReply(d?.choices?.[0]?.message?.content, charName);
+        const text = cleanTmReply(d?.choices?.[0]?.message?.content, charName, opts.maxChars || 900);
         if (text) return { ok: true, text, engine: 'custom' };
-        console.error('[ai] TM_LLM membalas kosong, pakai Groq');
+        console.error('[ai] TM_LLM membalas kosong, pakai mesin berikutnya');
       } else {
-        console.error('[ai] TM_LLM status', r.status, 'pakai Groq');
+        console.error('[ai] TM_LLM status', r.status, 'pakai mesin berikutnya');
       }
     } catch (e) {
-      console.error('[ai] TM_LLM gagal/lambat, pakai Groq:', e.name === 'AbortError' ? 'timeout' : e.message);
+      console.error('[ai] TM_LLM gagal/lambat, pakai mesin berikutnya:', e.name === 'AbortError' ? 'timeout' : e.message);
     } finally {
       clearTimeout(timer);
     }
   }
   if (String(process.env.TM_ENGINE || '').toLowerCase() === 'gemini') {
-    const g = await generateTextGemini(system, msgs, charName);
+    const g = await generateTextGemini(system, msgs, charName, opts);
     if (g.ok) return { ok: true, text: g.text, engine: 'gemini' };
     console.error('[ai] Gemini tidak dipakai (' + g.reason + '), pakai Groq');
   }
   try {
     const response = await callGroqRotating(groqKeys, {
-      model: MODEL, max_tokens: 700, temperature: 0.7, reasoning_effort: 'low',
+      model: MODEL, max_tokens: opts.maxTokens || 700, temperature: opts.temperature ?? 0.7, reasoning_effort: opts.effort || 'low',
       messages: [{ role: 'system', content: system }, ...msgs],
     });
     if (!response || !response.ok) {
@@ -1083,7 +1104,7 @@ async function callTimeMachineLLM(groqKeys, system, msgs, charName) {
       return { ok: false, status: response ? response.status : 502 };
     }
     const data = await response.json();
-    const text = cleanTmReply(data?.choices?.[0]?.message?.content, charName);
+    const text = cleanTmReply(data?.choices?.[0]?.message?.content, charName, opts.maxChars || 900);
     return text ? { ok: true, text, engine: 'groq' } : { ok: false, status: 502 };
   } catch (e) {
     console.error('[ai] Time machine error:', e.message);
@@ -1091,42 +1112,101 @@ async function callTimeMachineLLM(groqKeys, system, msgs, charName) {
   }
 }
 
-async function handleTimeMachineMode({ body, availableKeys, DB_URL, deviceId }, res) {
-  const era = getEra(body.eraId);
-  const ch = getCharacter(era, body.characterId);
-  if (!ch) return res.status(400).json({ error: 'Era atau karakter tidak dikenal' });
+// Baca kuota harian (fail-open: kalau database gagal, tetap jalan — Groq/Gemini punya batas sendiri).
+async function tmCheckQuota(DB_URL, deviceId, node, regular, premium) {
+  const day = todayKey();
+  if (!DB_URL) return { ok: true, used: 0, limit: regular, isPremium: false, day };
+  try {
+    const q = await readDailyQuota(DB_URL, deviceId, node, day, regular, premium);
+    return { ok: q.used < q.limit, used: q.used, limit: q.limit, isPremium: q.isPremium, day };
+  } catch (e) {
+    console.error('[ai] Gagal membaca kuota ' + node + ' (lanjut):', e.message);
+    return { ok: true, used: 0, limit: regular, isPremium: false, day };
+  }
+}
+async function tmWriteUsage(DB_URL, deviceId, node, day, n) {
+  if (!DB_URL) return;
+  try { await writeDailyUsage(DB_URL, node, deviceId, day, n); }
+  catch (e) { console.error('[ai] Gagal mencatat pemakaian ' + node + ':', e.message); }
+}
+
+// Jurnal sejarah: dirujuk ke hasil pencarian web (Tavily) kalau tersedia; kalau tidak, ditandai "tanpa sumber".
+async function tmJournal(parsed, keys) {
+  let sr = { text: '', sources: [] };
+  if (process.env.TAVILY_API_KEY) {
+    try { sr = await tavilySearch(journalSearchQuery(parsed)); } catch (e) { console.error('[ai] Pencarian jurnal gagal:', e.message); }
+  }
+  const hasSources = Array.isArray(sr.sources) && sr.sources.length > 0;
+  const p = buildJournalPrompts(parsed, hasSources ? sr.text : '');
+  const out = await callTimeMachineLLM(keys, p.system, [{ role: 'user', content: p.user }], '',
+    { maxTokens: 2600, effort: 'low', temperature: 0.6, maxChars: 9000, useCustom: false, timeoutMs: 30000 });
+  if (!out.ok) return { ok: false };
+  const j = parseJournal(out.text, parsed);
+  let sources = [];
+  if (hasSources) {
+    const cited = extractCitedNumbers(j.body);
+    sources = sr.sources.map((s, i) => ({ n: i + 1, title: String(s.title || s.url).slice(0, 140), url: s.url })).filter(s => cited.has(s.n));
+  }
+  return { ok: true, journal: { title: j.title, body: j.body, sources, grounded: sources.length > 0 } };
+}
+
+// Daftar tokoh: dibuat AI lalu DIPERIKSA (tahun hidup masuk akal). Tiap tokoh diberi token bertanda tangan.
+async function tmFigures(parsed, keys, secret) {
+  const count = figureCountFor(parsed.year);
+  if (count === 0) {
+    return { ok: true, figures: [], note: 'Pada masa sejauh ini belum ada catatan tertulis tentang tokoh tertentu. Baca jurnalnya, atau pilih tahun yang lebih baru.' };
+  }
+  const p = buildFiguresPrompts(parsed, count);
+  const out = await callTimeMachineLLM(keys, p.system, [{ role: 'user', content: p.user }], '',
+    { maxTokens: 1800, effort: 'low', temperature: 0.3, maxChars: 20000, json: true, useCustom: false, timeoutMs: 30000 });
+  if (!out.ok) return { ok: false };
+  const figures = validateFigures(parseFiguresJson(out.text), parsed.year, count)
+    .map(f => ({ name: f.name, role: f.role, years: f.years, description: f.description, emoji: f.emoji, controversial: f.controversial, token: signFigure(f, parsed.year, secret) }));
+  return { ok: true, figures, note: figures.length ? '' : 'Tidak ada tokoh yang lolos pemeriksaan untuk tahun ini. Coba tahun lain di sekitarnya.' };
+}
+
+async function handleTmTravel({ body, availableKeys, DB_URL, deviceId }, res) {
+  const parsed = parseTravelInput({ year: body.year, month: body.month, day: body.day });
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const q = await tmCheckQuota(DB_URL, deviceId, 'timemachine_travel', TM_TRAVEL_REGULAR, TM_TRAVEL_PREMIUM);
+  if (!q.ok) {
+    return res.status(429).json({ error: 'Jatah perjalanan waktu hari ini sudah habis', quota: { used: q.used, limit: q.limit, isPremium: q.isPremium }, resetInfo: RESET_INFO });
+  }
+  const secret = tmSecret(availableKeys);
+  const [j, f] = await Promise.all([
+    tmJournal(parsed, availableKeys).catch(e => { console.error('[ai] tmJournal error:', e.message); return { ok: false }; }),
+    tmFigures(parsed, availableKeys, secret).catch(e => { console.error('[ai] tmFigures error:', e.message); return { ok: false }; }),
+  ]);
+  if (!j.ok && !f.ok) return res.status(502).json({ error: 'Mesin waktu sedang gangguan. Coba lagi sebentar.' });
+  await tmWriteUsage(DB_URL, deviceId, 'timemachine_travel', q.day, q.used + 1);
+  return res.status(200).json({
+    era: getEraInfo(parsed.year), dateLabel: parsed.dateLabel, year: parsed.year,
+    journal: j.ok ? j.journal : null, journalError: j.ok ? undefined : 'Jurnal gagal dimuat. Coba perjalanan lagi.',
+    figures: f.ok ? f.figures : [], figuresNote: f.ok ? f.note : 'Daftar tokoh gagal dimuat. Coba perjalanan lagi.',
+    quota: { used: q.used + 1, limit: q.limit, isPremium: q.isPremium },
+  });
+}
+
+async function handleTmChat({ body, availableKeys, DB_URL, deviceId }, res) {
+  const fig = verifyFigure(body.figureToken, tmSecret(availableKeys));
+  if (!fig) return res.status(400).json({ error: 'Tokoh tidak valid atau sudah kedaluwarsa. Mulai perjalanan lagi.' });
   const msgs = sanitizeTmMessages(body.messages);
   if (!msgs) return res.status(400).json({ error: 'Pesan tidak valid' });
-
-  let used = 0, limit = TM_QUOTA_REGULAR, isPremium = false;
-  const day = todayKey();
-  if (DB_URL) {
-    try {
-      ({ used, limit, isPremium } = await readDailyQuota(DB_URL, deviceId, 'timemachine_usage', day, TM_QUOTA_REGULAR, TM_QUOTA_PREMIUM));
-      if (used >= limit) {
-        return res.status(429).json({
-          error: 'Kuota Time Machine hari ini sudah habis',
-          quota: { used, limit, isPremium },
-          resetInfo: RESET_INFO,
-        });
-      }
-    } catch (e) {
-      console.error('[ai] Gagal membaca kuota time machine (lanjut):', e.message);
-    }
+  const q = await tmCheckQuota(DB_URL, deviceId, 'timemachine_usage', TM_QUOTA_REGULAR, TM_QUOTA_PREMIUM);
+  if (!q.ok) {
+    return res.status(429).json({ error: 'Kuota chat Time Machine hari ini sudah habis', quota: { used: q.used, limit: q.limit, isPremium: q.isPremium }, resetInfo: RESET_INFO });
   }
-
-  const out = await callTimeMachineLLM(availableKeys, buildSystemPrompt(era, ch), msgs, ch.nama);
+  const out = await callTimeMachineLLM(availableKeys, buildChatSystemPrompt(fig), msgs, fig.name, { effort: 'low' });
   if (!out.ok) {
     const status = out.status === 429 ? 429 : 502;
     return res.status(status).json({ error: status === 429 ? 'Layanan AI sedang sibuk, coba lagi sebentar.' : 'Tokoh sedang tidak bisa menjawab. Coba lagi sebentar.' });
   }
+  await tmWriteUsage(DB_URL, deviceId, 'timemachine_usage', q.day, q.used + 1);
+  return res.status(200).json({ reply: out.text, quota: { used: q.used + 1, limit: q.limit, isPremium: q.isPremium } });
+}
 
-  const newUsed = used + 1;
-  if (DB_URL) {
-    try { await writeDailyUsage(DB_URL, 'timemachine_usage', deviceId, day, newUsed); }
-    catch (e) { console.error('[ai] Gagal mencatat pemakaian time machine:', e.message); }
-  }
-  return res.status(200).json({ reply: out.text, quota: { used: newUsed, limit, isPremium } });
+async function handleTimeMachineMode(ctx, res) {
+  return ctx.body.tmAction === 'travel' ? handleTmTravel(ctx, res) : handleTmChat(ctx, res);
 }
 
 
@@ -1141,12 +1221,6 @@ export default async function handler(req, res) {
 
   // Riwayat chat (Firestore per akun): tidak butuh kunci Groq maupun deviceId, jadi dicek paling awal.
   if (req.body && req.body.action === 'chat-history') return handleChatHistory(req.body, res);
-
-  // Time Machine: daftar era & karakter (data publik, tanpa prompt) — tidak butuh kunci Groq maupun deviceId.
-  if (req.body && req.body.action === 'timemachine-list') {
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    return res.status(200).json({ eras: publicEras() });
-  }
 
   const availableKeys = collectGroqKeys();
   if (availableKeys.length === 0) {
@@ -1163,7 +1237,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'deviceId diperlukan' });
   }
   // messages hanya wajib untuk mode chat biasa. Mode gambar & sandbox punya sumber prompt sendiri.
-  if (!sandboxMode && !render3dMode && imageMode !== true && (!messages || !Array.isArray(messages))) {
+  // Perjalanan Time Machine (tmAction 'travel') hanya mengirim tanggal, jadi juga tidak butuh messages.
+  const isTmTravel = body.timeMachineMode === true && body.tmAction === 'travel';
+  if (!sandboxMode && !render3dMode && imageMode !== true && !isTmTravel && (!messages || !Array.isArray(messages))) {
     return res.status(400).json({ error: 'messages diperlukan' });
   }
 
