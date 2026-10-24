@@ -1,1 +1,53 @@
+# Kompres model 3D (static mesh Tripo) di GitHub Actions, tanpa PC.
+# Taruh .glb atau .zip berisi .glb di folder raw-models/ -> hasil ada di artifact "compressed-glb".
+name: Compress 3D models
 
+on:
+  push:
+    paths:
+      - 'raw-models/**'
+  workflow_dispatch:
+
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Dependensi dipasang di scripts/ (BUKAN package.json akar) supaya Vercel tidak ikut memasangnya.
+      - name: Install dependencies
+        working-directory: scripts
+        run: npm install --no-audit --no-fund
+
+      # .glb langsung disalin; .zip diekstrak ke subfolder bernama sama (nama zip jadi nama output).
+      - name: Collect inputs
+        run: |
+          mkdir -p work/in work/out
+          find raw-models -type f -iname '*.glb' -exec cp {} work/in/ \; 2>/dev/null || true
+          find raw-models -type f -iname '*.zip' 2>/dev/null | while read -r z; do
+            d="work/in/$(basename "${z%.*}")"
+            mkdir -p "$d"
+            unzip -o -q "$z" -d "$d" || echo "Gagal unzip: $z"
+          done
+          find work/in -type f -iname '*.glb' | wc -l
+
+      - name: Compress
+        working-directory: scripts
+        env:
+          TARGET_TRIS: '40000'   # target jumlah segitiga per model
+          MAX_MB: '2'            # batas ukuran output
+          TEX_MAX: '1024'        # sisi terpanjang tekstur (px)
+        run: node compress.js ../work/in ../work/out
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compressed-glb
+          path: work/out/
+          if-no-files-found: warn
