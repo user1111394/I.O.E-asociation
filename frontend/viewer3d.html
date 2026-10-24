@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>I.O.E 3D Viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0b0f14; overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e8eef5; }
+  canvas { position: fixed; inset: 0; display: block; touch-action: none; } /* canvas penuh layar */
+  #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    max-width: 86vw; padding: 14px 18px; border-radius: 12px; text-align: center;
+    background: rgba(20,28,38,.92); border: 1px solid #2a3a4d; font-size: 15px; line-height: 1.45;
+    word-break: break-word; }
+  #status.error { border-color: #c0392b; color: #ffb4a8; }
+  #status small { display: block; margin-top: 8px; opacity: .7; font-size: 12px; }
+  #info { position: fixed; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 10px);
+    font-size: 12px; opacity: .75; max-width: 70vw; word-break: break-all; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; justify-content: center;
+    flex-wrap: wrap; padding: 10px 10px calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  .btn { min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; border-radius: 22px;
+    border: 1px solid #3b5068; background: rgba(20,28,38,.85); color: inherit; font-size: 14px; cursor: pointer; }
+  .btn:active { background: #27384b; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="info"></div>
+<div id="status">Menyiapkan viewer…</div>
+<div id="bar">
+  <button class="btn" id="btnPlay">⏸ Pause</button>
+  <button class="btn" id="btnType">Mode: Mesin</button>
+  <label class="btn">Buka .glb<input id="file" type="file" accept=".glb" hidden></label>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+   KENAPA ANIMASI PROCEDURAL (bukan AnimationMixer)?
+   Semua model dari Tripo AI adalah STATIC MESH: tidak ada skeleton,
+   bone, skin weight, maupun animation clip. AnimationMixer butuh clip,
+   jadi tidak ada yang bisa dimainkan. Maka gerakan dibuat lewat kode:
+   setiap frame kita ubah position/rotation grup pembungkus (pivot).
+   Ini ringan, tanpa rig, dan cukup untuk game idle/isometric.
+   ============================================================ */
+
+// GANTI dengan URL Cloudinary-mu, atau pakai ?url=...&type=machine|animal
+const MODEL_URL = 'https://res.cloudinary.com/mclectmg/raw/upload/v123/mesin_tier1.glb';
+const params = new URLSearchParams(location.search);
+const startUrl = params.get('url') || MODEL_URL;
+let type = params.get('type') === 'animal' ? 'animal' : 'machine';
+let playing = true;
+let modelLoaded = false;
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status'), infoEl = $('info');
+function setStatus(text, isError, hint) {
+  statusEl.className = isError ? 'error' : '';
+  statusEl.textContent = text;
+  if (hint) { const s = document.createElement('small'); s.textContent = hint; statusEl.appendChild(s); }
+  statusEl.style.display = 'block';
+}
+
+/* ---------- Renderer, scene, camera ---------- */
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+} catch (e) {
+  setStatus('WebGL tidak tersedia di browser ini.', true, String(e.message || e));
+  throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // batasi 2x: hemat baterai/GPU HP
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f14);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 100);
+camera.position.set(3.2, 1.8, 4.2);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3, 5, 2); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.7); fill.position.set(-3, 2, -2); scene.add(fill); // isi sisi gelap
+
+const controls = new OrbitControls(camera, renderer.domElement); // sentuh: 1 jari putar, 2 jari zoom/geser
+controls.enableDamping = true;
+controls.minDistance = 1.5; controls.maxDistance = 14;
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ---------- Model: dibungkus pivot supaya animasi tidak bentrok dengan transform asli ---------- */
+const pivot = new THREE.Group(); scene.add(pivot);
+let current = null, modelH = 1;
+
+function disposeModel(root) {
+  root.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) for (const m of [].concat(o.material)) {
+      for (const k in m) if (m[k] && m[k].isTexture) m[k].dispose();
+      m.dispose();
+    }
+  });
+}
+function countTris(root) {
+  let t = 0;
+  root.traverse((o) => { if (o.isMesh) { const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } });
+  return Math.round(t);
+}
+function resetPose() { pivot.position.set(0, 0, 0); pivot.rotation.set(0, 0, 0); pivot.updateMatrixWorld(true); }
+
+// Tripo punya skala acak: samakan jadi ±2 unit, tengah di (0,·,0), alas di y=0.
+function fitModel(root) {
+  resetPose();
+  root.position.set(0, 0, 0); root.scale.setScalar(1);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  root.scale.setScalar(2 / Math.max(size.x, size.y, size.z, 1e-6));
+  pivot.updateMatrixWorld(true);
+  box.setFromObject(root);
+  const c = box.getCenter(new THREE.Vector3());
+  root.position.set(-c.x, -box.min.y, -c.z);
+  modelH = box.getSize(new THREE.Vector3()).y;
+  controls.target.set(0, modelH / 2, 0);
+  camera.position.set(3.2, modelH / 2 + 1.0, 4.2);
+  controls.update();
+}
+
+/* ---------- Asap (THREE.Points) untuk mesin ---------- */
+const SMOKE_N = 60;
+const sPos = new Float32Array(SMOKE_N * 3), sCol = new Float32Array(SMOKE_N * 3);
+const sAge = new Float32Array(SMOKE_N), sLife = new Float32Array(SMOKE_N);
+const sVX = new Float32Array(SMOKE_N), sVZ = new Float32Array(SMOKE_N);
+function spawn(i, randomAge) {
+  sPos[i * 3] = (Math.random() - 0.5) * 0.3;
+  sPos[i * 3 + 1] = modelH + 0.05;
+  sPos[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+  sLife[i] = 2 + Math.random() * 1.5;
+  sAge[i] = randomAge ? Math.random() * sLife[i] : 0;
+  sVX[i] = (Math.random() - 0.5) * 0.12; sVZ[i] = (Math.random() - 0.5) * 0.12;
+}
+function resetSmoke() { for (let i = 0; i < SMOKE_N; i++) spawn(i, true); }
+function makePuffTexture() { // bulatan lembut dibuat di canvas lokal (tanpa file gambar)
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const smokeGeo = new THREE.BufferGeometry();
+smokeGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3).setUsage(THREE.DynamicDrawUsage));
+smokeGeo.setAttribute('color', new THREE.BufferAttribute(sCol, 3).setUsage(THREE.DynamicDrawUsage));
+const smoke = new THREE.Points(smokeGeo, new THREE.PointsMaterial({
+  size: 0.4, map: makePuffTexture(), vertexColors: true, transparent: true,
+  depthWrite: false, blending: THREE.AdditiveBlending, // pudar = warna menuju hitam
+}));
+smoke.frustumCulled = false; // posisi dihitung manual, bounding sphere tidak diperbarui
+scene.add(smoke); // di scene (bukan pivot) supaya asap naik lurus meski mesin berputar
+resetSmoke();
+
+function updateSmoke(dt) {
+  for (let i = 0; i < SMOKE_N; i++) {
+    sAge[i] += dt;
+    if (sAge[i] >= sLife[i]) spawn(i, false);
+    sPos[i * 3] += sVX[i] * dt; sPos[i * 3 + 1] += 0.5 * dt; sPos[i * 3 + 2] += sVZ[i] * dt;
+    const b = Math.sin((sAge[i] / sLife[i]) * Math.PI) * 0.45; // muncul → pudar
+    sCol[i * 3] = sCol[i * 3 + 1] = sCol[i * 3 + 2] = b;
+  }
+  smokeGeo.attributes.position.needsUpdate = true;
+  smokeGeo.attributes.color.needsUpdate = true;
+}
+
+/* ---------- Animasi procedural (dipanggil tiap frame; t = waktu animasi, dt = detik) ---------- */
+function animateMachine(t, dt) {
+  pivot.position.y = Math.sin(t * 2.4) * 0.05; // bobbing ±0.05
+  pivot.rotation.y += dt * 0.35;               // putar pelan
+  pivot.rotation.z = 0;
+  updateSmoke(dt);
+}
+function animateAnimal(t, dt) {
+  pivot.position.y = Math.sin(t * 3) * 0.05;   // bobbing
+  pivot.rotation.z = Math.sin(t * 1.5) * 0.05; // denyut miring ±~3°
+}
+
+/* ---------- Loader (Draco WAJIB: hasil kompresi T1 memakai Draco) ---------- */
+const draco = new DRACOLoader();
+draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/'); // versi sama dengan three
+const loader = new GLTFLoader();
+loader.setDRACOLoader(draco); // tekstur WebP otomatis didukung GLTFLoader (EXT_texture_webp)
+
+function describeError(err) {
+  const m = String((err && err.message) || err);
+  if (/404/.test(m)) return ['File tidak ditemukan (404).', 'Cek URL dan nomor versi (v123) di Cloudinary, atau pakai ?url=... / tombol Buka .glb'];
+  if (/draco/i.test(m)) return ['Decoder Draco gagal dimuat dari CDN.', 'Cek koneksi internet lalu muat ulang.'];
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m))
+    return ['Gagal mengunduh model.', 'Kemungkinan: CORS diblokir server, URL salah, atau koneksi putus. Tes dengan tombol Buka .glb untuk memastikan file-nya sendiri sehat.'];
+  return ['Model gagal dibaca.', m];
+}
+
+function loadModel(url, label, cleanup) {
+  setStatus('Memuat ' + label + '…');
+  loader.load(url, (gltf) => {
+    if (current) { pivot.remove(current); disposeModel(current); }
+    current = gltf.scene; // gltf.animations sengaja diabaikan (static mesh)
+    pivot.add(current);
+    fitModel(current);
+    resetSmoke();
+    modelLoaded = true;
+    infoEl.textContent = label + ' · ' + (countTris(current) / 1000).toFixed(1) + 'k segitiga';
+    statusEl.style.display = 'none';
+    if (cleanup) cleanup();
+  }, (e) => {
+    setStatus(e.lengthComputable ? 'Memuat… ' + Math.round(e.loaded / e.total * 100) + '%'
+                                 : 'Memuat… ' + (e.loaded / 1048576).toFixed(1) + ' MB');
+  }, (err) => {
+    console.error(err);
+    const [msg, hint] = describeError(err);
+    setStatus(msg, true, hint);
+    if (cleanup) cleanup();
+  });
+}
+
+/* ---------- UI ---------- */
+function applyType() {
+  $('btnType').textContent = 'Mode: ' + (type === 'machine' ? 'Mesin' : 'Hewan');
+  smoke.visible = type === 'machine';
+  pivot.position.y = 0; pivot.rotation.z = 0;
+}
+$('btnPlay').onclick = () => { playing = !playing; $('btnPlay').textContent = playing ? '⏸ Pause' : '▶ Play'; };
+$('btnType').onclick = () => { type = type === 'machine' ? 'animal' : 'machine'; applyType(); };
+$('file').onchange = (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const u = URL.createObjectURL(f);
+  loadModel(u, f.name, () => URL.revokeObjectURL(u));
+  e.target.value = '';
+};
+
+/* ---------- Render loop: berhenti total saat tab disembunyikan ---------- */
+let animT = 0, last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now; // batasi lonjakan setelah jeda
+  if (playing && modelLoaded) { animT += dt; (type === 'machine' ? animateMachine : animateAnimal)(animT, dt); }
+  controls.update();
+  renderer.render(scene, camera);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) renderer.setAnimationLoop(null);
+  else { last = performance.now(); renderer.setAnimationLoop(frame); }
+});
+
+applyType();
+renderer.setAnimationLoop(frame);
+loadModel(startUrl, startUrl.split('/').pop().split('?')[0] || 'model');
+</script>
+</body>
+</html>
