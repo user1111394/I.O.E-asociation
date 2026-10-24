@@ -6,6 +6,8 @@
 <title>Ore Tycoon — I.O.E Hub</title>
 <script src="js/ioe-auth.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
@@ -243,6 +245,107 @@
     return group;
   }
 
+  // ══════════════════════════════════════
+  // MODEL 3D MESIN (.glb dari Cloudinary) — otomatis kembali ke Box kalau gagal.
+  // Model Tripo = static mesh (tanpa rig/animasi), jadi gerakannya procedural
+  // (lihat animateMachines): bobbing + putar pelan, tanpa AnimationMixer.
+  // ══════════════════════════════════════
+  // Isi dengan URL Cloudinary (raw/upload) hasil kompresi. Tier tanpa URL tetap pakai Box.
+  const MACHINE_MODELS = {
+    1: 'GANTI_URL_CLOUDINARY_ROTTEN_DIGGER',
+    2: 'GANTI_URL_CLOUDINARY_WOODEN_MINER',
+  };
+  const MACHINE_MODEL_SIZE = 2.0;                 // sisi terpanjang model (sebelum scale 0.65 di rebuildWorldMachines)
+  const MACHINE_ANIM = { bob: 0.03, spin: 0.3 };  // bobbing (unit) dan putar (rad/detik); spin 0 = tidak berputar
+
+  const glbCache = new Map(); // url -> Promise<template>; satu unduhan dipakai semua mesin sejenis
+  let glbLoader = null;
+  function getGlbLoader() {
+    if (glbLoader) return glbLoader;
+    if (typeof THREE.GLTFLoader !== 'function' || typeof THREE.DRACOLoader !== 'function') return null;
+    const draco = new THREE.DRACOLoader();
+    draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/gltf/');
+    glbLoader = new THREE.GLTFLoader();
+    glbLoader.setDRACOLoader(draco);
+    return glbLoader;
+  }
+
+  // Samakan ukuran/posisi model dengan Box lama: tengah di x/z, alas di y = -0.5
+  // (Box lama tinggi 1 berpusat di 0), sisi terpanjang = MACHINE_MODEL_SIZE.
+  function normalizeMachineModel(root) {
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of [].concat(o.material)) {
+        // Renderer game memakai output linear (tanpa sRGB); tanpa ini warna tekstur tampak gelap.
+        if (m.map) { m.map.encoding = THREE.LinearEncoding; m.map.needsUpdate = true; }
+        if (m.emissiveMap) { m.emissiveMap.encoding = THREE.LinearEncoding; m.emissiveMap.needsUpdate = true; }
+        // Scene ini tanpa environment map: material sangat metalik akan tampak hitam.
+        if (typeof m.metalness === 'number') m.metalness = Math.min(m.metalness, 0.3);
+        m.needsUpdate = true;
+      }
+    });
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3());
+    root.scale.setScalar(MACHINE_MODEL_SIZE / Math.max(size.x, size.y, size.z, 1e-6));
+    box.setFromObject(root); // ukur ulang setelah scale
+    const c = box.getCenter(new THREE.Vector3());
+    root.position.set(-c.x, -box.min.y - 0.5, -c.z);
+    const template = new THREE.Group();
+    template.add(root);
+    return template;
+  }
+
+  function loadMachineTemplate(url) {
+    if (glbCache.has(url)) return glbCache.get(url);
+    const p = new Promise((resolve, reject) => {
+      const loader = getGlbLoader();
+      if (!loader) return reject(new Error('GLTFLoader/DRACOLoader tidak tersedia'));
+      loader.load(url, (gltf) => {
+        try { resolve(normalizeMachineModel(gltf.scene)); } catch (e) { reject(e); }
+      }, undefined, reject);
+    });
+    glbCache.set(url, p);
+    p.catch((err) => {
+      console.warn('[tycoon] GLB gagal dimuat, pakai Box:', url, err && err.message);
+      setTimeout(() => glbCache.delete(url), 30000); // coba lagi nanti kalau dunia dibangun ulang
+    });
+    return p;
+  }
+
+  // Pengganti buildMachineMesh() di rebuildWorldMachines(): holder diposisikan oleh pemanggil
+  // (tidak diubah); isi 'inner' yang dianimasikan. Box tampil dulu sebagai placeholder,
+  // lalu diganti model GLB kalau berhasil. Kalau gagal (404/CORS/loader tak ada), Box tetap.
+  function createMachine(tier, color, unlocked) {
+    const holder = new THREE.Group();
+    const inner = new THREE.Group();
+    const placeholder = buildMachineMesh(tier, color, unlocked);
+    inner.add(placeholder);
+    holder.add(inner);
+    holder.userData.inner = inner;
+    holder.userData.phase = tier * 1.7;
+    const url = MACHINE_MODELS[tier];
+    if (!url || /^GANTI_/.test(url)) return holder;
+    loadMachineTemplate(url).then((tpl) => {
+      inner.remove(placeholder);
+      inner.add(tpl.clone(true));
+    }).catch(() => { /* fallback: Box tetap */ });
+    return holder;
+  }
+
+  // Dipanggil tiap frame dari loop(): berbasis waktu absolut (tanpa state), berlaku untuk GLB maupun Box.
+  function animateMachines() {
+    if (!worldGroup) return;
+    const t = performance.now() / 1000;
+    for (const holder of worldGroup.children) {
+      const inner = holder.userData && holder.userData.inner;
+      if (!inner) continue;
+      const ph = holder.userData.phase || 0;
+      inner.position.y = Math.sin(t * 2.2 + ph) * MACHINE_ANIM.bob;
+      inner.rotation.y = t * MACHINE_ANIM.spin + ph;
+    }
+  }
+  // ── END MODEL 3D MESIN ──
+
   function initWorldView() {
     const canvas = document.getElementById('worldCanvas');
     const width = window.innerWidth, height = window.innerHeight;
@@ -364,6 +467,7 @@
     function loop() {
       if (disposed) return; // stop loop begitu context dilepas (lihat disposeWorldView)
       requestAnimationFrame(loop);
+      animateMachines();
       worldRenderer.render(worldScene, worldCamera);
     }
     loop();
@@ -585,7 +689,7 @@
       const info = machineTiers[tier];
       const oreColor = ORE_COLORS[info.oreType] || '#888888';
 
-      const mesh = buildMachineMesh(tier, oreColor, true);
+      const mesh = createMachine(tier, oreColor, true);
       mesh.scale.setScalar(0.65);
 
       const pos = organicPositionForTier(tier, idx);
