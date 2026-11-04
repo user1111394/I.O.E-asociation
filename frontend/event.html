@@ -283,22 +283,83 @@
   }
   @keyframes mg-pop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   @keyframes mg-hit { to { transform: scale(1.6); opacity: 0; } }
+  .mg-result { z-index: 10; }
   .mg-result.msg { font-size: 1rem; line-height: 1.4; }
   /* water-tree */
-  .wt-scene { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 16px; }
-  .wt-tree { font-size: 6.5rem; line-height: 1; margin-bottom: 14px; }
+  .wt-scene {
+    position: absolute; inset: 0; z-index: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 16px;
+    background: linear-gradient(#1c3557, #2f5d8c 65%, #3f77a8); /* langit malam: salju putih tetap terlihat */
+  }
+  .wt-tree { position: relative; z-index: 1; font-size: 6.5rem; line-height: 1; margin-bottom: 14px; }
   .wt-tree.grow { animation: wt-grow 0.8s ease-out; }
-  .wt-can { position: absolute; top: 8%; left: 56%; font-size: 3.2rem; line-height: 1; transform-origin: 80% 20%; }
+  .wt-can { z-index: 2; position: absolute; top: 8%; left: 56%; font-size: 3.2rem; line-height: 1; transform-origin: 80% 20%; }
   .wt-scene.pouring .wt-can { animation: wt-tilt 1.5s ease-in-out; }
-  .wt-drops span { position: absolute; top: 26%; font-size: 1.5rem; opacity: 0; }
+  .wt-drops span { z-index: 2; position: absolute; top: 26%; font-size: 1.5rem; opacity: 0; }
   .wt-drops span:nth-child(1) { left: 50%; } .wt-drops span:nth-child(2) { left: 53%; animation-delay: 0.15s; } .wt-drops span:nth-child(3) { left: 47%; animation-delay: 0.3s; }
   .wt-scene.pouring .wt-drops span { animation: wt-drop 0.5s ease-in infinite; }
   .wt-scene.pouring .wt-drops span:nth-child(2) { animation-delay: 0.15s; } .wt-scene.pouring .wt-drops span:nth-child(3) { animation-delay: 0.3s; }
-  .wt-btn { padding: 12px 28px; border-radius: 999px; border: 2px solid #1d4ed8; background: linear-gradient(#60a5fa,#2563eb); color: #fff; font-weight: 800; font-size: 1rem; box-shadow: 0 3px 0 #1e3a8a; cursor: pointer; }
+  .wt-btn { position: relative; z-index: 2; padding: 12px 28px; border-radius: 999px; border: 2px solid #1d4ed8; background: linear-gradient(#60a5fa,#2563eb); color: #fff; font-weight: 800; font-size: 1rem; box-shadow: 0 3px 0 #1e3a8a; cursor: pointer; }
   .wt-btn:disabled { opacity: 0.6; cursor: default; }
   @keyframes wt-tilt { 0% { transform: rotate(0); } 20%, 80% { transform: rotate(-35deg); } 100% { transform: rotate(0); } }
   @keyframes wt-drop { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(105px); opacity: 0; } }
   @keyframes wt-grow { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+  /* ══ Salju (murni CSS, ringan: hanya transform + opacity) ══ */
+  .snow-layer { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
+  .snowflake {
+    position: absolute; top: 0; line-height: 1; opacity: 0;
+    will-change: transform;
+    animation: snow-fall 7s linear infinite;  /* durasi/delay/ukuran/--sway diacak lewat style inline */
+  }
+  @keyframes snow-fall {
+    0%   { transform: translate3d(0, -14px, 0); opacity: 0; }
+    8%   { opacity: 0.95; }
+    25%  { transform: translate3d(var(--sway, 14px), 105px, 0); }
+    50%  { transform: translate3d(calc(var(--sway, 14px) * -1), 220px, 0); }
+    75%  { transform: translate3d(var(--sway, 14px), 330px, 0); }
+    100% { transform: translate3d(0, 440px, 0); opacity: 0; }
+  }
+  /* Tumpukan salju di dasar: gradasi putih -> transparan, bentuk tidak simetris (radius oval + 2 gundukan) */
+  .snow-pile {
+    position: absolute; left: -4%; right: -4%; bottom: 0; height: 96px; z-index: 0;
+    background: linear-gradient(to top, #ffffff 0%, #eef4ff 60%, rgba(255,255,255,0) 100%);
+    border-radius: 55% 45% 0 0 / 100% 90% 0 0;
+    pointer-events: none;
+  }
+  .snow-pile::before, .snow-pile::after {
+    content: ''; position: absolute; bottom: 0;
+    background: linear-gradient(to top, #ffffff, rgba(255,255,255,0));
+    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  }
+  .snow-pile::before { left: 8%;  width: 34%; height: 78%; }
+  .snow-pile::after  { right: 5%; width: 40%; height: 88%; }
+  @media (prefers-reduced-motion: reduce) { .snowflake { display: none; } }
+
+  /* ══ Panel Pohon Natal ══ */
+  .xmas-fab {
+    position: absolute; right: 12px; top: 64px; z-index: 20;
+    padding: 9px 14px; border-radius: 999px; border: 2px solid #b8860b;
+    background: linear-gradient(#ffe27a, #f5b82e); color: #5a3d00;
+    font-weight: 800; font-size: 0.8rem; cursor: pointer;
+    box-shadow: 0 3px 0 #8a6100, 0 6px 12px rgba(0,0,0,0.35);
+  }
+  body.has-tabs .xmas-fab { top: 106px; }
+  .xmas-card { text-align: center; }
+  .xmas-tree { font-size: 5.5rem; line-height: 1.1; margin: 8px 0 2px; }
+  .xmas-tree.grow { animation: wt-grow 0.8s ease-out; }
+  .xmas-orn { min-height: 22px; font-size: 0.9rem; letter-spacing: 2px; }
+  .xmas-stats { font-weight: 800; color: #3b2a14; font-size: 0.9rem; margin-top: 4px; }
+  .xmas-gift { font-weight: 700; color: #8a6100; font-size: 0.82rem; min-height: 20px; margin-top: 6px; }
+  .xmas-msg { font-size: 0.78rem; font-weight: 700; min-height: 36px; margin-top: 6px; color: #5a4a32; }
+  .xmas-msg.err { color: #c0392b; }
+  .xmas-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .xmas-btn {
+    padding: 12px; border: 0; border-radius: 10px; font-weight: 800; font-size: 0.9rem; color: #fff; cursor: pointer;
+    background: linear-gradient(#3f8f63, #2f6f4e); box-shadow: 0 2px 0 #1f4a34;
+  }
+  .xmas-btn.alt { background: linear-gradient(#c0392b, #a02a1f); box-shadow: 0 2px 0 #6e1b13; }
+  .xmas-btn:disabled { opacity: 0.5; box-shadow: none; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -896,10 +957,21 @@
   // Di mode preview server TIDAK dipanggil (hanya demo animasi).
   function startWaterTree(api) {
     const stageOf = (g) => (g >= 7 ? '🎄' : g >= 3 ? '🌲' : '🌱');
+    // Salju: 14 serpihan, posisi/kecepatan/ukuran acak. Delay NEGATIF = sudah jatuh sejak modal dibuka.
+    const flakes = Array.from({ length: 14 }, () => {
+      const left = (3 + Math.random() * 94).toFixed(1);
+      const dur = (5 + Math.random() * 4).toFixed(1);
+      const delay = (-Math.random() * 9).toFixed(1);
+      const size = Math.round(9 + Math.random() * 9);
+      const sway = Math.round(8 + Math.random() * 14);
+      return `<span class="snowflake" style="left:${left}%; animation-duration:${dur}s; animation-delay:${delay}s; font-size:${size}px; --sway:${sway}px;">❄️</span>`;
+    }).join('');
     api.area.innerHTML = `
       <div class="wt-scene">
+        <div class="snow-layer">${flakes}</div>
         <div class="wt-can">🚿</div>
         <div class="wt-drops"><span>💧</span><span>💧</span><span>💧</span></div>
+        <div class="snow-pile"></div>
         <div class="wt-tree">🌱</div>
         <button type="button" class="wt-btn">💧 Siram</button>
       </div>`;
@@ -959,6 +1031,116 @@
     return () => { ended = true; timers.forEach(clearTimeout); };
   }
 
+  // ── Panel Pohon Natal: lihat pohon, craft bola (50 koin event), pasang bola, hitung mundur kado ──
+  // Tombol muncul hanya di event yang punya quest minigame 'water-tree'.
+  function eventHasXmas(ev) {
+    return !!ev.quests && Object.values(ev.quests).some(q => getQuestMinigame(ev, q) === 'water-tree');
+  }
+
+  async function xmasApi(action, extra) {
+    const m = getCurrentMember();
+    if (!m) return { ok: false, data: { error: 'Silakan login dulu.' } };
+    try {
+      const res = await fetch('/api/tycoon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, memberId: m.memberId, sessionToken: m.sessionToken, ...extra }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch (e) { /* bukan JSON */ }
+      return { ok: res.ok, data };
+    } catch (e) {
+      return { ok: false, data: { error: 'Gagal terhubung ke server. Periksa koneksi lalu coba lagi.' } };
+    }
+  }
+
+  function openXmasPanel(eventId) {
+    const overlay = document.createElement('div');
+    overlay.className = 'mg-overlay';
+    overlay.innerHTML = `
+      <div class="mg-card xmas-card" role="dialog" aria-modal="true">
+        <div class="mg-head">
+          <div class="mg-title">🎄 Pohon Natal</div>
+          <button type="button" class="mg-close" aria-label="Tutup">✕</button>
+        </div>
+        <div class="xmas-tree">🌱</div>
+        <div class="xmas-orn"></div>
+        <div class="xmas-stats">Memuat...</div>
+        <div class="xmas-gift"></div>
+        <div class="xmas-msg"></div>
+        <div class="xmas-actions">
+          <button type="button" class="xmas-btn" data-act="craft" disabled>🛠️ Craft Bola (50 🪙)</button>
+          <button type="button" class="xmas-btn alt" data-act="install" disabled>🎄 Pasang Bola</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const q = (s) => overlay.querySelector(s);
+    const treeEl = q('.xmas-tree'), ornEl = q('.xmas-orn'), statsEl = q('.xmas-stats');
+    const giftEl = q('.xmas-gift'), msgEl = q('.xmas-msg');
+    const craftBtn = q('[data-act="craft"]'), installBtn = q('[data-act="install"]');
+    let st = null, busy = false, alive = true, offset = 0;
+
+    const stageOf = (g) => (g >= 7 ? '🎄' : g >= 3 ? '🌲' : '🌱');
+    const say = (t, err) => { msgEl.textContent = t || ''; msgEl.className = 'xmas-msg' + (err ? ' err' : ''); };
+
+    function renderGift() {
+      if (!st || !st.giftsReadyAt) { giftEl.textContent = ''; return; }
+      const left = st.giftsReadyAt - (Date.now() + offset);
+      if (left <= 0) { giftEl.textContent = '🎁 Kado sudah siap!'; return; }
+      const min = Math.ceil(left / 60000);
+      giftEl.textContent = `🎁 Kado siap dalam: ${Math.floor(min / 60)} jam ${min % 60} menit`;
+    }
+    function render() {
+      if (!st) return;
+      treeEl.textContent = stageOf(st.growth || 0);
+      ornEl.textContent = '🔴'.repeat(Math.min(st.ornamentsInstalled || 0, 12));
+      statsEl.textContent = `Bola dibuat: ${st.ornamentsCrafted || 0} | Bola terpasang: ${st.ornamentsInstalled || 0}`;
+      craftBtn.textContent = `🛠️ Craft Bola (${st.craftCost || 50} 🪙)`;
+      craftBtn.disabled = busy || IS_PREVIEW;
+      installBtn.disabled = busy || IS_PREVIEW || !(st.ornamentsCrafted > 0);
+      renderGift();
+    }
+
+    async function act(action, extra, onOk) {
+      if (busy) return;
+      busy = true; render(); say('⏳ Memproses...');
+      const { ok, data } = await xmasApi(action, extra);
+      busy = false;
+      if (!alive) return;
+      if (!ok) { say(data.error || 'Gagal. Coba lagi nanti.', true); render(); return; }
+      for (const k of ['ornamentsCrafted', 'ornamentsInstalled', 'giftsReadyAt']) if (k in data) st[k] = data[k];
+      onOk(data);
+      render();
+    }
+    craftBtn.addEventListener('click', () => act('craft-ornament', { eventId }, (d) => say(`✅ Bola dibuat! Sisa koin: ${d.coinsLeft} 🪙`)));
+    installBtn.addEventListener('click', () => {
+      const n = st.ornamentsCrafted;
+      act('install-ornament', { eventId }, () => {
+        say(`🎉 ${n} bola terpasang!`);
+        treeEl.classList.remove('grow'); void treeEl.offsetWidth; treeEl.classList.add('grow');
+      });
+    });
+
+    const tick = setInterval(renderGift, 30000); // hitung mundur kado
+    const close = () => { alive = false; clearInterval(tick); overlay.remove(); };
+    q('.mg-close').addEventListener('click', close);
+
+    (async () => {
+      if (IS_PREVIEW) { // preview: data contoh, server tidak dipanggil
+        st = { growth: 3, ornamentsCrafted: 1, ornamentsInstalled: 2, giftsReadyAt: Date.now() + 5.5 * 3600 * 1000, craftCost: 50 };
+        say('👀 Preview: server tidak dipanggil');
+        return render();
+      }
+      const { ok, data } = await xmasApi('get-xmas-tree-state');
+      if (!alive) return;
+      if (!ok) { statsEl.textContent = 'Gagal memuat pohon'; say(data.error || 'Coba lagi nanti.', true); return; }
+      st = data;
+      if (data.serverNow) offset = data.serverNow - Date.now();
+      render();
+    })();
+  }
+  window.openXmasPanel = openXmasPanel;
+
   // Minigame per quest: quest.minigameType. Kompatibel dengan event lama (Fase 1-2) yang
   // memakai ev.minigameType + ev.targetQuestsForMinigame. Return '' kalau tanpa minigame.
   function getQuestMinigame(ev, quest) {
@@ -1015,6 +1197,7 @@
           <img class="quest-frame-border" src="${ev.borderShapeUrl}" alt="" onload="applyBorderAspectRatio('${ev.id}', this)" onerror="this.onerror=null;">
         </div>
         ${mascot}
+        ${eventHasXmas(ev) ? `<button type="button" class="xmas-fab" onclick="openXmasPanel('${ev.id}')">🎄 Pohon Natal</button>` : ''}
       </div>`;
   }
 
