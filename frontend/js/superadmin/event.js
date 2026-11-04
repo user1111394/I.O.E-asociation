@@ -7,6 +7,8 @@
 
 // ── Quest builder: state sementara untuk quest yang lagi dibangun di form ──
 let saQuestDraft = [];
+// Pilihan minigame di panel global (dipakai saat quest dicentang). Data tetap disimpan per quest (quest.minigameType).
+let saMinigameChoice = 'none';
 
 // Definisi 6 tipe quest yang tersedia di form. `fields` menentukan input
 // tambahan apa yang perlu tampil untuk tipe tersebut (di luar judul & reward
@@ -42,6 +44,7 @@ function saRemoveQuestRow(id) {
 function saUpdateQuestField(id, field, value) {
   const q = saQuestDraft.find(q => q.id === id);
   if (q) q[field] = value;
+  if (field === 'title') saRenderMinigamePanel(); // label centang di panel minigame ikut judul quest
 }
 
 // Ganti tipe quest DAN render ulang baris itu — supaya field dinamis
@@ -78,6 +81,7 @@ function saRenderQuestExtraFields(q) {
 function saRenderQuestList() {
   const listEl = document.getElementById('sa-quest-list');
   if (!listEl) return;
+  saRenderMinigamePanel(); // daftar centang minigame mengikuti daftar quest
 
   if (saQuestDraft.length === 0) {
     listEl.innerHTML = '<p style="color:#718096; font-size:11px; text-align:center; padding:10px;">Belum ada quest. Klik "+ Tambah Quest" di bawah.</p>';
@@ -98,12 +102,7 @@ function saRenderQuestList() {
       <input type="number" min="1" placeholder="Reward koin" value="${q.rewardCoin}" oninput="saUpdateQuestField('${q.id}','rewardCoin',parseInt(this.value,10)||0)" style="width:100%; padding:8px; margin-bottom:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
       <input type="number" min="1" placeholder="Buka di hari ke- (1 = langsung bisa)" value="${q.unlockDay || 1}" oninput="saUpdateQuestField('${q.id}','unlockDay',parseInt(this.value,10)||1)" style="width:100%; padding:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
       <p style="font-size:10px; color:#718096; margin:4px 0 0 2px;">Quest terkunci sampai hari ke-N sejak event dipublikasikan (hari ke-1 = hari event diterbitkan).</p>
-      <label style="display:block; margin-top:8px; font-size:11px; color:#cbd5e0;">🎮 Minigame sebelum klaim</label>
-      <select onchange="saUpdateQuestField('${q.id}','minigameType',this.value)" style="width:100%; padding:8px; margin-bottom:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-        <option value="none" ${(q.minigameType || 'none') === 'none' ? 'selected' : ''}>Tanpa minigame</option>
-        <option value="tap-target" ${q.minigameType === 'tap-target' ? 'selected' : ''}>Tap Target (ketuk 10 sasaran dalam 10 detik)</option>
-      </select>
-      <label style="display:block; font-size:11px; color:#cbd5e0;">🔁 Tipe reset</label>
+      <label style="display:block; margin-top:8px; font-size:11px; color:#cbd5e0;">🔁 Tipe reset</label>
       <select onchange="saUpdateQuestField('${q.id}','resetType',this.value)" style="width:100%; padding:8px; margin-bottom:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
         <option value="none" ${(q.resetType || 'none') === 'none' ? 'selected' : ''}>Sekali klaim</option>
         <option value="daily" ${q.resetType === 'daily' ? 'selected' : ''}>Harian (bisa diklaim lagi 24 jam setelah klaim)</option>
@@ -282,6 +281,7 @@ async function saCreateEvent() {
     questBgInput.value = '';
     if (mascotInput) mascotInput.value = '';
     const dlgEl = document.getElementById('sa-event-mascot-dialogue'); if (dlgEl) dlgEl.value = '';
+    saMinigameChoice = 'none';
     saQuestDraft = [];
     saRenderQuestList();
     saLoadEventList();
@@ -460,9 +460,10 @@ function saDraftEsc(s) {
 // Menyuntik field maskot/minigame ke form event yang sudah ada (markup form ada di luar event.js),
 // plus wadah daftar draft. Return true kalau form sudah ada & field sudah terpasang.
 function saInjectEventExtraFields() {
-  if (document.getElementById('sa-event-extra')) return true;
   const btn = document.getElementById('sa-event-submit-btn');
-  if (!btn || !btn.parentNode) return false;
+  const questList = document.getElementById('sa-quest-list');
+  if (!btn || !btn.parentNode || !questList || !questList.parentNode) return false;
+  if (document.getElementById('sa-event-extra')) return true;
 
   const inputStyle = 'width:100%; padding:8px; margin-bottom:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;';
   const wrap = document.createElement('div');
@@ -484,7 +485,73 @@ function saInjectEventExtraFields() {
     drafts.style.cssText = 'margin-bottom:10px;';
     listEl.parentNode.insertBefore(drafts, listEl);
   }
+
+  // Panel minigame GLOBAL: di atas daftar quest. Dropdown memilih jenis minigame, centang memilih
+  // quest mana yang memakainya. Data tetap per quest (quest.minigameType) -> struktur Firebase tidak berubah.
+  if (!document.getElementById('sa-minigame-panel')) {
+    const panel = document.createElement('div');
+    panel.id = 'sa-minigame-panel';
+    panel.style.cssText = 'margin:0 0 10px; padding:10px; border:1px dashed rgba(255,209,102,0.45); border-radius:8px; background:rgba(255,209,102,0.05);';
+    panel.innerHTML = `
+      <div style="font-size:12px; font-weight:600; color:#ffd166; margin-bottom:6px;">🎮 Pengaturan Minigame</div>
+      <label style="font-size:11px; color:#a0aec0;">Pilih Minigame</label>
+      <select id="sa-global-minigame-type" onchange="saSetGlobalMinigame(this.value)" style="${inputStyle}">
+        <option value="none">Tanpa minigame</option>
+        <option value="tap-target">Tap Target (ketuk 10 sasaran dalam 10 detik)</option>
+      </select>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin:4px 0;">
+        <span style="font-size:11px; color:#cbd5e0;">Terapkan ke quest mana?</span>
+        <span>
+          <button type="button" onclick="saMinigameSelectAll(true)" style="font-size:10px; padding:3px 8px; border-radius:6px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#cbd5e0;">Semua</button>
+          <button type="button" onclick="saMinigameSelectAll(false)" style="font-size:10px; padding:3px 8px; border-radius:6px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#cbd5e0;">Kosongkan</button>
+        </span>
+      </div>
+      <div id="sa-global-minigame-quests"></div>`;
+    questList.parentNode.insertBefore(panel, questList);
+    saRenderMinigamePanel();
+  }
   return true;
+}
+
+// Gambar ulang daftar centang (select tidak disentuh, jadi pilihannya tidak ter-reset).
+function saRenderMinigamePanel() {
+  const box = document.getElementById('sa-global-minigame-quests');
+  if (!box) return;
+  const sel = document.getElementById('sa-global-minigame-type');
+  if (sel) sel.value = saMinigameChoice;
+  if (saQuestDraft.length === 0) {
+    box.innerHTML = '<p style="color:#718096; font-size:11px; margin:4px 0;">Belum ada quest. Tambah quest dulu.</p>';
+    return;
+  }
+  const off = saMinigameChoice === 'none';
+  box.innerHTML = (off ? '<p style="color:#718096; font-size:10px; margin:0 0 4px;">Pilih minigame di atas dulu untuk mengaktifkan centang.</p>' : '') +
+    saQuestDraft.map((q, i) => {
+      const on = !!q.minigameType && q.minigameType !== 'none';
+      return `<label style="display:flex; align-items:center; gap:8px; padding:5px 0; font-size:12px; color:${off ? '#718096' : '#fff'};">
+        <input type="checkbox" ${on ? 'checked' : ''} ${off ? 'disabled' : ''} onchange="saToggleQuestMinigame('${q.id}', this.checked)">
+        <span>#${i + 1} ${saDraftEsc(q.title || '(tanpa judul)')}</span>
+      </label>`;
+    }).join('');
+}
+
+// Ganti jenis minigame: quest yang sudah dicentang ikut berganti; "Tanpa minigame" mengosongkan semua.
+function saSetGlobalMinigame(type) {
+  saMinigameChoice = type || 'none';
+  saQuestDraft.forEach(q => {
+    if (q.minigameType && q.minigameType !== 'none') q.minigameType = saMinigameChoice;
+  });
+  saRenderMinigamePanel();
+}
+
+function saToggleQuestMinigame(questId, checked) {
+  if (saMinigameChoice === 'none') { saRenderMinigamePanel(); return; }
+  saUpdateQuestField(questId, 'minigameType', checked ? saMinigameChoice : 'none'); // checkbox sudah berubah sendiri; tidak perlu gambar ulang
+}
+
+function saMinigameSelectAll(on) {
+  if (saMinigameChoice === 'none') return;
+  saQuestDraft.forEach(q => { q.minigameType = on ? saMinigameChoice : 'none'; });
+  saRenderMinigamePanel();
 }
 
 async function saLoadDraftList() {
