@@ -208,6 +208,16 @@ async function saCreateEvent() {
   const mascotFile = mascotInput && mascotInput.files && mascotInput.files[0];
   const mascotDialogue = ((document.getElementById('sa-event-mascot-dialogue') || {}).value || '').trim();
 
+  const gachaErr = saValidateGachaPool();
+  if (gachaErr) {
+    statusEl.textContent = '⚠️ ' + gachaErr;
+    statusEl.style.color = '#ff6b6b';
+    return;
+  }
+  const gachaPoolClean = saCleanGachaPool();
+  if (gachaPoolClean.length === 0 && saQuestDraft.some(q => q.minigameType === 'water-tree') &&
+      !confirm('Event punya quest Siram Pohon, tapi hadiah kado masih kosong (kado tidak bisa dibuka). Lanjutkan?')) return;
+
   btn.disabled = true;
   btn.textContent = 'Mengupload...';
   statusEl.style.color = '#718096';
@@ -278,6 +288,7 @@ async function saCreateEvent() {
       inviteLink,
       quests: questsObj,
       days,
+      xmasGachaPool: gachaPoolClean, // kosong -> tidak tersimpan di Firebase
       draftCreatedAt: now
     });
 
@@ -294,6 +305,8 @@ async function saCreateEvent() {
     if (mascotInput) mascotInput.value = '';
     const dlgEl = document.getElementById('sa-event-mascot-dialogue'); if (dlgEl) dlgEl.value = '';
     saMinigameChoice = 'none';
+    saGachaPool = [];
+    saRenderGachaList();
     saQuestDraft = [];
     saRenderQuestList();
     saLoadEventList();
@@ -486,8 +499,14 @@ function saInjectEventExtraFields() {
     <label style="font-size:11px; color:#a0aec0;">Gambar maskot (PNG transparan)</label>
     <input type="file" id="sa-event-mascot-input" accept="image/*" style="${inputStyle}">
     <textarea id="sa-event-mascot-dialogue" maxlength="160" rows="2" placeholder="Dialog maskot (maks 160 huruf), misal: Halo! Selesaikan quest hari ini ya!" style="${inputStyle} resize:vertical;"></textarea>
+    <div style="font-size:12px; font-weight:600; color:#ffd166; margin:12px 0 4px;">🎁 Hadiah Kado Natal (Hidden Gacha)</div>
+    <p style="font-size:10px; color:#718096; margin:0 0 6px;">Tiap bola terpasang = 1 undian saat kado dibuka; hasil tampil langsung sebagai teks. Peluang = bobot ÷ total bobot (angka di kanan dihitung otomatis).</p>
+    <div id="sa-gacha-list"></div>
+    <button type="button" onclick="saAddGachaRow()" style="width:100%; padding:8px; margin-bottom:4px; border-radius:6px; background:rgba(255,209,102,0.12); border:1px dashed rgba(255,209,102,0.5); color:#ffd166; font-size:12px;">＋ Tambah Hadiah</button>
+    <div id="sa-gacha-total" style="font-size:10px; color:#718096; margin-bottom:6px;"></div>
     `;
   btn.parentNode.insertBefore(wrap, btn);
+  saRenderGachaList();
   btn.textContent = 'Simpan Draft & Preview';
 
   const listEl = document.getElementById('sa-event-list');
@@ -613,6 +632,90 @@ async function saDeleteDraft(draftId) {
   } catch (err) {
     alert('Gagal menghapus draft: ' + (err && err.message ? err.message : err));
   }
+}
+
+/* ═══════════════════════════════════════════════
+   HADIAH KADO NATAL (HIDDEN GACHA)
+   Disimpan di event sebagai xmasGachaPool: [{ type, value, weight }].
+   type: 'eventcoin' | 'globalcoin' (value = jumlah koin) | 'item' (value = id/nama item).
+   Server membaca pool ini langsung dari Firebase saat kado dibuka (bukan dari browser).
+═══════════════════════════════════════════════ */
+let saGachaPool = []; // { id, type, value, weight }
+const SA_GACHA_TYPES = { eventcoin: 'Koin Event', globalcoin: 'Koin Global', item: 'Item' };
+
+function saAddGachaRow() {
+  saGachaPool.push({ id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), type: 'eventcoin', value: '', weight: 10 });
+  saRenderGachaList();
+}
+
+function saRemoveGachaRow(id) {
+  saGachaPool = saGachaPool.filter(r => r.id !== id);
+  saRenderGachaList();
+}
+
+function saUpdateGachaField(id, field, value) {
+  const r = saGachaPool.find(r => r.id === id);
+  if (!r) return;
+  r[field] = field === 'weight' ? Number(value) : value;
+  if (field === 'type') saRenderGachaList(); // placeholder ikut berubah
+  else saUpdateGachaPercents();
+}
+
+function saUpdateGachaPercents() {
+  const total = saGachaPool.reduce((a, r) => a + (r.weight > 0 ? r.weight : 0), 0);
+  saGachaPool.forEach(r => {
+    const el = document.getElementById('sa-gacha-pct-' + r.id);
+    if (el) el.textContent = total > 0 && r.weight > 0 ? (r.weight / total * 100).toFixed(1) + '%' : '—';
+  });
+  const t = document.getElementById('sa-gacha-total');
+  if (t) t.textContent = saGachaPool.length ? `Total bobot: ${total} · ${saGachaPool.length} hadiah` : 'Belum ada hadiah.';
+}
+
+function saRenderGachaList() {
+  const box = document.getElementById('sa-gacha-list');
+  if (!box) return;
+  const f = 'padding:7px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box; min-width:0;';
+  box.innerHTML = saGachaPool.map(r => `
+    <div style="padding:8px; margin-bottom:6px; border:1px solid rgba(255,255,255,0.12); border-radius:8px;">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <select onchange="saUpdateGachaField('${r.id}','type',this.value)" style="${f} flex:1;">
+          ${Object.entries(SA_GACHA_TYPES).map(([k, label]) => `<option value="${k}" ${r.type === k ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+        <button type="button" onclick="saRemoveGachaRow('${r.id}')" aria-label="Hapus hadiah" style="padding:7px 10px; border-radius:6px; background:rgba(255,107,107,0.15); border:1px solid rgba(255,107,107,0.3); color:#ff6b6b;">✕</button>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center; margin-top:6px;">
+        <input type="text" inputmode="${r.type === 'item' ? 'text' : 'numeric'}" value="${saDraftEsc(r.value)}"
+          placeholder="${r.type === 'item' ? 'ID / nama item' : 'Jumlah koin, mis. 50'}"
+          oninput="saUpdateGachaField('${r.id}','value',this.value)" style="${f} flex:2;">
+        <input type="number" min="0" step="any" value="${saDraftEsc(r.weight)}" title="Bobot / peluang"
+          oninput="saUpdateGachaField('${r.id}','weight',this.value)" style="${f} flex:1;">
+        <span id="sa-gacha-pct-${r.id}" style="font-size:11px; color:#ffd166; min-width:44px; text-align:right;"></span>
+      </div>
+    </div>`).join('');
+  saUpdateGachaPercents();
+}
+
+// Pesan galat (string) kalau ada baris tidak valid; '' kalau semua OK.
+function saValidateGachaPool() {
+  for (let i = 0; i < saGachaPool.length; i++) {
+    const r = saGachaPool[i], n = i + 1, v = String(r.value == null ? '' : r.value).trim();
+    if (r.type === 'item') {
+      if (!v) return `Hadiah #${n}: isi ID/nama item.`;
+      if (v.length > 40) return `Hadiah #${n}: nama item maksimal 40 huruf.`;
+    } else if (!/^\d+$/.test(v) || parseInt(v, 10) < 1 || parseInt(v, 10) > 1000000) {
+      return `Hadiah #${n}: jumlah koin harus bilangan bulat 1–1.000.000.`;
+    }
+    if (!(r.weight > 0) || r.weight > 1000000) return `Hadiah #${n}: bobot harus lebih dari 0.`;
+  }
+  return '';
+}
+
+function saCleanGachaPool() {
+  return saGachaPool.map(r => ({
+    type: r.type,
+    value: r.type === 'item' ? String(r.value).trim() : parseInt(String(r.value).trim(), 10),
+    weight: r.weight,
+  }));
 }
 
 // Pasang field tambahan segera, atau tunggu sampai form-nya muncul di halaman.
