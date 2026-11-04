@@ -352,6 +352,7 @@
     'make-video':    'Buka TikTok & Klaim',
     'invite-friend': 'Bagikan & Klaim',
     'login-streak':  'Klaim',
+    'minigame':      'Main & Klaim',
   };
 
   // Hari ke berapa event ini SEKARANG, dihitung dari createdAt (hari event
@@ -877,6 +878,7 @@
   function getQuestMinigame(ev, quest) {
     if (!ev || !quest) return '';
     if (quest.minigameType && quest.minigameType !== 'none') return quest.minigameType;
+    if (quest.type === 'minigame') return 'tap-target'; // tipe minigame tanpa pilihan jenis: jangan lolos tanpa main
     if (ev.minigameType && ev.minigameType !== 'none' && ev.targetQuestsForMinigame &&
         Object.values(ev.targetQuestsForMinigame).includes(quest.id)) return ev.minigameType;
     return '';
