@@ -83,12 +83,19 @@
     z-index: 1;
     width: min(84vw, 420px, calc(var(--max-h) * var(--ar, 0.5625)));
     aspect-ratio: 9 / 16;               /* cadangan; diganti inline oleh JS */
-    margin-top: 48px;                    /* ruang untuk header */
+    margin: 0;                           /* dipusatkan oleh padding panel (lihat bawah) */
   }
+  /* Panel menyisakan ruang header di atas (dan bar preview di bawah); papan dipusatkan di sisanya. */
+  .event-panel { padding-top: 56px; }
+  body.has-tabs .event-panel { padding-top: 98px; }
+  /* Tanpa maskot: papan lebih besar dan tepat di tengah area. */
+  .event-panel.no-mascot .quest-frame-wrap { --max-h: min(76vh, 680px); }
+  /* Dengan maskot: sisakan strip bawah; maskot sedikit menimpa sudut kiri-bawah papan. */
   .event-panel.has-mascot .quest-frame-wrap {
-    --max-h: min(64vh, 600px);
-    margin-bottom: calc(13vh + 4px);     /* sisakan strip bawah untuk maskot */
+    --max-h: min(62vh, 600px);
+    margin-bottom: 19vh;
   }
+  .event-panel.has-mascot .quest-scroll { padding-bottom: 8vh; } /* kartu terakhir bisa digulir lewat dari maskot */
   body.is-preview .event-panel { padding-bottom: 64px; }
 
   /* Isi papan (questBgUrl). Selalu SOLID: ada warna dasar kertas. Cadangan (sebelum/jika
@@ -211,21 +218,21 @@
   }
   body.is-preview .mascot-area { bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); }
   .mascot-img {
-    height: min(22vh, 170px); width: auto; max-width: 38vw; object-fit: contain;
+    height: min(30vh, 280px); width: auto; max-width: 46vw; object-fit: contain; object-position: left bottom;
     filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
     animation: mascot-bob 2.8s ease-in-out infinite;
   }
   .mascot-emoji {
-    font-size: min(14vh, 88px); line-height: 1;
+    font-size: min(20vh, 140px); line-height: 1;
     filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
     animation: mascot-bob 2.8s ease-in-out infinite;
   }
   .mascot-bubble {
-    position: relative; margin-bottom: 14px;
+    position: relative; margin-bottom: min(9vh, 70px);
     background: #fffaf0; color: #3b2a14;
     border: 2px solid #b08d57; border-radius: 14px;
-    padding: 8px 10px; font-size: 0.72rem; line-height: 1.35; font-weight: 600;
-    max-width: min(52vw, 230px);
+    padding: 9px 12px; font-size: 0.78rem; line-height: 1.38; font-weight: 600;
+    max-width: min(calc(100vw - 46vw - 32px), 240px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.4);
   }
   .mascot-bubble::before {            /* ekor bubble menunjuk ke maskot */
@@ -398,10 +405,10 @@
     }
 
     let statusLabel;
-    if (isApproved) statusLabel = '✅ Selesai';
+    if (isApproved) statusLabel = doneLabel(ev, quest);
     else if (isPending) statusLabel = '⏳ Menunggu Review';
     else if (isLocked) statusLabel = `🔒 Buka di hari ke-${unlockDay}`;
-    else statusLabel = (needsMinigame(ev, quest.id) ? '🎮 ' : '') + (QUEST_BUTTON_LABEL[quest.type] || 'Klaim');
+    else statusLabel = (getQuestMinigame(ev, quest) ? '🎮 ' : '') + (QUEST_BUTTON_LABEL[quest.type] || 'Klaim');
 
     const btnClass = isApproved ? 'claimed' : (isPending ? 'pending' : (isLocked ? 'locked' : ''));
     const disabled = (isApproved || isPending || isLocked) ? 'disabled' : '';
@@ -550,6 +557,7 @@
           proofImageUrl,
           eventCreatedAt: ev ? ev.createdAt : null,
           unlockDay: quest ? (quest.unlockDay || 1) : 1,
+          resetType: quest ? (quest.resetType || 'none') : 'none',
         }),
       });
       const data = await res.json();
@@ -562,7 +570,8 @@
         statusEl.style.color = '#8a6100';
       } else {
         btnEl.classList.add('claimed');
-        btnEl.textContent = '✅ Selesai';
+        window._claimedAt[`${eventId}:${questId}`] = Date.now();
+        btnEl.textContent = quest ? doneLabel({ id: eventId }, quest) : '✅ Selesai';
         statusEl.textContent = `🎉 +${rewardCoin} koin diterima!`;
         statusEl.style.color = '#1e7a4f';
       }
@@ -588,7 +597,9 @@
 
   async function claimQuest(eventId, questId, rewardCoin, type) {
     const ev = window._eventsCache.find(e => e.id === eventId);
-    if (!needsMinigame(ev, questId)) return claimQuestCore(eventId, questId, rewardCoin, type);
+    const quest = ev && ev.quests ? Object.values(ev.quests).find(q => q.id === questId) : null;
+    const mgType = getQuestMinigame(ev, quest);
+    if (!mgType) return claimQuestCore(eventId, questId, rewardCoin, type);
 
     const statusEl = document.getElementById(`quest-status-${questId}`);
     const btnEl = document.getElementById(`quest-btn-${questId}`);
@@ -602,7 +613,7 @@
 
     btnEl.disabled = true;
     say('🎮 Selesaikan minigame dulu ya!', '#8a6100');
-    openMinigame(ev.minigameType,
+    openMinigame(mgType,
       () => {
         btnEl.disabled = false;
         if (IS_PREVIEW) return say('🎮 Menang! (preview — klaim dinonaktifkan)', '#1e7a4f');
@@ -861,10 +872,32 @@
     return end;
   }
 
-  function needsMinigame(ev, questId) {
-    if (!ev || !ev.minigameType || ev.minigameType === 'none') return false;
-    const t = ev.targetQuestsForMinigame;
-    return !!t && Object.values(t).includes(questId);
+  // Minigame per quest: quest.minigameType. Kompatibel dengan event lama (Fase 1-2) yang
+  // memakai ev.minigameType + ev.targetQuestsForMinigame. Return '' kalau tanpa minigame.
+  function getQuestMinigame(ev, quest) {
+    if (!ev || !quest) return '';
+    if (quest.minigameType && quest.minigameType !== 'none') return quest.minigameType;
+    if (ev.minigameType && ev.minigameType !== 'none' && ev.targetQuestsForMinigame &&
+        Object.values(ev.targetQuestsForMinigame).includes(quest.id)) return ev.minigameType;
+    return '';
+  }
+
+  // ── Quest berulang (resetType: 'daily' | 'weekly') ──
+  // Server (opsional) mengirim claimedAt { questId: epochMs } di check-quest-claimed. Quest yang sudah
+  // approved dan lewat interval dianggap belum diklaim (tombol "Klaim" muncul lagi). Tanpa claimedAt,
+  // quest tetap "Selesai" (aman).
+  const RESET_MS = { daily: 24 * 60 * 60 * 1000, weekly: 7 * 24 * 60 * 60 * 1000 };
+  window._claimedAt = {};
+  function resetInterval(quest) { return (quest && RESET_MS[quest.resetType]) || 0; }
+  function fmtReset(ms) {
+    const m = Math.max(1, Math.ceil(ms / 60000));
+    if (m >= 1440) return `${Math.floor(m / 1440)} hr ${Math.floor((m % 1440) / 60)} j`;
+    if (m >= 60) return `${Math.floor(m / 60)} j ${m % 60} m`;
+    return `${m} m`;
+  }
+  function doneLabel(ev, quest) {
+    const iv = resetInterval(quest), t = window._claimedAt[`${ev.id}:${quest.id}`];
+    return iv && t ? `✅ Selesai · reset ${fmtReset(t + iv - Date.now())}` : '✅ Selesai';
   }
 
   function renderEventPanel(ev, index, claimedMap) {
@@ -881,7 +914,7 @@
     // border, (3) .quest-frame-border (Border.png) di paling depan. Daftar quest ada di
     // .quest-scroll (di atas lapis 2, di bawah lapis 3). Maskot di luar wrapper.
     return `
-      <div class="event-panel${index === 0 ? ' active' : ''}${mascot ? ' has-mascot' : ''}" data-event-id="${ev.id}">
+      <div class="event-panel${index === 0 ? ' active' : ''}${mascot ? ' has-mascot' : ' no-mascot'}" data-event-id="${ev.id}">
         <img class="event-bg" src="${ev.backgroundUrl}" alt="">
         <div class="quest-frame-wrap" id="frame-wrap-${ev.id}">
           <div class="quest-frame-bg" id="frame-bg-${ev.id}" style="background-image: url('${ev.questBgUrl}');"></div>
@@ -950,7 +983,16 @@
           }),
         });
         const data = await res.json();
-        if (res.ok) claimedMap[ev.id] = data.claimed || {};
+        if (res.ok) {
+          claimedMap[ev.id] = data.claimed || {};
+          const at = data.claimedAt || {};
+          for (const q of quests) {
+            const iv = resetInterval(q);
+            if (!iv || !at[q.id]) continue;
+            window._claimedAt[`${ev.id}:${q.id}`] = Number(at[q.id]);
+            if (claimedMap[ev.id][q.id] === 'approved' && Date.now() - Number(at[q.id]) >= iv) delete claimedMap[ev.id][q.id];
+          }
+        }
       } catch (e) {
         console.error('Gagal cek status klaim untuk event', ev.id, e);
       }
@@ -976,6 +1018,7 @@
       return;
     }
 
+    document.body.classList.toggle('has-tabs', events.length > 1);
     if (events.length > 1) {
       tabsEl.style.display = 'flex';
       tabsEl.innerHTML = events.map((ev, i) => `
