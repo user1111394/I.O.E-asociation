@@ -34,7 +34,7 @@ const GROUPS = [
   [handleGarden, ['get-garden-state', 'plant-seed', 'water-plant', 'fertilize-plant', 'treat-pest', 'harvest-plant', 'upgrade-garden']],
   [handleCatchPet, ['get-catchpet-state', 'flee-nearby-pets', 'attempt-catch', 'upgrade-catch-tool', 'repair-catch-tool']],
   [handlePetBarn, ['get-petbarn-state', 'upgrade-barn', 'feed-pet', 'clean-pet', 'pet-the-pet', 'collect-yield']],
-  [handleChristmas, ['water-xmas-tree', 'get-xmas-tree-state', 'craft-ornament', 'install-ornament']],
+  [handleChristmas, ['water-xmas-tree', 'get-xmas-tree-state', 'craft-ornament', 'install-ornament', 'open-gift']],
 ];
 const ROUTES = new Map(GROUPS.flatMap(([fn, names]) => names.map((n) => [n, fn])));
 
