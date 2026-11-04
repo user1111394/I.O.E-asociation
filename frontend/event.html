@@ -202,7 +202,7 @@
   };
 
   const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const { getDatabase, ref, get, remove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+  const { getDatabase, ref, get, set, remove } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
 
   const app = initializeApp(EVENT_FIREBASE_CONFIG);
   const db = getDatabase(app);
@@ -220,6 +220,11 @@
   }
 
   window._eventsCache = [];
+
+  // Mode preview: event.html?preview={draftId} membaca draft_events/{id}, bukan events/.
+  // Di mode ini klaim reward & cek status klaim dimatikan (tidak menyentuh /api/shop).
+  const PREVIEW_ID = new URLSearchParams(location.search).get('preview');
+  const IS_PREVIEW = !!PREVIEW_ID;
 
   function switchEvent(eventId) {
     document.querySelectorAll('.event-tab').forEach(t => {
@@ -371,6 +376,11 @@
   }
 
   async function claimQuest(eventId, questId, rewardCoin, type) {
+    if (IS_PREVIEW) {
+      const st = document.getElementById(`quest-status-${questId}`);
+      if (st) { st.textContent = '👀 Mode preview — klaim dinonaktifkan.'; st.style.color = '#ffd166'; }
+      return;
+    }
     const member = getCurrentMember();
     const statusEl = document.getElementById(`quest-status-${questId}`);
     const btnEl = document.getElementById(`quest-btn-${questId}`);
@@ -528,7 +538,7 @@
   async function fetchClaimedStatus(events) {
     const member = getCurrentMember();
     const claimedMap = {};
-    if (!member) return claimedMap;
+    if (IS_PREVIEW || !member) return claimedMap;
 
     for (const ev of events) {
       const quests = ev.quests ? Object.values(ev.quests) : [];
@@ -591,8 +601,63 @@
     document.getElementById('headerTitle').textContent = events[0].title;
   }
 
+  // ── Preview draft + tombol PUBLISH (hanya muncul di mode preview) ──
+  async function publishDraft(btn) {
+    if (!confirm('Terbitkan event ini sekarang? Hari ke-1 dan masa berlaku dihitung mulai sekarang.')) return;
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = 'Menerbitkan...';
+    try {
+      const draftRef = ref(db, `draft_events/${PREVIEW_ID}`);
+      const draft = (await get(draftRef)).val();
+      if (!draft) throw new Error('Draft tidak ditemukan');
+      const now = Date.now();
+      const eventId = 'event_' + now;
+      const { draftCreatedAt, ...rest } = draft;
+      await set(ref(db, `events/${eventId}`), {
+        ...rest,
+        id: eventId,
+        createdAt: now,
+        expiresAt: now + (Number(draft.days) || 1) * 24 * 60 * 60 * 1000,
+      });
+      await remove(draftRef);
+      location.replace('event.html');
+    } catch (err) {
+      console.error('Gagal publish:', err);
+      alert('Gagal menerbitkan: ' + (err && err.message ? err.message : err));
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
+  function showPreviewUi() {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom, 0px) + 12px); z-index:9999; display:flex; gap:8px; align-items:center; padding:10px 12px; border-radius:14px; background:rgba(20,20,30,0.94); border:1px solid #ffd166; color:#ffd166; font-size:12px; box-shadow:0 6px 24px rgba(0,0,0,0.5);';
+    bar.innerHTML = '<span style="flex:1;">👀 PREVIEW DRAFT — belum terbit</span>';
+    const btn = document.createElement('button');
+    btn.textContent = 'PUBLISH';
+    btn.style.cssText = 'padding:10px 16px; border-radius:10px; border:0; background:#00e5c0; color:#06231e; font-weight:700; font-size:13px;';
+    btn.addEventListener('click', () => publishDraft(btn));
+    bar.appendChild(btn);
+    document.body.appendChild(bar);
+  }
+
+  async function loadPreview() {
+    const draft = (await get(ref(db, `draft_events/${PREVIEW_ID}`))).val();
+    if (!draft) {
+      document.getElementById('eventStage').className = '';
+      document.getElementById('eventStage').innerHTML =
+        '<div class="empty-state">⚠️ Draft tidak ditemukan (sudah diterbitkan atau dihapus).</div>';
+      return;
+    }
+    draft.targetQuestsForMinigame = draft.targetQuestsForMinigame || []; // Firebase membuang array kosong
+    await renderEvents([draft]);
+    showPreviewUi();
+  }
+
   async function loadEvents() {
     try {
+      if (IS_PREVIEW) { await loadPreview(); return; }
       const snap = await get(ref(db, 'events'));
       const data = snap.val();
 
