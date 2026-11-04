@@ -71,55 +71,61 @@
     z-index: 0;
   }
 
-  /* Bingkai border + isi quest — TIDAK memenuhi layar, mengambang di
-     tengah, supaya Background.jpg tetap terlihat di pinggirnya.
-     width/height TIDAK di-hardcode dengan rasio tetap (dulu bikin
-     Border.png melar/gepeng karena object-fit:fill maksa gambar ikut
-     rasio wrapper yang salah) — sebagai gantinya JS mengisi
-     `aspect-ratio` inline sesuai rasio ASLI file Border.png yang
-     diupload, supaya border tidak pernah distorsi, dan quest-frame-bg
-     (inset:0 di wrapper yang sama) otomatis ikut pas sama persis. */
+  /* Bingkai border + isi quest — TIDAK memenuhi layar, di tengah, supaya
+     Background.jpg tetap terlihat di pinggirnya.
+     Ukuran: aspect-ratio ASLI Border.png diisi JS (applyBorderAspectRatio) ke
+     `aspect-ratio` inline dan `--ar`. Lebar dihitung dari --ar dan batas tinggi
+     (--max-h), BUKAN dari max-height, supaya wrapper tidak pernah terpotong dan
+     border/mask/isi selalu pas satu sama lain (tidak melar/gepeng). */
   .quest-frame-wrap {
+    --max-h: min(72vh, 640px);
     position: relative;
     z-index: 1;
-    max-width: min(84vw, 420px);
-    max-height: min(72vh, 640px);
-    width: 100%;
-    margin-top: 48px; /* beri ruang untuk header */
+    width: min(84vw, 420px, calc(var(--max-h) * var(--ar, 0.5625)));
+    aspect-ratio: 9 / 16;               /* cadangan; diganti inline oleh JS */
+    margin-top: 48px;                    /* ruang untuk header */
   }
+  .event-panel.has-mascot .quest-frame-wrap {
+    --max-h: min(64vh, 600px);
+    margin-bottom: calc(13vh + 4px);     /* sisakan strip bawah untuk maskot */
+  }
+  body.is-preview .event-panel { padding-bottom: 64px; }
 
-  /* Isi tengah (custom questBg) — di-mask mengikuti bentuk lubang Border.png,
-     supaya warna/gambar custom cuma mengisi area dalam bingkai, bukan kotak
-     persegi biasa */
+  /* Isi papan (questBgUrl). Selalu SOLID: ada warna dasar kertas. Cadangan (sebelum/jika
+     lubang Border.png gagal dideteksi): persegi rounded di area aman default. Setelah
+     lubang terdeteksi (fitBoardToHole), class .masked memakai mask berbentuk lubang itu. */
   .quest-frame-bg {
     position: absolute; inset: 0;
+    background-color: #d9c3a0;
     background-size: cover;
     background-position: center;
-    -webkit-mask-image: var(--border-mask);
-    mask-image: var(--border-mask);
+    clip-path: inset(var(--hole-t, 12%) var(--hole-r, 10%) var(--hole-b, 12%) var(--hole-l, 10%) round 10px);
+  }
+  .quest-frame-bg.masked {
+    clip-path: none;
+    -webkit-mask-image: var(--board-mask);
+    mask-image: var(--board-mask);
     -webkit-mask-size: 100% 100%;
     mask-size: 100% 100%;
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
   }
 
-  /* Isi quest yang bisa discroll — didudukkan SEDIKIT lebih kecil dari
-     quest-frame-bg supaya tidak menutupi hiasan bingkai di tepi, dan
-     scrollbar-nya disembunyikan supaya terasa seperti "layar" bukan
-     halaman web biasa */
+  /* Daftar quest: flex kolom di dalam area aman lubang (variabel --hole-* diukur dari
+     Border.png; default = angka lama 12%/10%). Scrollbar disembunyikan. */
   .quest-scroll {
     position: absolute;
-    inset: 12% 10%;
+    top: var(--hole-t, 12%); right: var(--hole-r, 10%);
+    bottom: var(--hole-b, 12%); left: var(--hole-l, 10%);
     overflow-y: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
     display: flex; flex-direction: column; gap: 10px;
-    padding: 4px 2px;
+    padding: 6px 4px;
   }
   .quest-scroll::-webkit-scrollbar { display: none; }
 
-  /* Border.png — hiasan bingkai itu sendiri, di paling depan, klik-tembus
-     supaya tidak mengganggu interaksi quest di baliknya */
+  /* Border.png — hiasan bingkai, paling depan, klik-tembus */
   .quest-frame-border {
     position: absolute; inset: 0;
     width: 100%; height: 100%;
@@ -128,55 +134,148 @@
     z-index: 2;
   }
 
+  /* ══ Kartu quest: kertas/kayu SOLID ══ */
   .quest-card {
-    background: rgba(0,0,0,0.45);
-    border: 1px solid rgba(255,255,255,0.15);
+    background: #f4ebd9;
+    color: #333;
+    border: 2px solid #b08d57;
     border-radius: 12px;
     padding: 12px;
     flex-shrink: 0;
+    box-shadow: 0 2px 0 #8a6a3b, 0 6px 12px rgba(0,0,0,0.35);
   }
-  .quest-card-head {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
-  }
+  .quest-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .quest-num {
-    width: 24px; height: 24px; border-radius: 50%;
-    background: #d94141; color: #fff;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #a8321f; color: #fff4dc;
+    border: 2px solid #6b4423;
     display: flex; align-items: center; justify-content: center;
     font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
   }
-  .quest-title { font-size: 0.8rem; font-weight: 600; color: #fff; }
+  .quest-title { font-size: 0.82rem; font-weight: 700; color: #3b2a14; }
   .quest-input {
     width: 100%; padding: 9px 10px; margin-bottom: 8px;
-    background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 8px; color: #fff; font-size: 0.75rem;
+    background: #fffaf0; border: 1px solid #c9b48a;
+    border-radius: 8px; color: #333; font-size: 0.75rem;
   }
+  /* Tautan/tombol/teks bantu di dalam kartu punya warna inline untuk tema gelap lama;
+     di kertas dipaksa kontras tinggi. */
+  .quest-card a.quest-input, .quest-card button.quest-input {
+    color: #1d4ed8 !important; background: #fff7e6 !important; border: 1px solid #c9b48a !important;
+  }
+  .quest-card div.quest-input { color: #5a4a32 !important; background: #fff7e6 !important; }
   .quest-btn-row { display: flex; gap: 8px; }
   .quest-btn {
-    flex: 1; padding: 9px; border: none; border-radius: 8px;
-    background: linear-gradient(90deg,#2563eb,#1d4ed8);
-    color: #fff; font-weight: 700; font-size: 0.75rem; cursor: pointer;
+    flex: 1; padding: 10px; border: none; border-radius: 8px;
+    background: linear-gradient(180deg,#3f8f63,#2f6f4e);
+    box-shadow: 0 2px 0 #1f4a34;
+    color: #fff; font-weight: 700; font-size: 0.78rem; cursor: pointer;
   }
-  .quest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .quest-btn.claimed { background: rgba(0,229,197,0.3); color: #00e5c0; }
-  .quest-btn.pending { background: rgba(255,210,63,0.25); color: #ffd23f; }
-  .quest-btn.locked { background: rgba(255,255,255,0.06); color: #718096; }
-  .quest-status { font-size: 0.68rem; margin-top: 6px; min-height: 14px; }
+  .quest-btn:disabled { opacity: 1; cursor: not-allowed; box-shadow: none; }
+  .quest-btn.claimed { background: #d9efdf; color: #1e6b3f; }
+  .quest-btn.pending { background: #fff0c2; color: #8a6100; }
+  .quest-btn.locked  { background: #e8e0cf; color: #8c8372; }
+  .quest-status { font-size: 0.7rem; margin-top: 6px; min-height: 14px; font-weight: 600; }
   .quest-file-label {
     display: block; width: 100%; padding: 9px 10px; margin-bottom: 8px;
-    background: rgba(0,0,0,0.4); border: 1px dashed rgba(255,255,255,0.3);
-    border-radius: 8px; color: #a0aec0; font-size: 0.7rem; text-align: center;
+    background: #fff7e6; border: 1px dashed #b08d57;
+    border-radius: 8px; color: #6b5a3e; font-size: 0.72rem; text-align: center;
     cursor: pointer;
   }
 
+  /* Judul/deskripsi/koin event: pita kayu + kertas, terbaca di atas isi papan apa pun */
   .event-title-label {
-    text-align: center; font-size: 0.8rem; font-weight: 700; color: #fff;
-    margin-bottom: 4px;
+    text-align: center; font-size: 0.85rem; font-weight: 800; color: #fff4dc;
+    background: #6b4423; border: 2px solid #4a2e16; border-radius: 10px;
+    padding: 8px 10px; flex-shrink: 0;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
   }
-  .event-desc { font-size: 0.7rem; color: #cbd5e0; margin-bottom: 8px; text-align: center; }
+  .event-desc {
+    font-size: 0.72rem; color: #4a3a22; background: rgba(244,235,217,0.95);
+    border-radius: 8px; padding: 6px 8px; text-align: center; flex-shrink: 0;
+  }
   .event-coin-label {
-    text-align: center; font-size: 0.7rem; color: #ffd23f;
-    margin-bottom: 8px; font-weight: 600;
+    align-self: center; font-size: 0.72rem; font-weight: 700; color: #5a3d00;
+    background: #ffd23f; border: 2px solid #b8860b; border-radius: 999px;
+    padding: 4px 12px; flex-shrink: 0;
   }
+
+  /* ══ Maskot (Model A): kiri-bawah, sedikit menimpa papan; bubble di kanannya ══ */
+  .mascot-area {
+    position: absolute; left: 8px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    z-index: 5;
+    display: flex; align-items: flex-end; gap: 6px;
+    max-width: calc(100vw - 16px);
+    pointer-events: none;               /* tidak menghalangi ketukan di quest di belakangnya */
+  }
+  body.is-preview .mascot-area { bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); }
+  .mascot-img {
+    height: min(22vh, 170px); width: auto; max-width: 38vw; object-fit: contain;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+    animation: mascot-bob 2.8s ease-in-out infinite;
+  }
+  .mascot-emoji {
+    font-size: min(14vh, 88px); line-height: 1;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+    animation: mascot-bob 2.8s ease-in-out infinite;
+  }
+  .mascot-bubble {
+    position: relative; margin-bottom: 14px;
+    background: #fffaf0; color: #3b2a14;
+    border: 2px solid #b08d57; border-radius: 14px;
+    padding: 8px 10px; font-size: 0.72rem; line-height: 1.35; font-weight: 600;
+    max-width: min(52vw, 230px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  }
+  .mascot-bubble::before {            /* ekor bubble menunjuk ke maskot */
+    content: ''; position: absolute; left: -9px; bottom: 12px;
+    border: 7px solid transparent; border-right-color: #b08d57; border-left: 0;
+  }
+  @keyframes mascot-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+  /* ══ Minigame (modal) ══ */
+  .mg-overlay {
+    position: fixed; inset: 0; z-index: 10000;
+    background: rgba(5,5,12,0.84);
+    display: flex; align-items: center; justify-content: center; padding: 12px;
+  }
+  .mg-card {
+    width: min(94vw, 440px); background: #f4ebd9; color: #333;
+    border: 3px solid #b08d57; border-radius: 18px; padding: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  }
+  .mg-head { display: flex; align-items: center; gap: 10px; }
+  .mg-title { flex: 1; font-weight: 800; font-size: 0.95rem; color: #3b2a14; }
+  .mg-time { font-weight: 800; font-size: 0.95rem; color: #a8321f; min-width: 64px; text-align: right; }
+  .mg-close {
+    width: 32px; height: 32px; border-radius: 50%; border: 2px solid #b08d57;
+    background: #fff7e6; color: #6b4423; font-size: 0.9rem; font-weight: 800; cursor: pointer;
+  }
+  .mg-bar { height: 8px; border-radius: 99px; background: #d9c3a0; margin-top: 8px; overflow: hidden; }
+  .mg-bar-fill { height: 100%; width: 100%; background: #2f6f4e; }
+  .mg-info { font-size: 0.78rem; font-weight: 600; color: #5a4a32; margin-top: 8px; text-align: center; min-height: 18px; }
+  .mg-area {
+    position: relative; width: 100%; height: min(56vh, 420px); margin-top: 8px;
+    background: repeating-linear-gradient(45deg,#ecdfc4,#ecdfc4 12px,#e5d6b6 12px,#e5d6b6 24px);
+    border: 2px solid #c9b48a; border-radius: 12px; overflow: hidden;
+    touch-action: manipulation;
+  }
+  .mg-target {
+    position: absolute; width: 52px; height: 52px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.1rem; line-height: 1; border: 0; background: none; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+    animation: mg-pop 0.25s ease-out;
+  }
+  .mg-target.hit { animation: mg-hit 0.18s ease-in forwards; pointer-events: none; }
+  .mg-result {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(244,235,217,0.92); font-size: 1.4rem; font-weight: 800; color: #3b2a14;
+    text-align: center; padding: 12px;
+  }
+  @keyframes mg-pop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes mg-hit { to { transform: scale(1.6); opacity: 0; } }
 </style>
 </head>
 <body>
@@ -302,7 +401,7 @@
     if (isApproved) statusLabel = '✅ Selesai';
     else if (isPending) statusLabel = '⏳ Menunggu Review';
     else if (isLocked) statusLabel = `🔒 Buka di hari ke-${unlockDay}`;
-    else statusLabel = QUEST_BUTTON_LABEL[quest.type] || 'Klaim';
+    else statusLabel = (needsMinigame(ev, quest.id) ? '🎮 ' : '') + (QUEST_BUTTON_LABEL[quest.type] || 'Klaim');
 
     const btnClass = isApproved ? 'claimed' : (isPending ? 'pending' : (isLocked ? 'locked' : ''));
     const disabled = (isApproved || isPending || isLocked) ? 'disabled' : '';
@@ -375,10 +474,10 @@
     return cloudData.secure_url;
   }
 
-  async function claimQuest(eventId, questId, rewardCoin, type) {
+  async function claimQuestCore(eventId, questId, rewardCoin, type) {
     if (IS_PREVIEW) {
       const st = document.getElementById(`quest-status-${questId}`);
-      if (st) { st.textContent = '👀 Mode preview — klaim dinonaktifkan.'; st.style.color = '#ffd166'; }
+      if (st) { st.textContent = '👀 Mode preview — klaim dinonaktifkan.'; st.style.color = '#8a6100'; }
       return;
     }
     const member = getCurrentMember();
@@ -388,7 +487,7 @@
 
     if (!member) {
       statusEl.textContent = '⚠️ Silakan login dulu untuk klaim reward.';
-      statusEl.style.color = '#ff6b6b';
+      statusEl.style.color = '#c0392b';
       return;
     }
 
@@ -404,7 +503,7 @@
       const linkInput = document.getElementById(`quest-link-${questId}`);
       if (!linkInput || !linkInput.value.trim()) {
         statusEl.textContent = '⚠️ Tempel link video dulu sebelum klaim.';
-        statusEl.style.color = '#ff6b6b';
+        statusEl.style.color = '#c0392b';
         return;
       }
       submittedLink = linkInput.value.trim();
@@ -414,7 +513,7 @@
       const file = window._questProofFiles[questId];
       if (!file) {
         statusEl.textContent = '⚠️ Pilih screenshot bukti dulu sebelum kirim.';
-        statusEl.style.color = '#ff6b6b';
+        statusEl.style.color = '#c0392b';
         return;
       }
       btnEl.disabled = true;
@@ -427,7 +526,7 @@
         btnEl.disabled = false;
         btnEl.textContent = originalLabel;
         statusEl.textContent = `❌ ${err.message || err}`;
-        statusEl.style.color = '#ff6b6b';
+        statusEl.style.color = '#c0392b';
         return;
       }
     }
@@ -460,22 +559,313 @@
         btnEl.classList.add('pending');
         btnEl.textContent = '⏳ Menunggu Review';
         statusEl.textContent = 'Terkirim! Menunggu admin cek buktinya.';
-        statusEl.style.color = '#ffd23f';
+        statusEl.style.color = '#8a6100';
       } else {
         btnEl.classList.add('claimed');
         btnEl.textContent = '✅ Selesai';
         statusEl.textContent = `🎉 +${rewardCoin} koin diterima!`;
-        statusEl.style.color = '#00e5c0';
+        statusEl.style.color = '#1e7a4f';
       }
     } catch (err) {
       console.error('Gagal klaim quest:', err);
       btnEl.disabled = false;
       btnEl.textContent = originalLabel;
       statusEl.textContent = `❌ ${err.message || err}`;
-      statusEl.style.color = '#ff6b6b';
+      statusEl.style.color = '#c0392b';
     }
   }
+  // Klaim: kalau quest ini termasuk targetQuestsForMinigame, pemain main minigame dulu;
+  // API klaim (claimQuestCore -> /api/shop) HANYA dipanggil saat menang.
+  // CATATAN: ini gerbang sisi-klien (UX). Server belum memverifikasi kemenangan minigame.
+  function precheckQuest(type, questId) {
+    if (type === 'submit-link') {
+      const i = document.getElementById(`quest-link-${questId}`);
+      if (!i || !i.value.trim()) return '⚠️ Tempel link video dulu sebelum klaim.';
+    }
+    if (type === 'like-video' && !window._questProofFiles[questId]) return '⚠️ Pilih screenshot bukti dulu sebelum kirim.';
+    return '';
+  }
+
+  async function claimQuest(eventId, questId, rewardCoin, type) {
+    const ev = window._eventsCache.find(e => e.id === eventId);
+    if (!needsMinigame(ev, questId)) return claimQuestCore(eventId, questId, rewardCoin, type);
+
+    const statusEl = document.getElementById(`quest-status-${questId}`);
+    const btnEl = document.getElementById(`quest-btn-${questId}`);
+    const say = (msg, color) => { statusEl.textContent = msg; statusEl.style.color = color; };
+
+    if (!IS_PREVIEW) {
+      if (!getCurrentMember()) return say('⚠️ Silakan login dulu untuk klaim reward.', '#c0392b');
+      const err = precheckQuest(type, questId); // cek input dulu, jangan sampai menang lalu gagal klaim
+      if (err) return say(err, '#c0392b');
+    }
+
+    btnEl.disabled = true;
+    say('🎮 Selesaikan minigame dulu ya!', '#8a6100');
+    openMinigame(ev.minigameType,
+      () => {
+        btnEl.disabled = false;
+        if (IS_PREVIEW) return say('🎮 Menang! (preview — klaim dinonaktifkan)', '#1e7a4f');
+        claimQuestCore(eventId, questId, rewardCoin, type);
+      },
+      () => { btnEl.disabled = false; say('😅 Belum berhasil — coba lagi!', '#c0392b'); }
+    );
+  }
   window.claimQuest = claimQuest;
+
+
+  // ══════════════════════════════════════
+  // MASKOT + DETEKSI LUBANG BORDER + MINIGAME
+  // ══════════════════════════════════════
+
+  function renderMascot(ev) {
+    const dialogue = ev.mascotDialogue ? escHtml(ev.mascotDialogue) : '';
+    if (!ev.mascotUrl && !dialogue) return '';
+    const fig = ev.mascotUrl
+      ? `<img class="mascot-img" src="${escHtml(ev.mascotUrl)}" alt="">`
+      : '<div class="mascot-emoji">🧑‍🚀</div>';
+    return `<div class="mascot-area">${fig}${dialogue ? `<div class="mascot-bubble">${dialogue}</div>` : ''}</div>`;
+  }
+  // Gambar maskot gagal dimuat -> ganti emoji (tidak ada kotak gambar rusak)
+  document.addEventListener('error', (e) => {
+    const t = e.target;
+    if (t && t.classList && t.classList.contains('mascot-img')) {
+      const d = document.createElement('div');
+      d.className = 'mascot-emoji'; d.textContent = '🧑‍🚀';
+      t.replaceWith(d);
+    }
+  }, true);
+
+  // Border.png biasanya bingkai dengan lubang transparan. Dulu border dipakai sebagai mask langsung
+  // (isi hanya tampil di bingkai, bukan di lubang) sehingga kartu terlihat melayang. Sekarang:
+  // cari lubang (area transparan tertutup yang terhubung ke tengah gambar), bentuk mask dari
+  // lubang itu, dan hitung area aman persegi untuk daftar quest. Butuh CORS pada gambar
+  // (Cloudinary mengizinkan); kalau gagal, CSS cadangan (persegi rounded) tetap dipakai.
+  const holeCache = new Map();
+  function analyzeBorderHole(url) {
+    if (holeCache.has(url)) return holeCache.get(url);
+    const p = new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { try { resolve(computeHole(img)); } catch (e) { console.warn('Deteksi lubang border gagal:', e); resolve(null); } };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+    holeCache.set(url, p);
+    return p;
+  }
+
+  function computeHole(img) {
+    if (!img.naturalWidth || !img.naturalHeight) return null;
+    const W = 320, H = Math.max(1, Math.round(W * img.naturalHeight / img.naturalWidth));
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0, W, H);
+    const data = cx.getImageData(0, 0, W, H).data; // SecurityError bila canvas tercemar -> ditangkap pemanggil
+    const open = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) open[i] = data[i * 4 + 3] < 40 ? 1 : 0;
+
+    // seed: piksel transparan terdekat dari tengah gambar
+    const mx = W >> 1, my = H >> 1, maxR = Math.floor(Math.min(W, H) * 0.3);
+    let seed = -1;
+    for (let r = 0; r <= maxR && seed < 0; r++) {
+      for (let dy = -r; dy <= r && seed < 0; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const x = mx + dx, y = my + dy;
+          if (x >= 0 && y >= 0 && x < W && y < H && open[y * W + x]) { seed = y * W + x; break; }
+        }
+      }
+    }
+    if (seed < 0) return null;
+
+    // flood fill 4 arah
+    const hole = new Uint8Array(W * H), q = new Int32Array(W * H);
+    let qh = 0, qt = 0, count = 0, touchesEdge = false;
+    hole[seed] = 1; q[qt++] = seed;
+    while (qh < qt) {
+      const p = q[qh++], x = p % W, y = (p / W) | 0;
+      count++;
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) touchesEdge = true;
+      if (x > 0 && open[p - 1] && !hole[p - 1]) { hole[p - 1] = 1; q[qt++] = p - 1; }
+      if (x < W - 1 && open[p + 1] && !hole[p + 1]) { hole[p + 1] = 1; q[qt++] = p + 1; }
+      if (y > 0 && open[p - W] && !hole[p - W]) { hole[p - W] = 1; q[qt++] = p - W; }
+      if (y < H - 1 && open[p + W] && !hole[p + W]) { hole[p + W] = 1; q[qt++] = p + W; }
+    }
+    if (touchesEdge || count < W * H * 0.03) return null; // bukan lubang tertutup
+
+    // kotak pembatas lubang, lalu susutkan sisi-sisinya sampai hampir penuh lubang
+    // (supaya sudut membulat/ornamen tidak tertimpa kartu)
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let p = 0; p < W * H; p++) {
+      if (!hole[p]) continue;
+      const x = p % W, y = (p / W) | 0;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    const share = (xa, ya, xb, yb) => {
+      let n = 0, tot = 0;
+      for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) { tot++; n += hole[y * W + x]; }
+      return n / tot;
+    };
+    for (let i = 0; i < 400 && x1 - x0 > 20 && y1 - y0 > 20; i++) {
+      let moved = false;
+      if (share(x0, y0, x1, y0) < 0.97) { y0++; moved = true; }
+      if (share(x0, y1, x1, y1) < 0.97) { y1--; moved = true; }
+      if (share(x0, y0, x0, y1) < 0.97) { x0++; moved = true; }
+      if (share(x1, y0, x1, y1) < 0.97) { x1--; moved = true; }
+      if (!moved) break;
+    }
+
+    // mask: lubang digemukkan 2 px (menyelip di bawah bingkai, jadi tidak ada celah tipis)
+    const mc = document.createElement('canvas'); mc.width = W; mc.height = H;
+    const mctx = mc.getContext('2d');
+    const out = mctx.createImageData(W, H);
+    for (let p = 0; p < W * H; p++) {
+      if (!hole[p]) continue;
+      const x = p % W, y = (p / W) | 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H) out.data[(ny * W + nx) * 4 + 3] = 255;
+      }
+    }
+    mctx.putImageData(out, 0, 0);
+
+    const pad = 2; // margin napas (%) antara kartu dan tepi bingkai
+    return {
+      mask: mc.toDataURL('image/png'),
+      t: (y0 / H) * 100 + pad,
+      b: ((H - 1 - y1) / H) * 100 + pad,
+      l: (x0 / W) * 100 + pad,
+      r: ((W - 1 - x1) / W) * 100 + pad,
+    };
+  }
+
+  function fitBoardToHole(ev) {
+    analyzeBorderHole(ev.borderShapeUrl).then((hole) => {
+      if (!hole) return;
+      const bg = document.getElementById(`frame-bg-${ev.id}`);
+      const wrap = document.getElementById(`frame-wrap-${ev.id}`);
+      if (!bg || !wrap) return;
+      bg.style.setProperty('--board-mask', `url(${hole.mask})`);
+      bg.classList.add('masked');
+      for (const k of ['t', 'r', 'b', 'l']) wrap.style.setProperty(`--hole-${k}`, hole[k].toFixed(2) + '%');
+    });
+  }
+
+  // ── Minigame engine (modular): tambah game baru = tambah entri di MINIGAMES ──
+  const TAP_TARGET = { count: 10, seconds: 10, emoji: '🎯', size: 52 };
+  const MINIGAMES = {
+    'tap-target': { title: 'Tap Target', start: startTapTarget },
+  };
+
+  // openMinigame(type, onWin, onLose): onWin() bila menang; onLose(reason) bila waktu habis
+  // ('timeout') atau ditutup pemain ('cancel'). Tipe tak dikenal -> lolos (jangan blokir
+  // reward karena salah konfigurasi).
+  function openMinigame(type, onWin, onLose) {
+    const def = MINIGAMES[type];
+    if (!def) { console.warn('Minigame tidak dikenal:', type); if (onWin) onWin(); return; }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'mg-overlay';
+    overlay.innerHTML = `
+      <div class="mg-card" role="dialog" aria-modal="true">
+        <div class="mg-head">
+          <div class="mg-title">🎮 ${escHtml(def.title)}</div>
+          <div class="mg-time">⏱️ --</div>
+          <button type="button" class="mg-close" aria-label="Tutup">✕</button>
+        </div>
+        <div class="mg-bar"><div class="mg-bar-fill"></div></div>
+        <div class="mg-info"></div>
+        <div class="mg-area"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const area = overlay.querySelector('.mg-area');
+    const timeEl = overlay.querySelector('.mg-time');
+    const barEl = overlay.querySelector('.mg-bar-fill');
+    const infoEl = overlay.querySelector('.mg-info');
+    let finished = false, cleanup = null;
+
+    const close = () => { if (cleanup) cleanup(); overlay.remove(); };
+    const finish = (kind, reason) => {
+      if (finished) return;
+      finished = true;
+      if (cleanup) cleanup();
+      const msg = document.createElement('div');
+      msg.className = 'mg-result';
+      msg.textContent = kind === 'win' ? '🎉 Menang!' : '⏰ Waktu habis!';
+      area.appendChild(msg);
+      setTimeout(() => {
+        overlay.remove();
+        if (kind === 'win') { if (onWin) onWin(); } else if (onLose) onLose(reason);
+      }, kind === 'win' ? 800 : 900);
+    };
+    overlay.querySelector('.mg-close').addEventListener('click', () => {
+      if (finished) return;
+      finished = true; close();
+      if (onLose) onLose('cancel');
+    });
+
+    cleanup = def.start({
+      area,
+      setInfo: (t) => { infoEl.textContent = t; },
+      setTime: (sec, frac) => { timeEl.textContent = `⏱️ ${Math.ceil(sec)}s`; barEl.style.width = (frac * 100) + '%'; },
+      win: () => finish('win'),
+      lose: (reason) => finish('lose', reason),
+    });
+  }
+  window.openMinigame = openMinigame;
+
+  // tap-target: 10 sasaran muncul acak sekaligus; ketuk semuanya sebelum 10 detik habis.
+  function startTapTarget(api) {
+    const { count, seconds, emoji, size } = TAP_TARGET;
+    const rect = api.area.getBoundingClientRect();
+    const W = Math.max(0, rect.width - size), H = Math.max(0, rect.height - size);
+    const pts = [], minDist = size * 1.05;
+    for (let i = 0; i < count; i++) {
+      let best = null;
+      for (let a = 0; a < 60 && !best; a++) {
+        const p = { x: Math.random() * W, y: Math.random() * H };
+        if (pts.every(q => Math.hypot(q.x - p.x, q.y - p.y) >= minDist)) best = p;
+      }
+      pts.push(best || { x: Math.random() * W, y: Math.random() * H });
+    }
+
+    let left = count, ended = false, timer = null;
+    const end = () => { ended = true; if (timer) clearInterval(timer); };
+    api.setInfo(`🎯 Ketuk semua sasaran! Sisa ${left}`);
+    api.setTime(seconds, 1);
+
+    pts.forEach((p) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'mg-target'; b.setAttribute('aria-label', 'sasaran');
+      b.textContent = emoji; b.style.left = p.x + 'px'; b.style.top = p.y + 'px';
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (ended || b.dataset.hit) return;
+        b.dataset.hit = '1'; b.classList.add('hit');
+        setTimeout(() => b.remove(), 180);
+        left--;
+        api.setInfo(left > 0 ? `🎯 Ketuk semua sasaran! Sisa ${left}` : '🎉 Semua kena!');
+        if (left === 0) { end(); api.win(); }
+      });
+      api.area.appendChild(b);
+    });
+
+    const t0 = performance.now();
+    timer = setInterval(() => {
+      const rem = Math.max(0, seconds - (performance.now() - t0) / 1000);
+      api.setTime(rem, rem / seconds);
+      if (rem <= 0) { end(); api.lose('timeout'); }
+    }, 100);
+    return end;
+  }
+
+  function needsMinigame(ev, questId) {
+    if (!ev || !ev.minigameType || ev.minigameType === 'none') return false;
+    const t = ev.targetQuestsForMinigame;
+    return !!t && Object.values(t).includes(questId);
+  }
 
   function renderEventPanel(ev, index, claimedMap) {
     const quests = ev.quests ? Object.values(ev.quests) : [];
@@ -485,17 +875,16 @@
       ? quests.map((q, i) => renderQuestCard(ev, q, i + 1, claimed)).join('')
       : '<div class="quest-card">Belum ada quest untuk event ini.</div>';
 
-    // borderShapeUrl dipakai DUA kali:
-    //  1. sebagai mask-image (CSS var --border-mask) supaya questBgUrl cuma
-    //     mengisi area dalam lubang bingkai, bukan kotak penuh
-    //  2. sebagai <img> biasa di paling depan, jadi hiasan bingkainya sendiri
-    const maskVar = `url('${ev.borderShapeUrl}')`;
+    const mascot = renderMascot(ev);
 
+    // 3 lapis (tidak berubah): (1) .event-bg, (2) .quest-frame-bg yang di-mask mengikuti lubang
+    // border, (3) .quest-frame-border (Border.png) di paling depan. Daftar quest ada di
+    // .quest-scroll (di atas lapis 2, di bawah lapis 3). Maskot di luar wrapper.
     return `
-      <div class="event-panel${index === 0 ? ' active' : ''}" data-event-id="${ev.id}">
+      <div class="event-panel${index === 0 ? ' active' : ''}${mascot ? ' has-mascot' : ''}" data-event-id="${ev.id}">
         <img class="event-bg" src="${ev.backgroundUrl}" alt="">
         <div class="quest-frame-wrap" id="frame-wrap-${ev.id}">
-          <div class="quest-frame-bg" style="--border-mask: ${maskVar}; background-image: url('${ev.questBgUrl}');"></div>
+          <div class="quest-frame-bg" id="frame-bg-${ev.id}" style="background-image: url('${ev.questBgUrl}');"></div>
           <div class="quest-scroll">
             <div class="event-title-label">${escHtml(ev.title)}</div>
             ${ev.desc ? `<div class="event-desc">${escHtml(ev.desc)}</div>` : ''}
@@ -504,6 +893,7 @@
           </div>
           <img class="quest-frame-border" src="${ev.borderShapeUrl}" alt="" onload="applyBorderAspectRatio('${ev.id}', this)" onerror="this.onerror=null;">
         </div>
+        ${mascot}
       </div>`;
   }
 
@@ -518,6 +908,7 @@
     const wrap = document.getElementById(`frame-wrap-${eventId}`);
     if (!wrap || !imgEl.naturalWidth || !imgEl.naturalHeight) return;
     wrap.style.aspectRatio = `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`;
+    wrap.style.setProperty('--ar', (imgEl.naturalWidth / imgEl.naturalHeight).toFixed(4)); // dipakai CSS untuk lebar
   }
   window.applyBorderAspectRatio = applyBorderAspectRatio;
 
@@ -529,7 +920,10 @@
     document.querySelectorAll('.quest-frame-border').forEach(imgEl => {
       if (imgEl.complete && imgEl.naturalWidth) {
         const wrap = imgEl.closest('.quest-frame-wrap');
-        if (wrap) wrap.style.aspectRatio = `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`;
+        if (wrap) {
+          wrap.style.aspectRatio = `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`;
+          wrap.style.setProperty('--ar', (imgEl.naturalWidth / imgEl.naturalHeight).toFixed(4));
+        }
       }
     });
   }
@@ -597,6 +991,7 @@
     stageEl.className = '';
     stageEl.innerHTML = events.map((ev, i) => renderEventPanel(ev, i, claimedMap)).join('');
     reapplyCachedBorderAspectRatios();
+    events.forEach(fitBoardToHole);
 
     document.getElementById('headerTitle').textContent = events[0].title;
   }
@@ -631,6 +1026,7 @@
   }
 
   function showPreviewUi() {
+    document.body.classList.add('is-preview');
     const bar = document.createElement('div');
     bar.style.cssText = 'position:fixed; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom, 0px) + 12px); z-index:9999; display:flex; gap:8px; align-items:center; padding:10px 12px; border-radius:14px; background:rgba(20,20,30,0.94); border:1px solid #ffd166; color:#ffd166; font-size:12px; box-shadow:0 6px 24px rgba(0,0,0,0.5);';
     bar.innerHTML = '<span style="flex:1;">👀 PREVIEW DRAFT — belum terbit</span>';
