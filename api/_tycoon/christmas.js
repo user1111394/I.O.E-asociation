@@ -1,17 +1,56 @@
-// api/_tycoon/christmas.js — Pohon Natal: minigame "Siram Pohon" di halaman event.
-// Aksi: 'water-xmas-tree'. Dipanggil lewat router api/tycoon.js (sesi member sudah diverifikasi
-// di router). Hanya named export (tanpa export default).
+// api/_tycoon/christmas.js — Pohon Natal (event): Siram Pohon, Craft Bola, Pasang Bola.
+// Aksi: 'water-xmas-tree', 'get-xmas-tree-state', 'craft-ornament', 'install-ornament'.
+// Dipanggil lewat router api/tycoon.js (sesi member sudah diverifikasi di router).
+// Hanya named export (tanpa export default).
 //
-// Data (Upstash Redis): xmastree:{memberId} -> { growth, totalWaters, lastWateredAt }
-//   - cooldown 24 jam sejak siram terakhir
-//   - growth naik 1 tiap siram, maksimal XMAS_TREE_MAX_GROWTH
-//   - `coins` di respons hanya nilai informasi: TIDAK mengkredit saldo apa pun. Reward event
-//     sebenarnya tetap diberikan lewat klaim quest (/api/shop), supaya tidak ada reward ganda.
-import { kvGet, kvSet } from './shared.js';
+// State (Upstash Redis): xmastree:{memberId} ->
+//   { growth, totalWaters, lastWateredAt, ornamentsCrafted, ornamentsInstalled, giftsReadyAt }
+// Koin event: eventcoin:{eventId}:{memberId} (angka; dikelola bersama shop.js).
+//
+// Aksi yang mengubah data (siram/craft/pasang) dikunci per member (SET NX EX 5) supaya klik/permintaan
+// ganda tidak menimpa satu sama lain (mis. bayar 2x tapi bola bertambah 1). Kalau Redis untuk kunci
+// gagal, aksi tetap jalan tanpa kunci (fail-open, sama seperti kuota Time Machine).
+import { kvGet, kvSet, KV_URL, KV_TOKEN } from './shared.js';
 
 const XMAS_TREE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const XMAS_TREE_MAX_GROWTH = 7;
-const XMAS_TREE_COINS = 10;
+const XMAS_TREE_COINS = 10;      // nilai informasi pada respons siram; TIDAK mengkredit saldo
+const ORNAMENT_COST = 50;        // koin event per bola
+const GIFT_DELAY_MS = 24 * 60 * 60 * 1000;
+
+const DEFAULT_STATE = {
+  growth: 0, totalWaters: 0, lastWateredAt: 0,
+  ornamentsCrafted: 0, ornamentsInstalled: 0, giftsReadyAt: null,
+};
+
+async function loadState(memberId) {
+  const saved = await kvGet(`xmastree:${memberId}`);
+  return { ...DEFAULT_STATE, ...(saved && typeof saved === 'object' ? saved : {}) };
+}
+
+// Perintah Redis lewat REST (atomik di sisi Redis): DECRBY, INCRBY, SET NX EX, DEL, GET.
+async function kvCmd(...args) {
+  const r = await fetch(`${KV_URL}/${args.map((a) => encodeURIComponent(String(a))).join('/')}`, {
+    headers: { Authorization: `Bearer ${KV_TOKEN}` },
+  });
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  return data.result;
+}
+
+async function withMemberLock(memberId, res, fn) {
+  const lockKey = `xmaslock:${memberId}`;
+  let locked = false;
+  try {
+    locked = (await kvCmd('set', lockKey, '1', 'NX', 'EX', 5)) === 'OK';
+    if (!locked) return res.status(429).json({ error: 'Permintaan sebelumnya masih diproses. Coba lagi sebentar.' });
+  } catch (e) { /* fail-open */ }
+  try {
+    return await fn();
+  } finally {
+    if (locked) { try { await kvCmd('del', lockKey); } catch (e) { /* kunci kedaluwarsa sendiri dalam 5 dtk */ } }
+  }
+}
 
 function fmtWait(ms) {
   const m = Math.max(1, Math.ceil(ms / 60000));
@@ -21,34 +60,95 @@ function fmtWait(ms) {
 
 export async function handleChristmas(ctx, res) {
   const { action, memberId } = ctx;
+  const body = (ctx.req && ctx.req.body) || {};
+  const stateKey = `xmastree:${memberId}`;
 
-  if (action === 'water-xmas-tree') {
-    const key = `xmastree:${memberId}`;
-    const state = (await kvGet(key)) || { growth: 0, totalWaters: 0, lastWateredAt: 0 };
-    const now = Date.now();
-    const wait = (state.lastWateredAt || 0) + XMAS_TREE_COOLDOWN_MS - now;
-
-    if (state.lastWateredAt && wait > 0) {
-      return res.status(429).json({
-        error: `Pohon sudah disiram. Siram lagi dalam ${fmtWait(wait)}.`,
-        growth: state.growth || 0,
-        retryAfterMs: wait,
-      });
-    }
-
-    const next = {
-      growth: Math.min(XMAS_TREE_MAX_GROWTH, (state.growth || 0) + 1),
-      totalWaters: (state.totalWaters || 0) + 1,
-      lastWateredAt: now,
-    };
-    const saved = await kvSet(key, next);
-    if (!saved) return res.status(500).json({ error: 'Gagal menyimpan pertumbuhan pohon. Coba lagi.' });
-
+  // ── Baca state (tanpa kunci: hanya membaca) ──
+  if (action === 'get-xmas-tree-state') {
+    const s = await loadState(memberId);
     return res.status(200).json({
       success: true,
-      growth: next.growth,
+      growth: s.growth,
+      ornamentsCrafted: s.ornamentsCrafted,
+      ornamentsInstalled: s.ornamentsInstalled,
+      giftsReadyAt: s.giftsReadyAt,
+      craftCost: ORNAMENT_COST,
       maxGrowth: XMAS_TREE_MAX_GROWTH,
-      coins: XMAS_TREE_COINS,
+      serverNow: Date.now(), // untuk hitung mundur yang akurat walau jam HP salah
+    });
+  }
+
+  // ── Siram pohon (cooldown 24 jam) ──
+  if (action === 'water-xmas-tree') {
+    return withMemberLock(memberId, res, async () => {
+      const state = await loadState(memberId);
+      const now = Date.now();
+      const wait = (state.lastWateredAt || 0) + XMAS_TREE_COOLDOWN_MS - now;
+      if (state.lastWateredAt && wait > 0) {
+        return res.status(429).json({
+          error: `Pohon sudah disiram. Siram lagi dalam ${fmtWait(wait)}.`,
+          growth: state.growth || 0,
+          retryAfterMs: wait,
+        });
+      }
+      // ...state: bola & jadwal kado TIDAK boleh hilang saat menyiram
+      const next = {
+        ...state,
+        growth: Math.min(XMAS_TREE_MAX_GROWTH, (state.growth || 0) + 1),
+        totalWaters: (state.totalWaters || 0) + 1,
+        lastWateredAt: now,
+      };
+      if (!(await kvSet(stateKey, next))) return res.status(500).json({ error: 'Gagal menyimpan pertumbuhan pohon. Coba lagi.' });
+      return res.status(200).json({ success: true, growth: next.growth, maxGrowth: XMAS_TREE_MAX_GROWTH, coins: XMAS_TREE_COINS });
+    });
+  }
+
+  // ── Craft bola: 50 koin event -> +1 bola ──
+  if (action === 'craft-ornament') {
+    const eventId = String(body.eventId || '');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(eventId)) return res.status(400).json({ error: 'eventId tidak valid' });
+    return withMemberLock(memberId, res, async () => {
+      const coinKey = `eventcoin:${eventId}:${memberId}`;
+      const raw = await kvCmd('get', coinKey);
+      const balance = raw === null || raw === undefined ? 0 : Number(raw);
+      if (!Number.isFinite(balance)) return res.status(500).json({ error: 'Format saldo koin tidak dikenali. Hubungi admin.' });
+      if (balance < ORNAMENT_COST) return res.status(400).json({ error: 'Koin tidak cukup' });
+
+      // DECRBY atomik; kalau saldo ternyata berubah (mis. terpakai di tempat lain) dan jadi negatif -> kembalikan
+      const left = Number(await kvCmd('decrby', coinKey, ORNAMENT_COST));
+      if (!(left >= 0)) {
+        await kvCmd('incrby', coinKey, ORNAMENT_COST);
+        return res.status(400).json({ error: 'Koin tidak cukup' });
+      }
+      const state = await loadState(memberId);
+      const next = { ...state, ornamentsCrafted: (state.ornamentsCrafted || 0) + 1 };
+      if (!(await kvSet(stateKey, next))) {
+        await kvCmd('incrby', coinKey, ORNAMENT_COST); // gagal simpan -> koin dikembalikan
+        return res.status(500).json({ error: 'Gagal menyimpan bola. Koin dikembalikan.' });
+      }
+      return res.status(200).json({ success: true, ornamentsCrafted: next.ornamentsCrafted, coinsLeft: left });
+    });
+  }
+
+  // ── Pasang semua bola yang sudah dibuat; kado siap 24 jam kemudian (hanya jika belum berjalan) ──
+  if (action === 'install-ornament') {
+    return withMemberLock(memberId, res, async () => {
+      const state = await loadState(memberId);
+      if (!state.ornamentsCrafted) return res.status(400).json({ error: 'Belum ada bola yang dibuat' });
+      const now = Date.now();
+      const next = {
+        ...state,
+        ornamentsInstalled: (state.ornamentsInstalled || 0) + state.ornamentsCrafted,
+        ornamentsCrafted: 0,
+        giftsReadyAt: !state.giftsReadyAt || state.giftsReadyAt <= now ? now + GIFT_DELAY_MS : state.giftsReadyAt,
+      };
+      if (!(await kvSet(stateKey, next))) return res.status(500).json({ error: 'Gagal menyimpan. Coba lagi.' });
+      return res.status(200).json({
+        success: true,
+        ornamentsInstalled: next.ornamentsInstalled,
+        ornamentsCrafted: 0,
+        giftsReadyAt: next.giftsReadyAt,
+      });
     });
   }
 }
