@@ -283,6 +283,22 @@
   }
   @keyframes mg-pop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   @keyframes mg-hit { to { transform: scale(1.6); opacity: 0; } }
+  .mg-result.msg { font-size: 1rem; line-height: 1.4; }
+  /* water-tree */
+  .wt-scene { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 16px; }
+  .wt-tree { font-size: 6.5rem; line-height: 1; margin-bottom: 14px; }
+  .wt-tree.grow { animation: wt-grow 0.8s ease-out; }
+  .wt-can { position: absolute; top: 8%; left: 56%; font-size: 3.2rem; line-height: 1; transform-origin: 80% 20%; }
+  .wt-scene.pouring .wt-can { animation: wt-tilt 1.5s ease-in-out; }
+  .wt-drops span { position: absolute; top: 26%; font-size: 1.5rem; opacity: 0; }
+  .wt-drops span:nth-child(1) { left: 50%; } .wt-drops span:nth-child(2) { left: 53%; animation-delay: 0.15s; } .wt-drops span:nth-child(3) { left: 47%; animation-delay: 0.3s; }
+  .wt-scene.pouring .wt-drops span { animation: wt-drop 0.5s ease-in infinite; }
+  .wt-scene.pouring .wt-drops span:nth-child(2) { animation-delay: 0.15s; } .wt-scene.pouring .wt-drops span:nth-child(3) { animation-delay: 0.3s; }
+  .wt-btn { padding: 12px 28px; border-radius: 999px; border: 2px solid #1d4ed8; background: linear-gradient(#60a5fa,#2563eb); color: #fff; font-weight: 800; font-size: 1rem; box-shadow: 0 3px 0 #1e3a8a; cursor: pointer; }
+  .wt-btn:disabled { opacity: 0.6; cursor: default; }
+  @keyframes wt-tilt { 0% { transform: rotate(0); } 20%, 80% { transform: rotate(-35deg); } 100% { transform: rotate(0); } }
+  @keyframes wt-drop { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(105px); opacity: 0; } }
+  @keyframes wt-grow { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
 </style>
 </head>
 <body>
@@ -620,7 +636,7 @@
         if (IS_PREVIEW) return say('🎮 Menang! (preview — klaim dinonaktifkan)', '#1e7a4f');
         claimQuestCore(eventId, questId, rewardCoin, type);
       },
-      () => { btnEl.disabled = false; say('😅 Belum berhasil — coba lagi!', '#c0392b'); }
+      (reason, message) => { btnEl.disabled = false; say('😅 ' + (message || 'Belum berhasil — coba lagi!'), '#c0392b'); }
     );
   }
   window.claimQuest = claimQuest;
@@ -768,6 +784,7 @@
   const TAP_TARGET = { count: 10, seconds: 10, emoji: '🎯', size: 52 };
   const MINIGAMES = {
     'tap-target': { title: 'Tap Target', start: startTapTarget },
+    'water-tree': { title: 'Siram Pohon', start: startWaterTree, timer: false }, // tanpa hitung mundur
   };
 
   // openMinigame(type, onWin, onLose): onWin() bila menang; onLose(reason) bila waktu habis
@@ -795,22 +812,23 @@
     const area = overlay.querySelector('.mg-area');
     const timeEl = overlay.querySelector('.mg-time');
     const barEl = overlay.querySelector('.mg-bar-fill');
+    if (def.timer === false) { timeEl.style.display = 'none'; overlay.querySelector('.mg-bar').style.display = 'none'; }
     const infoEl = overlay.querySelector('.mg-info');
     let finished = false, cleanup = null;
 
     const close = () => { if (cleanup) cleanup(); overlay.remove(); };
-    const finish = (kind, reason) => {
+    const finish = (kind, reason, message) => {
       if (finished) return;
       finished = true;
       if (cleanup) cleanup();
       const msg = document.createElement('div');
-      msg.className = 'mg-result';
-      msg.textContent = kind === 'win' ? '🎉 Menang!' : '⏰ Waktu habis!';
+      msg.className = 'mg-result' + (message ? ' msg' : '');
+      msg.textContent = kind === 'win' ? '🎉 Menang!' : (message || '⏰ Waktu habis!');
       area.appendChild(msg);
       setTimeout(() => {
         overlay.remove();
-        if (kind === 'win') { if (onWin) onWin(); } else if (onLose) onLose(reason);
-      }, kind === 'win' ? 800 : 900);
+        if (kind === 'win') { if (onWin) onWin(); } else if (onLose) onLose(reason, message);
+      }, kind === 'win' ? 800 : (message ? 2300 : 900)); // pesan error diberi waktu baca lebih lama
     };
     overlay.querySelector('.mg-close').addEventListener('click', () => {
       if (finished) return;
@@ -823,7 +841,7 @@
       setInfo: (t) => { infoEl.textContent = t; },
       setTime: (sec, frac) => { timeEl.textContent = `⏱️ ${Math.ceil(sec)}s`; barEl.style.width = (frac * 100) + '%'; },
       win: () => finish('win'),
-      lose: (reason) => finish('lose', reason),
+      lose: (reason, message) => finish('lose', reason, message),
     });
   }
   window.openMinigame = openMinigame;
@@ -871,6 +889,74 @@
       if (rem <= 0) { end(); api.lose('timeout'); }
     }, 100);
     return end;
+  }
+
+  // water-tree: pemain menyiram pohon; server (/api/tycoon 'water-xmas-tree') mencatat pertumbuhan dan
+  // menegakkan cooldown 24 jam. Menang = server berhasil; error/cooldown = kalah + pesan di dalam modal.
+  // Di mode preview server TIDAK dipanggil (hanya demo animasi).
+  function startWaterTree(api) {
+    const stageOf = (g) => (g >= 7 ? '🎄' : g >= 3 ? '🌲' : '🌱');
+    api.area.innerHTML = `
+      <div class="wt-scene">
+        <div class="wt-can">🚿</div>
+        <div class="wt-drops"><span>💧</span><span>💧</span><span>💧</span></div>
+        <div class="wt-tree">🌱</div>
+        <button type="button" class="wt-btn">💧 Siram</button>
+      </div>`;
+    const scene = api.area.querySelector('.wt-scene');
+    const tree = api.area.querySelector('.wt-tree');
+    const btn = api.area.querySelector('.wt-btn');
+    const closeBtn = api.area.closest('.mg-overlay').querySelector('.mg-close');
+    let ended = false;
+    const timers = [];
+    const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+    api.setInfo('Siram pohonmu supaya tumbuh! 🌱 → 🌲 → 🎄');
+
+    btn.addEventListener('click', async () => {
+      if (ended || btn.disabled) return;
+      btn.disabled = true;
+      closeBtn.disabled = true; // jangan tutup di tengah proses (cooldown bisa terpakai tanpa reward)
+      scene.classList.add('pouring');
+      api.setInfo('💧 Menyiram...');
+      await new Promise((r) => later(r, 1500)); // animasi 1,5 detik
+      if (ended) return;
+      scene.classList.remove('pouring');
+
+      if (IS_PREVIEW) {
+        tree.textContent = '🌲'; tree.classList.add('grow');
+        api.setInfo('👀 Preview: server tidak dipanggil');
+        later(() => api.win(), 900);
+        return;
+      }
+
+      api.setInfo('⏳ Menghubungi server...');
+      try {
+        const m = getCurrentMember();
+        if (!m) throw new Error('login');
+        const res = await fetch('/api/tycoon', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'water-xmas-tree', memberId: m.memberId, sessionToken: m.sessionToken }),
+        });
+        let data = {};
+        try { data = await res.json(); } catch (e) { /* respons bukan JSON */ }
+        if (ended) return;
+        if (!res.ok || !data.success) {
+          closeBtn.disabled = false;
+          return api.lose(res.status === 429 ? 'cooldown' : 'error', data.error || 'Gagal menyiram pohon. Coba lagi nanti.');
+        }
+        tree.textContent = stageOf(data.growth);
+        tree.classList.add('grow');
+        api.setInfo(`🎉 Pohon tumbuh! Tahap ${data.growth}/${data.maxGrowth || 7}`);
+        later(() => api.win(), 900);
+      } catch (e) {
+        if (ended) return;
+        closeBtn.disabled = false;
+        api.lose('error', e && e.message === 'login' ? 'Silakan login dulu.' : 'Gagal terhubung ke server. Periksa koneksi lalu coba lagi.');
+      }
+    });
+
+    return () => { ended = true; timers.forEach(clearTimeout); };
   }
 
   // Minigame per quest: quest.minigameType. Kompatibel dengan event lama (Fase 1-2) yang
