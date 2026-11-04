@@ -360,6 +360,12 @@
   }
   .xmas-btn.alt { background: linear-gradient(#c0392b, #a02a1f); box-shadow: 0 2px 0 #6e1b13; }
   .xmas-btn:disabled { opacity: 0.5; box-shadow: none; cursor: not-allowed; }
+  .wt-btn.done { background: linear-gradient(#3f8f63, #2f6f4e); border-color: #1f6b3c; box-shadow: 0 3px 0 #1f4a34; }
+  .xmas-btn.gift { background: linear-gradient(#f5b82e, #d99a14); color: #4a3200; box-shadow: 0 2px 0 #8a6100; }
+  .xmas-btn[hidden] { display: none; }
+  .xmas-spinner { display: inline-block; width: 14px; height: 14px; border: 3px solid #c9b48a; border-top-color: #2f6f4e; border-radius: 50%; animation: xmas-spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes xmas-spin { to { transform: rotate(360deg); } }
+  .xmas-rewards { list-style: none; margin: 10px 0 14px; padding: 0; font-weight: 800; color: #3b2a14; font-size: 1rem; line-height: 1.8; }
 </style>
 </head>
 <body>
@@ -983,9 +989,19 @@
     const timers = [];
     const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
     api.setInfo('Siram pohonmu supaya tumbuh! 🌱 → 🌲 → 🎄');
+    let phase = 'idle'; // 'idle' -> (siram) -> 'done' (tombol Selesai); modal ditutup HANYA oleh pemain
+    const showDone = () => {
+      phase = 'done';
+      btn.disabled = false;
+      btn.textContent = '✅ Selesai';
+      btn.classList.add('done');
+      // tombol ✕ sengaja tetap nonaktif: server sudah mencatat siram, jadi pemain harus menekan Selesai untuk klaim reward
+    };
 
     btn.addEventListener('click', async () => {
-      if (ended || btn.disabled) return;
+      if (ended) return;
+      if (phase === 'done') { api.win(); return; }
+      if (btn.disabled) return;
       btn.disabled = true;
       closeBtn.disabled = true; // jangan tutup di tengah proses (cooldown bisa terpakai tanpa reward)
       scene.classList.add('pouring');
@@ -996,8 +1012,8 @@
 
       if (IS_PREVIEW) {
         tree.textContent = '🌲'; tree.classList.add('grow');
-        api.setInfo('👀 Preview: server tidak dipanggil');
-        later(() => api.win(), 900);
+        api.setInfo('👀 Preview: server tidak dipanggil. Tekan Selesai.');
+        showDone();
         return;
       }
 
@@ -1019,8 +1035,8 @@
         }
         tree.textContent = stageOf(data.growth);
         tree.classList.add('grow');
-        api.setInfo(`🎉 Pohon tumbuh! Tahap ${data.growth}/${data.maxGrowth || 7}`);
-        later(() => api.win(), 900);
+        api.setInfo(`🎉 Pohon tumbuh! Tahap ${data.growth}/${data.maxGrowth || 7}. Tekan Selesai.`);
+        showDone();
       } catch (e) {
         if (ended) return;
         closeBtn.disabled = false;
@@ -1054,6 +1070,38 @@
     }
   }
 
+  // Hasil buka kado: daftar teks (dikelompokkan), tanpa animasi undian.
+  function showXmasRewards(rewards) {
+    const groups = new Map();
+    for (const r of rewards) {
+      const k = `${r.type}|${r.amount}|${r.name}`;
+      const g = groups.get(k);
+      if (g) g.n++; else groups.set(k, { r, n: 1 });
+    }
+    const ov = document.createElement('div');
+    ov.className = 'mg-overlay';
+    ov.style.zIndex = '10001';
+    const card = document.createElement('div');
+    card.className = 'mg-card xmas-card';
+    const title = document.createElement('div');
+    title.className = 'mg-title';
+    title.textContent = '🎉 Kamu mendapatkan:';
+    const ul = document.createElement('ul');
+    ul.className = 'xmas-rewards';
+    for (const { r, n } of groups.values()) {
+      const li = document.createElement('li');
+      li.textContent = r.type === 'item' ? `${n}x ${r.name}` : `${n}x ${r.amount} ${r.name}`; // textContent: aman dari HTML
+      ul.appendChild(li);
+    }
+    if (groups.size === 0) { const li = document.createElement('li'); li.textContent = 'Tidak ada hadiah.'; ul.appendChild(li); }
+    const ok = document.createElement('button');
+    ok.type = 'button'; ok.className = 'xmas-btn'; ok.textContent = '✅ Tutup';
+    ok.addEventListener('click', () => ov.remove());
+    card.append(title, ul, ok);
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+  }
+
   function openXmasPanel(eventId) {
     const overlay = document.createElement('div');
     overlay.className = 'mg-overlay';
@@ -1069,6 +1117,7 @@
         <div class="xmas-gift"></div>
         <div class="xmas-msg"></div>
         <div class="xmas-actions">
+          <button type="button" class="xmas-btn gift" data-act="open" hidden>🎁 Buka Kado</button>
           <button type="button" class="xmas-btn" data-act="craft" disabled>🛠️ Craft Bola (50 🪙)</button>
           <button type="button" class="xmas-btn alt" data-act="install" disabled>🎄 Pasang Bola</button>
         </div>
@@ -1077,15 +1126,16 @@
     const q = (s) => overlay.querySelector(s);
     const treeEl = q('.xmas-tree'), ornEl = q('.xmas-orn'), statsEl = q('.xmas-stats');
     const giftEl = q('.xmas-gift'), msgEl = q('.xmas-msg');
-    const craftBtn = q('[data-act="craft"]'), installBtn = q('[data-act="install"]');
+    const openBtn = q('[data-act="open"]'), craftBtn = q('[data-act="craft"]'), installBtn = q('[data-act="install"]');
     let st = null, busy = false, alive = true, offset = 0;
 
     const stageOf = (g) => (g >= 7 ? '🎄' : g >= 3 ? '🌲' : '🌱');
     const say = (t, err) => { msgEl.textContent = t || ''; msgEl.className = 'xmas-msg' + (err ? ' err' : ''); };
+    const serverNow = () => Date.now() + offset;
 
     function renderGift() {
-      if (!st || !st.giftsReadyAt) { giftEl.textContent = ''; return; }
-      const left = st.giftsReadyAt - (Date.now() + offset);
+      if (!st || !st.giftsReadyAt || !(st.ornamentsInstalled > 0)) { giftEl.textContent = ''; return; }
+      const left = st.giftsReadyAt - serverNow();
       if (left <= 0) { giftEl.textContent = '🎁 Kado sudah siap!'; return; }
       const min = Math.ceil(left / 60000);
       giftEl.textContent = `🎁 Kado siap dalam: ${Math.floor(min / 60)} jam ${min % 60} menit`;
@@ -1098,6 +1148,10 @@
       craftBtn.textContent = `🛠️ Craft Bola (${st.craftCost || 50} 🪙)`;
       craftBtn.disabled = busy || IS_PREVIEW;
       installBtn.disabled = busy || IS_PREVIEW || !(st.ornamentsCrafted > 0);
+      const giftReady = !!(st.ornamentsInstalled > 0 && st.giftsReadyAt && st.giftsReadyAt <= serverNow());
+      openBtn.hidden = !giftReady;
+      openBtn.textContent = `🎁 Buka ${st.ornamentsInstalled || 0} Kado`;
+      openBtn.disabled = busy || IS_PREVIEW;
       renderGift();
     }
 
@@ -1121,7 +1175,24 @@
       });
     });
 
-    const tick = setInterval(renderGift, 30000); // hitung mundur kado
+    // Buka kado: server membaca daftar hadiah dari event di Firebase (BUKAN dari browser, supaya
+    // member tidak bisa mengirim daftar hadiah buatannya sendiri). Hasil ditampilkan sebagai teks.
+    openBtn.addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; render();
+      msgEl.className = 'xmas-msg';
+      msgEl.innerHTML = '<span class="xmas-spinner"></span> Membuka kado...';
+      const { ok, data } = await xmasApi('open-gift', { eventId });
+      busy = false;
+      if (!alive) return;
+      if (!ok) { say(data.error || 'Gagal membuka kado. Coba lagi nanti.', true); render(); return; }
+      st.ornamentsInstalled = 0; st.giftsReadyAt = null;
+      say('');
+      render();
+      showXmasRewards(data.rewards || []);
+    });
+
+    const tick = setInterval(render, 30000); // hitung mundur & munculnya tombol Buka Kado
     const close = () => { alive = false; clearInterval(tick); overlay.remove(); };
     q('.mg-close').addEventListener('click', close);
 
