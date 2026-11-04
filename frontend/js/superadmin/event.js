@@ -510,6 +510,7 @@ function saInjectEventExtraFields() {
       <select id="sa-global-minigame-type" onchange="saSetGlobalMinigame(this.value)" style="${inputStyle}">
         <option value="none">Tanpa minigame</option>
         <option value="tap-target">Tap Target (ketuk 10 sasaran dalam 10 detik)</option>
+        <option value="water-tree">Siram Pohon Natal (🌱 -> 🎄)</option>
       </select>
       <div style="display:flex; align-items:center; justify-content:space-between; margin:4px 0;">
         <span style="font-size:11px; color:#cbd5e0;">Terapkan ke quest mana?</span>
