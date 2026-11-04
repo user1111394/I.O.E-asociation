@@ -30,7 +30,7 @@ const SA_QUEST_TYPES = {
 
 function saAddQuestRow() {
   const id = 'q_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-  saQuestDraft.push({ id, type: 'visit', title: '', rewardCoin: 10, targetLink: '', sourceLink: '', streakDays: 3, unlockDay: 1 });
+  saQuestDraft.push({ id, type: 'visit', title: '', rewardCoin: 10, targetLink: '', sourceLink: '', streakDays: 3, unlockDay: 1, minigame: false });
   saRenderQuestList();
 }
 
@@ -98,6 +98,9 @@ function saRenderQuestList() {
       <input type="number" min="1" placeholder="Reward koin" value="${q.rewardCoin}" oninput="saUpdateQuestField('${q.id}','rewardCoin',parseInt(this.value,10)||0)" style="width:100%; padding:8px; margin-bottom:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
       <input type="number" min="1" placeholder="Buka di hari ke- (1 = langsung bisa)" value="${q.unlockDay || 1}" oninput="saUpdateQuestField('${q.id}','unlockDay',parseInt(this.value,10)||1)" style="width:100%; padding:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;">
       <p style="font-size:10px; color:#718096; margin:4px 0 0 2px;">Quest terkunci sampai hari ke-N sejak event dipublikasikan (hari ke-1 = hari event diterbitkan).</p>
+      <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:11px; color:#cbd5e0;">
+        <input type="checkbox" ${q.minigame ? 'checked' : ''} onchange="saUpdateQuestField('${q.id}','minigame',this.checked)"> 🎮 Wajib main minigame sebelum klaim
+      </label>
     </div>
   `).join('');
 }
@@ -181,12 +184,25 @@ async function saCreateEvent() {
     }
   }
 
+  // Maskot + minigame (field baru). Elemen disuntik oleh saInjectEventExtraFields() di bawah.
+  const mascotInput = document.getElementById('sa-event-mascot-input');
+  const mascotFile = mascotInput && mascotInput.files && mascotInput.files[0];
+  const mascotDialogue = ((document.getElementById('sa-event-mascot-dialogue') || {}).value || '').trim();
+  const minigameType = (document.getElementById('sa-event-minigame-type') || {}).value || 'none';
+  const targetQuestsForMinigame = minigameType === 'none' ? [] : saQuestDraft.filter(q => q.minigame).map(q => q.id);
+  if (minigameType !== 'none' && targetQuestsForMinigame.length === 0) {
+    statusEl.textContent = '⚠️ Minigame dipilih, tapi belum ada quest yang dicentang "Wajib main minigame".';
+    statusEl.style.color = '#ff6b6b';
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = 'Mengupload...';
   statusEl.style.color = '#718096';
 
   try {
-    const eventId = 'event_' + Date.now();
+    // ID draft acak (bukan cuma timestamp) supaya tidak mudah ditebak orang lain.
+    const draftId = 'draft_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
 
     statusEl.textContent = 'Upload background...';
     const backgroundUrl = await saUploadEventImage(bgFile);
@@ -196,6 +212,12 @@ async function saCreateEvent() {
 
     statusEl.textContent = 'Upload isi tengah border...';
     const questBgUrl = await saUploadEventImage(questBgFile);
+
+    let mascotUrl = '';
+    if (mascotFile) {
+      statusEl.textContent = 'Upload maskot...';
+      mascotUrl = await saUploadEventImage(mascotFile);
+    }
 
     // Susun quest jadi object (bukan array) supaya gampang di-lookup per ID
     // saat member klaim reward nanti.
@@ -224,25 +246,30 @@ async function saCreateEvent() {
     const { db } = await saGetEventFirebase();
     const { ref, set } = window._eventDbFns;
 
+    // Disimpan sebagai DRAFT. createdAt/expiresAt sengaja TIDAK diisi di sini:
+    // dihitung saat PUBLISH (dari event.html?preview=...), supaya "hari ke-1"
+    // dan masa berlaku mulai dihitung dari saat event benar-benar terbit.
     const now = Date.now();
-    const expiresAt = now + (days * 24 * 60 * 60 * 1000);
 
-    statusEl.textContent = 'Menyimpan event...';
-    await set(ref(db, `events/${eventId}`), {
-      id: eventId,
+    statusEl.textContent = 'Menyimpan draft...';
+    await set(ref(db, `draft_events/${draftId}`), {
+      id: draftId,
       title, desc,
       backgroundUrl,
       borderShapeUrl,
       questBgUrl,
+      mascotUrl,
+      mascotDialogue,
+      minigameType,
+      targetQuestsForMinigame, // array kosong tidak disimpan Firebase -> baca dengan `|| []`
       coinName,
       inviteLink,
       quests: questsObj,
-      createdAt: now,
-      expiresAt,
-      days
+      days,
+      draftCreatedAt: now
     });
 
-    statusEl.textContent = '✅ Event berhasil dipublikasikan!';
+    statusEl.innerHTML = '✅ Draft tersimpan. <a href="/event.html?preview=' + draftId + '" target="_blank" rel="noopener" style="color:#00e5c0; text-decoration:underline;">Buka Preview ↗</a>';
     statusEl.style.color = '#00e5c0';
     document.getElementById('sa-event-title').value = '';
     document.getElementById('sa-event-desc').value = '';
@@ -252,6 +279,9 @@ async function saCreateEvent() {
     bgInput.value = '';
     borderImgInput.value = '';
     questBgInput.value = '';
+    if (mascotInput) mascotInput.value = '';
+    const dlgEl = document.getElementById('sa-event-mascot-dialogue'); if (dlgEl) dlgEl.value = '';
+    const mgEl = document.getElementById('sa-event-minigame-type'); if (mgEl) mgEl.value = 'none';
     saQuestDraft = [];
     saRenderQuestList();
     saLoadEventList();
@@ -262,13 +292,14 @@ async function saCreateEvent() {
     statusEl.style.color = '#ff6b6b';
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Publikasikan Event';
+    btn.textContent = 'Simpan Draft & Preview';
   }
 }
 
 async function saLoadEventList() {
   const listEl = document.getElementById('sa-event-list');
   if (!listEl) return;
+  saLoadDraftList(); // daftar draft (belum terbit) tampil di atas daftar event aktif
 
   try {
     const { db } = await saGetEventFirebase();
@@ -414,4 +445,98 @@ async function saPopulateCoinEventDropdown() {
   } catch (err) {
     console.error('Gagal memuat daftar event untuk dropdown koin:', err);
   }
+}
+
+
+/* ═══════════════════════════════════════════════
+   DRAFT & PREVIEW
+   Event disimpan ke draft_events/{id}. Preview: /event.html?preview={id}.
+   Di halaman preview ada tombol PUBLISH yang memindahkan draft ke events/.
+═══════════════════════════════════════════════ */
+function saDraftEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Menyuntik field maskot/minigame ke form event yang sudah ada (markup form ada di luar event.js),
+// plus wadah daftar draft. Return true kalau form sudah ada & field sudah terpasang.
+function saInjectEventExtraFields() {
+  if (document.getElementById('sa-event-extra')) return true;
+  const btn = document.getElementById('sa-event-submit-btn');
+  if (!btn || !btn.parentNode) return false;
+
+  const inputStyle = 'width:100%; padding:8px; margin-bottom:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,90,160,0.2); border-radius:6px; color:#fff; font-size:12px; box-sizing:border-box;';
+  const wrap = document.createElement('div');
+  wrap.id = 'sa-event-extra';
+  wrap.style.cssText = 'margin:10px 0;';
+  wrap.innerHTML = `
+    <div style="font-size:12px; font-weight:600; color:#ffd166; margin-bottom:6px;">🧙 Maskot & Minigame (opsional)</div>
+    <label style="font-size:11px; color:#a0aec0;">Gambar maskot (PNG transparan)</label>
+    <input type="file" id="sa-event-mascot-input" accept="image/*" style="${inputStyle}">
+    <textarea id="sa-event-mascot-dialogue" maxlength="160" rows="2" placeholder="Dialog maskot (maks 160 huruf), misal: Halo! Selesaikan quest hari ini ya!" style="${inputStyle} resize:vertical;"></textarea>
+    <select id="sa-event-minigame-type" style="${inputStyle}">
+      <option value="none">Tanpa minigame</option>
+      <option value="tap-target">Tap Target (ketuk sasaran sebelum waktu habis)</option>
+    </select>
+    <p style="font-size:10px; color:#718096; margin:0 0 6px 2px;">Kalau memilih minigame, centang "Wajib main minigame" di quest yang ingin dikunci.</p>`;
+  btn.parentNode.insertBefore(wrap, btn);
+  btn.textContent = 'Simpan Draft & Preview';
+
+  const listEl = document.getElementById('sa-event-list');
+  if (listEl && listEl.parentNode && !document.getElementById('sa-draft-list')) {
+    const drafts = document.createElement('div');
+    drafts.id = 'sa-draft-list';
+    drafts.style.cssText = 'margin-bottom:10px;';
+    listEl.parentNode.insertBefore(drafts, listEl);
+  }
+  return true;
+}
+
+async function saLoadDraftList() {
+  const el = document.getElementById('sa-draft-list');
+  if (!el) return;
+  try {
+    const { db } = await saGetEventFirebase();
+    const { ref, get } = window._eventDbFns;
+    const data = (await get(ref(db, 'draft_events'))).val();
+    const drafts = data ? Object.values(data).sort((a, b) => (b.draftCreatedAt || 0) - (a.draftCreatedAt || 0)) : [];
+    if (drafts.length === 0) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div style="font-size:12px; font-weight:600; color:#ffd166; margin:4px 0 8px;">📝 Draft (belum terbit)</div>' +
+      drafts.map(d => {
+        const qc = d.quests ? Object.keys(d.quests).length : 0;
+        return `
+        <div style="background:rgba(255,209,102,0.06); border:1px solid rgba(255,209,102,0.3); border-radius:10px; padding:12px; margin-bottom:8px;">
+          <div style="font-size:13px; font-weight:600; color:#fff;">${saDraftEsc(d.title)}</div>
+          <div style="font-size:10px; color:#718096; margin-top:4px;">🎯 ${qc} quest · 🪙 ${saDraftEsc(d.coinName || 'koin')} · ⏳ ${saDraftEsc(d.days)} hari${d.minigameType && d.minigameType !== 'none' ? ' · 🎮 ' + saDraftEsc(d.minigameType) : ''}</div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <a href="/event.html?preview=${encodeURIComponent(d.id)}" target="_blank" rel="noopener" style="flex:1; text-align:center; padding:8px; border-radius:6px; background:rgba(0,229,192,0.15); border:1px solid rgba(0,229,192,0.4); color:#00e5c0; font-size:12px; text-decoration:none;">Preview / Publish</a>
+            <button onclick="saDeleteDraft('${saDraftEsc(d.id)}')" style="padding:8px 12px; border-radius:6px; background:rgba(255,107,107,0.15); border:1px solid rgba(255,107,107,0.3); color:#ff6b6b; font-size:12px;">Hapus</button>
+          </div>
+        </div>`;
+      }).join('');
+  } catch (err) {
+    console.error('Gagal memuat draft:', err);
+    el.innerHTML = `<p style="color:#ff6b6b; font-size:11px;">Gagal memuat draft: ${saDraftEsc(err && err.message ? err.message : err)}</p>`;
+  }
+}
+
+async function saDeleteDraft(draftId) {
+  if (!confirm('Hapus draft ini? (Gambar yang sudah diupload ke Cloudinary tidak ikut terhapus.)')) return;
+  try {
+    const { db } = await saGetEventFirebase();
+    const { ref, remove } = window._eventDbFns;
+    await remove(ref(db, `draft_events/${draftId}`));
+    saLoadDraftList();
+  } catch (err) {
+    alert('Gagal menghapus draft: ' + (err && err.message ? err.message : err));
+  }
+}
+
+// Pasang field tambahan segera, atau tunggu sampai form-nya muncul di halaman.
+if (!saInjectEventExtraFields()) {
+  const saExtraObserver = new MutationObserver(() => {
+    if (saInjectEventExtraFields()) { saExtraObserver.disconnect(); saLoadDraftList(); }
+  });
+  saExtraObserver.observe(document.body, { childList: true, subtree: true });
+} else {
+  saLoadDraftList();
 }
