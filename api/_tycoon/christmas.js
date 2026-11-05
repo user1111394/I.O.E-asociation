@@ -8,7 +8,7 @@
 //   giftsEventId = event tempat bola dipasang; kado hanya bisa dibuka di event yang sama.
 // Koin event: eventcoin:{eventId}:{memberId}; koin global: coins:{memberId} (angka; dikelola bersama shop.js).
 //
-// KEAMANAN (Hidden Gacha): daftar hadiah (event.xmasGachaPool) dibaca SERVER dari event di Firebase,
+// KEAMANAN (Hidden Gacha): daftar hadiah (event.eventGachaPool; event lama: xmasGachaPool) dibaca SERVER dari event di Firebase,
 // BUKAN dari body request. Kalau pool dikirim browser, member bisa mengirim pool buatannya sendiri
 // (mis. 1.000.000 koin) dan mencetak koin tanpa batas. Field `gachaPool` di request diabaikan.
 //
@@ -38,7 +38,7 @@ async function loadState(memberId) {
 }
 
 // Perintah Redis lewat REST (atomik di sisi Redis): DECRBY, INCRBY, SET NX EX, DEL, GET.
-async function kvCmd(...args) {
+export async function kvCmd(...args) {
   const r = await fetch(`${KV_URL}/${args.map((a) => encodeURIComponent(String(a))).join('/')}`, {
     headers: { Authorization: `Bearer ${KV_TOKEN}` },
   });
@@ -47,7 +47,7 @@ async function kvCmd(...args) {
   return data.result;
 }
 
-async function withMemberLock(memberId, res, fn) {
+export async function withMemberLock(memberId, res, fn) {
   const lockKey = `xmaslock:${memberId}`;
   let locked = false;
   try {
@@ -67,10 +67,10 @@ function fmtWait(ms) {
   return `${m} menit`;
 }
 
-const EVENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+export const EVENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 // Baca event dari Firebase (REST, aturan baca publik seperti halaman event). null = tidak ada.
-async function loadEvent(eventId) {
+export async function loadEvent(eventId) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 5000);
   try {
@@ -83,7 +83,7 @@ async function loadEvent(eventId) {
 }
 
 // Bersihkan pool dari Firebase: tipe valid, jumlah koin bilangan bulat 1..1.000.000, bobot > 0.
-function sanitizeGachaPool(raw) {
+export function sanitizeGachaPool(raw) {
   const rows = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
   const pool = [];
   for (const r of rows.slice(0, 50)) {
@@ -102,7 +102,13 @@ function sanitizeGachaPool(raw) {
   return pool;
 }
 
-function rollReward(pool, eventCoinName) {
+// Pool hadiah event: field baru `eventGachaPool` (dipakai Natal & Tahun Baru); event lama masih
+// memakai `xmasGachaPool` (atau `gachaPool`), jadi ketiganya dibaca.
+export function pickGachaPool(ev) {
+  return ev ? (ev.eventGachaPool ?? ev.xmasGachaPool ?? ev.gachaPool) : undefined;
+}
+
+export function rollReward(pool, eventCoinName) {
   const total = pool.reduce((a, p) => a + p.weight, 0);
   let x = Math.random() * total;
   let pick = pool[pool.length - 1];
@@ -232,7 +238,7 @@ export async function handleChristmas(ctx, res) {
       let ev;
       try { ev = await loadEvent(eventId); } catch (e) { return res.status(502).json({ error: 'Tidak bisa membaca data event. Coba lagi.' }); }
       if (!ev) return res.status(404).json({ error: 'Event tidak ditemukan atau sudah berakhir.' });
-      const pool = sanitizeGachaPool(ev.xmasGachaPool); // sumber tepercaya; body.gachaPool diabaikan
+      const pool = sanitizeGachaPool(pickGachaPool(ev)); // sumber tepercaya; body.gachaPool diabaikan
       if (pool.length === 0) return res.status(400).json({ error: 'Event ini belum punya hadiah kado.' });
 
       const rewards = [];
