@@ -26,6 +26,7 @@ import { handleGarden } from './_tycoon/garden.js';
 import { handleCatchPet } from './_tycoon/catch-pet.js';
 import { handlePetBarn } from './_tycoon/pet-barn.js';
 import { handleChristmas } from './_tycoon/christmas.js';
+import { handleNewYear } from './_tycoon/newyear.js';
 
 // action -> handler modul. Pakai Map (bukan object) supaya action seperti "constructor" tidak lolos.
 const GROUPS = [
@@ -35,6 +36,7 @@ const GROUPS = [
   [handleCatchPet, ['get-catchpet-state', 'flee-nearby-pets', 'attempt-catch', 'upgrade-catch-tool', 'repair-catch-tool']],
   [handlePetBarn, ['get-petbarn-state', 'upgrade-barn', 'feed-pet', 'clean-pet', 'pet-the-pet', 'collect-yield']],
   [handleChristmas, ['water-xmas-tree', 'get-xmas-tree-state', 'craft-ornament', 'install-ornament', 'open-gift']],
+  [handleNewYear, ['get-newyear-state', 'craft-firework', 'launch-firework']],
 ];
 const ROUTES = new Map(GROUPS.flatMap(([fn, names]) => names.map((n) => [n, fn])));
 
