@@ -123,6 +123,7 @@ export async function handleChristmas(ctx, res) {
     return res.status(200).json({
       success: true,
       growth: s.growth,
+      lastWateredAt: s.lastWateredAt, // klien memakai ini untuk melewati animasi siram saat masih cooldown
       ornamentsCrafted: s.ornamentsCrafted,
       ornamentsInstalled: s.ornamentsInstalled,
       giftsReadyAt: s.giftsReadyAt,
