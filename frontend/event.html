@@ -1044,6 +1044,37 @@
       }
     });
 
+    // Cek cooldown DULU. Dijalankan di dalam fungsi async terpisah supaya startWaterTree tetap
+    // mengembalikan fungsi pembersih secara SINKRON (openMinigame memakai nilai kembaliannya langsung).
+    // Handler tombol sudah terpasang di atas, jadi tombol "✅ Selesai" di jalur cooldown juga berfungsi.
+    (async () => {
+      const m = getCurrentMember();
+      if (!m || IS_PREVIEW) return;
+      btn.disabled = true;
+      btn.textContent = '⏳ Memeriksa...';
+      api.setInfo('⏳ Memeriksa pohonmu...');
+      try {
+        const res = await fetch('/api/tycoon', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get-xmas-tree-state', memberId: m.memberId, sessionToken: m.sessionToken }),
+        });
+        const data = await res.json();
+        if (ended) return;
+        // pakai jam SERVER (serverNow) supaya jam HP yang salah tidak menggagalkan pengecekan
+        if (res.ok && data.success && data.lastWateredAt && ((data.serverNow || Date.now()) - data.lastWateredAt < 24 * 60 * 60 * 1000)) {
+          tree.textContent = stageOf(data.growth);
+          api.setInfo('Kamu sudah menyiram hari ini. Tekan Selesai untuk klaim hadiah.');
+          showDone();
+          return; // lewati animasi siram
+        }
+      } catch (e) { console.error('Gagal cek status siram:', e); }
+      if (ended) return;
+      btn.disabled = false;
+      btn.textContent = '💧 Siram';
+      api.setInfo('Siram pohonmu supaya tumbuh! 🌱 → 🌲 → 🎄');
+    })();
+
     return () => { ended = true; timers.forEach(clearTimeout); };
   }
 
