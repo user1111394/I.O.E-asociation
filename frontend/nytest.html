@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tes backend Tahun Baru (sementara)</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #111; color: #eee; padding: 12px; max-width: 480px; margin: 0 auto; }
+  button { display: block; width: 100%; padding: 13px; margin: 6px 0; border: 0; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 700; font-size: 14px; }
+  button.alt { background: #7c3aed; } button.warn { background: #b45309; }
+  input { width: 100%; padding: 10px; box-sizing: border-box; border-radius: 8px; border: 1px solid #555; background: #222; color: #fff; font-size: 14px; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 10px; border-radius: 8px; min-height: 140px; font-size: 12px; }
+  small { color: #999; }
+</style>
+</head>
+<body>
+<h3>🎆 Tes backend Tahun Baru <small>(halaman sementara, hapus setelah tes)</small></h3>
+<small>Jam WIB sekarang: <b id="wib"></b> · jendela nyala 18:00–23:59 WIB</small>
+<p><label>Event ID (salin dari data event, mis. event_1767...)<input id="eid" placeholder="event_..." autocomplete="off"></label></p>
+<button data-a="get-newyear-state">1. get-newyear-state</button>
+<button data-a="craft-firework">2. craft-firework (potong 50 koin event)</button>
+<button data-a="launch-firework" class="warn">3. launch-firework (hanya malam WIB)</button>
+<button data-a="get-xmas-tree-state" class="alt">Cek Natal masih jalan: get-xmas-tree-state</button>
+<pre id="out">Siap.</pre>
+<script>
+(function () {
+  var out = document.getElementById('out');
+  function wibNow() { var d = new Date(Date.now() + 7 * 3600 * 1000); return d.toISOString().slice(11, 16); }
+  document.getElementById('wib').textContent = wibNow();
+  setInterval(function () { document.getElementById('wib').textContent = wibNow(); }, 20000);
+  var session = null;
+  try { session = JSON.parse(localStorage.getItem('ioe_account_session') || 'null'); } catch (e) {}
+  if (!session || !session.memberId || !session.sessionToken) {
+    out.textContent = 'Belum login. Login dulu di situs, lalu buka halaman ini lagi.';
+    return;
+  }
+  document.querySelectorAll('button[data-a]').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      var eventId = document.getElementById('eid').value.trim();
+      out.textContent = '⏳ ' + b.dataset.a + '...';
+      try {
+        var res = await fetch('/api/tycoon', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: b.dataset.a, memberId: session.memberId, sessionToken: session.sessionToken, eventId: eventId })
+        });
+        var text = await res.text(); var shown = text;
+        try { shown = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
+        out.textContent = 'HTTP ' + res.status + '\n' + shown;
+      } catch (e) { out.textContent = 'Gagal terhubung: ' + e.message; }
+    });
+  });
+})();
+</script>
+</body>
+</html>
