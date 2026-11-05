@@ -288,7 +288,7 @@ async function saCreateEvent() {
       inviteLink,
       quests: questsObj,
       days,
-      xmasGachaPool: gachaPoolClean, // kosong -> tidak tersimpan di Firebase
+      eventGachaPool: gachaPoolClean, // satu pool untuk semua gacha event (kado Natal, kembang api Tahun Baru); kosong -> tidak tersimpan
       draftCreatedAt: now
     });
 
@@ -499,8 +499,8 @@ function saInjectEventExtraFields() {
     <label style="font-size:11px; color:#a0aec0;">Gambar maskot (PNG transparan)</label>
     <input type="file" id="sa-event-mascot-input" accept="image/*" style="${inputStyle}">
     <textarea id="sa-event-mascot-dialogue" maxlength="160" rows="2" placeholder="Dialog maskot (maks 160 huruf), misal: Halo! Selesaikan quest hari ini ya!" style="${inputStyle} resize:vertical;"></textarea>
-    <div style="font-size:12px; font-weight:600; color:#ffd166; margin:12px 0 4px;">🎁 Hadiah Kado Natal (Hidden Gacha)</div>
-    <p style="font-size:10px; color:#718096; margin:0 0 6px;">Tiap bola terpasang = 1 undian saat kado dibuka; hasil tampil langsung sebagai teks. Peluang = bobot ÷ total bobot (angka di kanan dihitung otomatis).</p>
+    <div style="font-size:12px; font-weight:600; color:#ffd166; margin:12px 0 4px;">🎁 Hadiah Gacha Event (Kado/Kembang Api)</div>
+    <p style="font-size:10px; color:#718096; margin:0 0 6px;">Satu daftar ini dipakai SEMUA gacha event: kado Natal (1 undian per bola terpasang) dan kembang api Tahun Baru (1 undian per kembang api). Hasil tampil langsung sebagai teks. Peluang = bobot ÷ total bobot (angka di kanan dihitung otomatis).</p>
     <div id="sa-gacha-list"></div>
     <button type="button" onclick="saAddGachaRow()" style="width:100%; padding:8px; margin-bottom:4px; border-radius:6px; background:rgba(255,209,102,0.12); border:1px dashed rgba(255,209,102,0.5); color:#ffd166; font-size:12px;">＋ Tambah Hadiah</button>
     <div id="sa-gacha-total" style="font-size:10px; color:#718096; margin-bottom:6px;"></div>
@@ -635,8 +635,8 @@ async function saDeleteDraft(draftId) {
 }
 
 /* ═══════════════════════════════════════════════
-   HADIAH KADO NATAL (HIDDEN GACHA)
-   Disimpan di event sebagai xmasGachaPool: [{ type, value, weight }].
+   HADIAH GACHA EVENT (KADO NATAL / KEMBANG API TAHUN BARU)
+   Disimpan di event sebagai eventGachaPool (event lama: xmasGachaPool, tetap dibaca server): [{ type, value, weight }].
    type: 'eventcoin' | 'globalcoin' (value = jumlah koin) | 'item' (value = id/nama item).
    Server membaca pool ini langsung dari Firebase saat kado dibuka (bukan dari browser).
 ═══════════════════════════════════════════════ */
