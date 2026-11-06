@@ -215,8 +215,8 @@ async function saCreateEvent() {
     return;
   }
   const gachaPoolClean = saCleanGachaPool();
-  if (gachaPoolClean.length === 0 && saQuestDraft.some(q => q.minigameType === 'water-tree') &&
-      !confirm('Event punya quest Siram Pohon, tapi hadiah kado masih kosong (kado tidak bisa dibuka). Lanjutkan?')) return;
+  if (gachaPoolClean.length === 0 && saQuestDraft.some(q => q.minigameType === 'water-tree' || q.minigameType === 'newyear-firework') &&
+      !confirm('Event punya fitur gacha (Siram Pohon / Kembang Api), tapi hadiah gacha masih kosong (kado/kembang api tidak bisa dibuka). Lanjutkan?')) return;
 
   btn.disabled = true;
   btn.textContent = 'Mengupload...';
@@ -530,6 +530,7 @@ function saInjectEventExtraFields() {
         <option value="none">Tanpa minigame</option>
         <option value="tap-target">Tap Target (ketuk 10 sasaran dalam 10 detik)</option>
         <option value="water-tree">Siram Pohon Natal (🌱 -> 🎄)</option>
+        <option value="newyear-firework">Kembang Api Tahun Baru (penanda tombol; quest tidak tampil)</option>
       </select>
       <div style="display:flex; align-items:center; justify-content:space-between; margin:4px 0;">
         <span style="font-size:11px; color:#cbd5e0;">Terapkan ke quest mana?</span>
