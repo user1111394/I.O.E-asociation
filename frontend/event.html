@@ -361,6 +361,19 @@
   .xmas-btn.alt { background: linear-gradient(#c0392b, #a02a1f); box-shadow: 0 2px 0 #6e1b13; }
   .xmas-btn:disabled { opacity: 0.5; box-shadow: none; cursor: not-allowed; }
   .wt-btn.done { background: linear-gradient(#3f8f63, #2f6f4e); border-color: #1f6b3c; box-shadow: 0 3px 0 #1f4a34; }
+  /* ══ Panel Kembang Api Tahun Baru ══ */
+  .ny-fab {
+    position: absolute; left: 12px; top: 64px; z-index: 20;
+    padding: 9px 14px; border-radius: 999px; border: 2px solid #4c1d95;
+    background: linear-gradient(#a78bfa, #6d28d9); color: #fff;
+    font-weight: 800; font-size: 0.8rem; cursor: pointer;
+    box-shadow: 0 3px 0 #3b0f7a, 0 6px 12px rgba(0,0,0,0.35);
+  }
+  body.has-tabs .ny-fab { top: 106px; }
+  .ny-big { font-size: 4.5rem; line-height: 1.1; margin: 8px 0 2px; }
+  .ny-row { min-height: 24px; font-size: 1.1rem; letter-spacing: 2px; }
+  .ny-status { font-weight: 800; font-size: 0.85rem; margin-top: 6px; }
+  .ny-status.on { color: #1e7a4f; } .ny-status.off { color: #8a6100; }
   .xmas-btn.gift { background: linear-gradient(#f5b82e, #d99a14); color: #4a3200; box-shadow: 0 2px 0 #8a6100; }
   .xmas-btn[hidden] { display: none; }
   .xmas-spinner { display: inline-block; width: 14px; height: 14px; border: 3px solid #c9b48a; border-top-color: #2f6f4e; border-radius: 50%; animation: xmas-spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
@@ -1078,6 +1091,108 @@
     return () => { ended = true; timers.forEach(clearTimeout); };
   }
 
+  // ── Event Tahun Baru: tombol 🎆 Kembang Api + panel (craft -> nyalakan malam 18:00-23:59 WIB -> gacha) ──
+  // Penanda event: ada quest dengan minigameType 'newyear-firework' (dipilih admin di panel Pengaturan
+  // Minigame). Quest penanda itu TIDAK ditampilkan di daftar quest (lihat renderEventPanel): ia hanya
+  // menyalakan tombol, jadi tidak bisa diklaim gratis tanpa mengerjakan apa pun.
+  function eventHasNewYear(ev) {
+    return !!ev.quests && Object.values(ev.quests).some(q => q.minigameType === 'newyear-firework');
+  }
+
+  function openNewYearPanel(eventId) {
+    const overlay = document.createElement('div');
+    overlay.className = 'mg-overlay';
+    overlay.innerHTML = `
+      <div class="mg-card xmas-card" role="dialog" aria-modal="true">
+        <div class="mg-head">
+          <div class="mg-title">🎆 Kembang Api Tahun Baru</div>
+          <button type="button" class="mg-close" aria-label="Tutup">✕</button>
+        </div>
+        <div class="ny-big">🎆</div>
+        <div class="ny-row"></div>
+        <div class="xmas-stats">Memuat...</div>
+        <div class="ny-status"></div>
+        <div class="xmas-msg"></div>
+        <div class="xmas-actions">
+          <button type="button" class="xmas-btn" data-act="craft" disabled>🛠️ Craft Kembang Api (50 🪙)</button>
+          <button type="button" class="xmas-btn alt" data-act="launch" disabled>🚀 Nyalakan Kembang Api</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const q = (s) => overlay.querySelector(s);
+    const rowEl = q('.ny-row'), statsEl = q('.xmas-stats'), statusEl = q('.ny-status'), msgEl = q('.xmas-msg');
+    const craftBtn = q('[data-act="craft"]'), launchBtn = q('[data-act="launch"]');
+    let st = null, busy = false, alive = true, offset = 0;
+
+    const say = (t, err) => { msgEl.textContent = t || ''; msgEl.className = 'xmas-msg' + (err ? ' err' : ''); };
+    // Malam = 18:00-23:59 WIB (UTC+7), dihitung dari jam SERVER (serverNow) supaya akurat dan tetap
+    // berubah sendiri saat panel terbuka lama. Aturannya sama dengan backend; nilai isNight dari
+    // backend dipakai sebagai cadangan. Server tetap menolak kalau di luar jam malam.
+    const isNightNow = () => st && st.serverNow
+      ? new Date(Date.now() + offset + 7 * 3600 * 1000).getUTCHours() >= 18
+      : !!(st && st.isNight);
+
+    function render() {
+      if (!st) return;
+      const night = isNightNow();
+      rowEl.textContent = '🎇'.repeat(Math.min(st.crafted || 0, 12));
+      statsEl.textContent = `Kembang Api Dibuat: ${st.crafted || 0} | Sudah Dinyalakan: ${st.launched || 0}`;
+      statusEl.textContent = night ? '✅ Waktu Nyala (Malam)' : '⏳ Tunggu Malam (18:00-23:59)';
+      statusEl.className = 'ny-status ' + (night ? 'on' : 'off');
+      craftBtn.textContent = `🛠️ Craft Kembang Api (${st.craftCost || 50} 🪙)`;
+      craftBtn.disabled = busy || IS_PREVIEW;
+      launchBtn.disabled = busy || IS_PREVIEW || !(st.crafted > 0) || !night;
+    }
+
+    craftBtn.addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; render(); say('⏳ Memproses...');
+      const { ok, data } = await xmasApi('craft-firework', { eventId });
+      busy = false;
+      if (!alive) return;
+      if (!ok) { say(data.error || 'Gagal membuat kembang api. Coba lagi nanti.', true); render(); return; }
+      st.crafted = data.crafted;
+      say(`✅ Kembang api dibuat! Sisa koin: ${data.coinsLeft} 🪙`);
+      render();
+    });
+
+    // Nyalakan: spinner -> API -> hasil gacha lewat showXmasRewards (daftar teks yang sama dengan kado Natal).
+    // Daftar hadiah dibaca server dari event, bukan dikirim browser.
+    launchBtn.addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; render();
+      msgEl.className = 'xmas-msg';
+      msgEl.innerHTML = '<span class="xmas-spinner"></span> Menyalakan kembang api...';
+      const { ok, data } = await xmasApi('launch-firework', { eventId });
+      busy = false;
+      if (!alive) return;
+      if (!ok) { say(data.error || 'Gagal menyalakan kembang api. Coba lagi nanti.', true); render(); return; }
+      st.crafted = data.crafted; st.launched = data.launched;
+      say('🎆 Kembang api menyala!');
+      render();
+      showXmasRewards(data.rewards || []);
+    });
+
+    const tick = setInterval(render, 30000); // status malam berubah sendiri
+    const close = () => { alive = false; clearInterval(tick); overlay.remove(); };
+    q('.mg-close').addEventListener('click', close);
+
+    (async () => {
+      if (IS_PREVIEW) { // preview: data contoh, server tidak dipanggil
+        st = { crafted: 2, launched: 1, craftCost: 50, isNight: false };
+        say('👀 Preview: server tidak dipanggil');
+        return render();
+      }
+      const { ok, data } = await xmasApi('get-newyear-state');
+      if (!alive) return;
+      if (!ok) { statsEl.textContent = 'Gagal memuat kembang api'; say(data.error || 'Coba lagi nanti.', true); return; }
+      st = data;
+      if (data.serverNow) offset = data.serverNow - Date.now();
+      render();
+    })();
+  }
+  window.openNewYearPanel = openNewYearPanel;
+
   // ── Panel Pohon Natal: lihat pohon, craft bola (50 koin event), pasang bola, hitung mundur kado ──
   // Tombol muncul hanya di event yang punya quest minigame 'water-tree'.
   function eventHasXmas(ev) {
@@ -1273,7 +1388,8 @@
   }
 
   function renderEventPanel(ev, index, claimedMap) {
-    const quests = ev.quests ? Object.values(ev.quests) : [];
+    // quest penanda Tahun Baru ('newyear-firework') hanya untuk menyalakan tombol; tidak ditampilkan/diklaim
+    const quests = (ev.quests ? Object.values(ev.quests) : []).filter(q => q.minigameType !== 'newyear-firework');
     const claimed = claimedMap[ev.id] || {};
 
     const questCards = quests.length > 0
@@ -1300,6 +1416,7 @@
         </div>
         ${mascot}
         ${eventHasXmas(ev) ? `<button type="button" class="xmas-fab" onclick="openXmasPanel('${ev.id}')">🎄 Pohon Natal</button>` : ''}
+        ${eventHasNewYear(ev) ? `<button type="button" class="ny-fab" onclick="openNewYearPanel('${ev.id}')">🎆 Kembang Api</button>` : ''}
       </div>`;
   }
 
