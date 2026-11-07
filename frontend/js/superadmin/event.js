@@ -569,12 +569,15 @@ function saRenderMinigamePanel() {
     }).join('');
 }
 
-// Ganti jenis minigame: hanya quest 'minigame' yang sudah dicentang ikut berganti;
-// "Tanpa minigame" mengosongkan semuanya.
+// Ganti jenis minigame: SEMUA quest bertipe 'minigame' langsung memakai pilihan ini (termasuk yang
+// baru ditambahkan dan masih 'none'); "Tanpa minigame" mengosongkan semuanya.
+// Centang per quest di panel tetap bisa dipakai untuk mengecualikan satu quest sampai dropdown diganti lagi.
 function saSetGlobalMinigame(type) {
   saMinigameChoice = type || 'none';
   saQuestDraft.forEach(q => {
-    if (q.type === 'minigame' && q.minigameType && q.minigameType !== 'none') q.minigameType = saMinigameChoice;
+    if (q.type === 'minigame') {
+      q.minigameType = saMinigameChoice;
+    }
   });
   saRenderMinigamePanel();
 }
