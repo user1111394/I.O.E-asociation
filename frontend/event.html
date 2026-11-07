@@ -374,6 +374,24 @@
   .ny-row { min-height: 24px; font-size: 1.1rem; letter-spacing: 2px; }
   .ny-status { font-weight: 800; font-size: 0.85rem; margin-top: 6px; }
   .ny-status.on { color: #1e7a4f; } .ny-status.off { color: #8a6100; }
+  /* ══ Animasi peluncuran kembang api (CSS murni: transform + opacity, tanpa canvas) ══ */
+  .fw-overlay { position: fixed; inset: 0; z-index: 10002; background: rgba(5, 5, 20, 0.78); overflow: hidden; } /* menutup layar & memblokir ketukan */
+  .fw-rocket {
+    position: absolute; left: 50%; top: 100%; font-size: 3.2rem; line-height: 1;
+    transform: translate(-50%, 0) rotate(-45deg);          /* 🚀 bawaannya miring ke kanan-atas; diputar supaya lurus ke atas */
+    animation: fw-rise 0.8s cubic-bezier(0.4, 0, 0.9, 0.6) forwards;
+  }
+  @keyframes fw-rise { to { transform: translate(-50%, -70vh) rotate(-45deg); } } /* berhenti di top: 30vh */
+  .fw-explosion { position: absolute; left: 50%; top: calc(30vh + 1.6rem); width: 0; height: 0; } /* tepat di titik roket berhenti */
+  .fw-explosion span {
+    position: absolute; left: 0; top: 0; font-size: 1.6rem; line-height: 1; opacity: 0;
+    animation: fw-burst 0.88s ease-out forwards;           /* --dx / --dy diisi acak lewat JS */
+  }
+  @keyframes fw-burst {
+    0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.3); }
+    60%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1.3); }
+  }
   .xmas-btn.gift { background: linear-gradient(#f5b82e, #d99a14); color: #4a3200; box-shadow: 0 2px 0 #8a6100; }
   .xmas-btn[hidden] { display: none; }
   .xmas-spinner { display: inline-block; width: 14px; height: 14px; border: 3px solid #c9b48a; border-top-color: #2f6f4e; border-radius: 50%; animation: xmas-spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
@@ -1091,6 +1109,44 @@
     return () => { ended = true; timers.forEach(clearTimeout); };
   }
 
+  // Animasi peluncuran: roket naik (0,8 dtk) -> ledakan partikel (1 dtk) -> daftar hadiah (showXmasRewards).
+  // Mengembalikan Promise yang selesai setelah overlay dibersihkan dan hadiah ditampilkan.
+  function playFireworkAnimation(rewards) {
+    return new Promise((resolve) => {
+      const ov = document.createElement('div');
+      ov.className = 'fw-overlay';
+      const finish = () => { ov.remove(); try { showXmasRewards(rewards || []); } finally { resolve(); } };
+      // pengguna meminta gerakan dikurangi -> lewati animasi, langsung ke hadiah
+      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return finish();
+
+      const rocket = document.createElement('div');
+      rocket.className = 'fw-rocket';
+      rocket.textContent = '🚀';
+      ov.appendChild(rocket);
+      document.body.appendChild(ov);
+
+      setTimeout(() => { // roket sampai atas -> sembunyikan, ledakkan partikel
+        rocket.remove();
+        const boom = document.createElement('div');
+        boom.className = 'fw-explosion';
+        const icons = ['✨', '🎇', '🎆'];
+        const N = 14;
+        for (let i = 0; i < N; i++) {
+          const a = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.4; // tersebar rata ke segala arah
+          const d = 90 + Math.random() * 90;                              // jarak 90-180 px
+          const s = document.createElement('span');
+          s.textContent = icons[i % icons.length];
+          s.style.setProperty('--dx', Math.round(Math.cos(a) * d) + 'px');
+          s.style.setProperty('--dy', Math.round(Math.sin(a) * d) + 'px');
+          s.style.animationDelay = (Math.random() * 0.12).toFixed(2) + 's';
+          boom.appendChild(s);
+        }
+        ov.appendChild(boom);
+        setTimeout(finish, 1000); // ledakan memudar -> bersihkan -> hadiah
+      }, 800);
+    });
+  }
+
   // ── Event Tahun Baru: tombol 🎆 Kembang Api + panel (craft -> nyalakan malam 18:00-23:59 WIB -> gacha) ──
   // Penanda event: ada quest dengan minigameType 'newyear-firework' (dipilih admin di panel Pengaturan
   // Minigame). Quest penanda itu TIDAK ditampilkan di daftar quest (lihat renderEventPanel): ia hanya
@@ -1163,14 +1219,17 @@
       busy = true; render();
       msgEl.className = 'xmas-msg';
       msgEl.innerHTML = '<span class="xmas-spinner"></span> Menyalakan kembang api...';
+      const closeBtn = q('.mg-close');
+      closeBtn.disabled = true; // jangan tutup panel saat server & animasi berjalan: hadiah sudah dikreditkan, pemain harus melihatnya
       const { ok, data } = await xmasApi('launch-firework', { eventId });
       busy = false;
       if (!alive) return;
-      if (!ok) { say(data.error || 'Gagal menyalakan kembang api. Coba lagi nanti.', true); render(); return; }
+      if (!ok) { closeBtn.disabled = false; say(data.error || 'Gagal menyalakan kembang api. Coba lagi nanti.', true); render(); return; }
       st.crafted = data.crafted; st.launched = data.launched;
       say('🎆 Kembang api menyala!');
       render();
-      showXmasRewards(data.rewards || []);
+      await playFireworkAnimation(data.rewards || []); // roket -> ledakan -> showXmasRewards
+      closeBtn.disabled = false;
     });
 
     const tick = setInterval(render, 30000); // status malam berubah sendiri
