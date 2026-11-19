@@ -4,8 +4,9 @@
 // Hanya named export (tanpa export default).
 //
 // State (Upstash Redis): xmastree:{memberId} ->
-//   { growth, totalWaters, lastWateredAt, ornamentsCrafted, ornamentsInstalled, giftsReadyAt, giftsEventId }
-//   giftsEventId = event tempat bola dipasang; kado hanya bisa dibuka di event yang sama.
+//   { growth, totalWaters, lastWateredAt, ornamentsCrafted, ornamentsInstalled, giftsReadyAt, giftsEventId, treeEventId }
+//   treeEventId  = event pemilik pohon; giftsEventId = event tempat bola dipasang (kado dibuka di event yang sama).
+//   Kalau event asal sudah DIHAPUS, state direkonsiliasi (lihat reconcile): pohon direset bersih, kado tidak terkunci.
 // Koin event: eventcoin:{eventId}:{memberId}; koin global: coins:{memberId} (angka; dikelola bersama shop.js).
 //
 // KEAMANAN (Hidden Gacha): daftar hadiah (event.eventGachaPool; event lama: xmasGachaPool) dibaca SERVER dari event di Firebase,
@@ -29,13 +30,71 @@ const GACHA_MAX_COIN = 1000000;
 
 const DEFAULT_STATE = {
   growth: 0, totalWaters: 0, lastWateredAt: 0,
-  ornamentsCrafted: 0, ornamentsInstalled: 0, giftsReadyAt: null, giftsEventId: null,
+  ornamentsCrafted: 0, ornamentsInstalled: 0, giftsReadyAt: null, giftsEventId: null, treeEventId: null,
 };
 
 async function loadState(memberId) {
   const saved = await kvGet(`xmastree:${memberId}`);
   return { ...DEFAULT_STATE, ...(saved && typeof saved === 'object' ? saved : {}) };
 }
+
+// Selaraskan state dengan event yang sedang dibuka (eventId '' = klien lama: dilewati).
+//  1) Pohon milik event lain yang SUDAH DIHAPUS -> reset bersih (cegah "ghost state"). Bola & kado yang
+//     belum diambil DIPERTAHANKAN supaya hadiah pemain tidak hilang.
+//  2) Kado terpasang dari event yang sudah dihapus -> dipindah ke event ini (tidak ada deadlock "Kado event lain").
+//  3) Kado dari event lain yang MASIH ADA -> conflict (perilaku lama: buka dulu).
+// Hanya memanggil Firebase kalau event asal berbeda dari event yang dibuka. error = gagal memverifikasi (jaringan).
+async function reconcile(state, eventId) {
+  if (!eventId) return { state, reset: false, conflict: false, changed: false };
+  let s = { ...state };
+  let reset = false, conflict = false;
+  const seen = {};
+  const exists = async (id) => (id in seen ? seen[id] : (seen[id] = !!(await loadEvent(id))));
+  try {
+    const origin = s.treeEventId || s.giftsEventId || null;
+    if (origin && origin !== eventId && !(await exists(origin))) {
+      s = {
+        ...DEFAULT_STATE,
+        ornamentsCrafted: s.ornamentsCrafted || 0,
+        ornamentsInstalled: s.ornamentsInstalled || 0,
+        giftsReadyAt: s.ornamentsInstalled > 0 ? (s.giftsReadyAt ?? null) : null,
+        giftsEventId: s.ornamentsInstalled > 0 ? s.giftsEventId : null,
+      };
+      reset = true;
+    }
+    if (!s.treeEventId || reset) s.treeEventId = eventId;
+    if (s.ornamentsInstalled > 0 && s.giftsEventId && s.giftsEventId !== eventId) {
+      if (await exists(s.giftsEventId)) conflict = true;
+      else s.giftsEventId = eventId;
+    }
+  } catch (e) {
+    return { error: true };
+  }
+  const changed = Object.keys(DEFAULT_STATE).some((k) => s[k] !== state[k]);
+  return { state: s, reset, conflict, changed };
+}
+
+// Untuk aksi baca: simpan hasil rekonsiliasi kalau ada perubahan (reset/pengikatan event). Kalau kunci sedang
+// dipakai aksi lain, lewati penyimpanan (aksi berikutnya merekonsiliasi lagi).
+async function reconcileAndPersist(memberId, eventId) {
+  const first = await reconcile(await loadState(memberId), eventId);
+  if (first.error || !first.changed) return first;
+  const lockKey = `xmaslock:${memberId}`;
+  let locked = false;
+  try { locked = (await kvCmd('set', lockKey, '1', 'NX', 'EX', 5)) === 'OK'; } catch (e) { /* tanpa kunci: tidak menyimpan */ }
+  if (!locked) return first;
+  try {
+    const fresh = await reconcile(await loadState(memberId), eventId);
+    if (fresh.error) return first;
+    if (fresh.changed) await kvSet(`xmastree:${memberId}`, fresh.state);
+    return fresh;
+  } finally {
+    try { await kvCmd('del', lockKey); } catch (e) { /* kedaluwarsa sendiri dalam 5 dtk */ }
+  }
+}
+
+const OPT_EVENT_ID = (body) => (EVENT_ID_RE.test(String(body.eventId || '')) ? String(body.eventId) : '');
+const ERR_VERIFY = { error: 'Tidak bisa memverifikasi data event. Coba lagi.' };
 
 // Perintah Redis lewat REST (atomik di sisi Redis): DECRBY, INCRBY, SET NX EX, DEL, GET.
 export async function kvCmd(...args) {
@@ -125,7 +184,15 @@ export async function handleChristmas(ctx, res) {
 
   // ── Baca state (tanpa kunci: hanya membaca) ──
   if (action === 'get-xmas-tree-state') {
-    const s = await loadState(memberId);
+    const evId = OPT_EVENT_ID(body); // opsional: klien lama tidak mengirim -> tanpa rekonsiliasi
+    let s, stateReset = false;
+    if (evId) {
+      const rc = await reconcileAndPersist(memberId, evId);
+      if (rc.error) return res.status(502).json(ERR_VERIFY);
+      s = rc.state; stateReset = rc.reset;
+    } else {
+      s = await loadState(memberId);
+    }
     return res.status(200).json({
       success: true,
       growth: s.growth,
@@ -135,14 +202,18 @@ export async function handleChristmas(ctx, res) {
       giftsReadyAt: s.giftsReadyAt,
       craftCost: ORNAMENT_COST,
       maxGrowth: XMAS_TREE_MAX_GROWTH,
+      stateReset, // true = pohon baru direset karena event lama sudah dihapus
       serverNow: Date.now(), // untuk hitung mundur yang akurat walau jam HP salah
     });
   }
 
   // ── Siram pohon (cooldown 24 jam) ──
   if (action === 'water-xmas-tree') {
+    const evId = OPT_EVENT_ID(body);
     return withMemberLock(memberId, res, async () => {
-      const state = await loadState(memberId);
+      const rc = await reconcile(await loadState(memberId), evId);
+      if (rc.error) return res.status(502).json(ERR_VERIFY);
+      const state = rc.state;
       const now = Date.now();
       const wait = (state.lastWateredAt || 0) + XMAS_TREE_COOLDOWN_MS - now;
       if (state.lastWateredAt && wait > 0) {
@@ -160,7 +231,7 @@ export async function handleChristmas(ctx, res) {
         lastWateredAt: now,
       };
       if (!(await kvSet(stateKey, next))) return res.status(500).json({ error: 'Gagal menyimpan pertumbuhan pohon. Coba lagi.' });
-      return res.status(200).json({ success: true, growth: next.growth, maxGrowth: XMAS_TREE_MAX_GROWTH, coins: XMAS_TREE_COINS });
+      return res.status(200).json({ success: true, growth: next.growth, maxGrowth: XMAS_TREE_MAX_GROWTH, coins: XMAS_TREE_COINS, stateReset: rc.reset });
     });
   }
 
@@ -169,6 +240,8 @@ export async function handleChristmas(ctx, res) {
     const eventId = String(body.eventId || '');
     if (!EVENT_ID_RE.test(eventId)) return res.status(400).json({ error: 'eventId tidak valid' });
     return withMemberLock(memberId, res, async () => {
+      const rc = await reconcile(await loadState(memberId), eventId);
+      if (rc.error) return res.status(502).json(ERR_VERIFY);
       const coinKey = `eventcoin:${eventId}:${memberId}`;
       const raw = await kvCmd('get', coinKey);
       const balance = raw === null || raw === undefined ? 0 : Number(raw);
@@ -181,7 +254,7 @@ export async function handleChristmas(ctx, res) {
         await kvCmd('incrby', coinKey, ORNAMENT_COST);
         return res.status(400).json({ error: 'Koin tidak cukup' });
       }
-      const state = await loadState(memberId);
+      const state = rc.state;
       const next = { ...state, ornamentsCrafted: (state.ornamentsCrafted || 0) + 1 };
       if (!(await kvSet(stateKey, next))) {
         await kvCmd('incrby', coinKey, ORNAMENT_COST); // gagal simpan -> koin dikembalikan
@@ -196,10 +269,13 @@ export async function handleChristmas(ctx, res) {
     const eventId = String(body.eventId || '');
     if (!EVENT_ID_RE.test(eventId)) return res.status(400).json({ error: 'eventId tidak valid' });
     return withMemberLock(memberId, res, async () => {
-      const state = await loadState(memberId);
+      const rc = await reconcile(await loadState(memberId), eventId);
+      if (rc.error) return res.status(502).json(ERR_VERIFY);
+      const state = rc.state;
       if (!state.ornamentsCrafted) return res.status(400).json({ error: 'Belum ada bola yang dibuat' });
-      // satu kelompok kado = satu event (cegah memilih pool event lain saat membuka)
-      if (state.ornamentsInstalled > 0 && state.giftsEventId && state.giftsEventId !== eventId) {
+      // satu kelompok kado = satu event yang MASIH ADA (cegah memilih pool event lain saat membuka);
+      // kado dari event yang sudah dihapus dipindah ke event ini oleh reconcile
+      if (rc.conflict) {
         return res.status(400).json({ error: 'Kado event lain belum dibuka. Buka dulu sebelum memasang bola di event ini.' });
       }
       const now = Date.now();
@@ -225,15 +301,17 @@ export async function handleChristmas(ctx, res) {
     const eventId = String(body.eventId || '');
     if (!EVENT_ID_RE.test(eventId)) return res.status(400).json({ error: 'eventId tidak valid' });
     return withMemberLock(memberId, res, async () => {
-      const state = await loadState(memberId);
+      const loaded = await loadState(memberId);
       const now = Date.now();
-      if (!(state.ornamentsInstalled > 0)) return res.status(400).json({ error: 'Belum ada bola terpasang' });
-      if (!state.giftsReadyAt || state.giftsReadyAt > now) {
-        return res.status(400).json({ error: `Kado belum siap. Tunggu ${fmtWait((state.giftsReadyAt || now) - now)}.`, giftsReadyAt: state.giftsReadyAt });
+      if (!(loaded.ornamentsInstalled > 0)) return res.status(400).json({ error: 'Belum ada bola terpasang' });
+      if (!loaded.giftsReadyAt || loaded.giftsReadyAt > now) {
+        return res.status(400).json({ error: `Kado belum siap. Tunggu ${fmtWait((loaded.giftsReadyAt || now) - now)}.`, giftsReadyAt: loaded.giftsReadyAt });
       }
-      if (state.giftsEventId && state.giftsEventId !== eventId) {
-        return res.status(400).json({ error: 'Kado ini berasal dari event lain.' });
-      }
+      // kado dari event lain yang MASIH ADA ditolak; dari event yang sudah dihapus boleh dibuka di event ini (reconcile)
+      const rc = await reconcile(loaded, eventId);
+      if (rc.error) return res.status(502).json(ERR_VERIFY);
+      if (rc.conflict) return res.status(400).json({ error: 'Kado ini berasal dari event lain.' });
+      const state = rc.state;
 
       let ev;
       try { ev = await loadEvent(eventId); } catch (e) { return res.status(502).json({ error: 'Tidak bisa membaca data event. Coba lagi.' }); }
