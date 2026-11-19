@@ -392,6 +392,24 @@
     60%  { opacity: 1; }
     100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1.3); }
   }
+  /* ══ Panel Pohon Natal: langit malam + tanah bersalju + salju jatuh (CSS murni) ══ */
+  .xmas-card.xmas-snow { padding: 0; overflow: hidden; border-color: #9fb8d6; background: #eaf2fb; }
+  .xmas-top { background: linear-gradient(#1c3557, #2f5d8c 70%, #4a7fb0); padding: 12px 12px 0; }
+  .xmas-snow .mg-title { color: #fff; }
+  .xmas-scene { position: relative; height: 190px; overflow: hidden; margin: 4px -12px 0; text-align: center; }
+  .xmas-scene .xmas-tree { position: relative; z-index: 1; margin: 10px 0 0; }
+  .xmas-scene .xmas-orn { position: relative; z-index: 2; color: #fff; }
+  .xmas-scene .snow-layer { z-index: 3; }
+  .xmas-scene .snowflake { animation-name: snow-fall-short; }
+  .xmas-scene .snow-pile { height: 72px; }
+  .xmas-ground { padding: 12px; background: linear-gradient(#f7fbff, #dbe8f5); }
+  @keyframes snow-fall-short {
+    0%   { transform: translate3d(0, -14px, 0); opacity: 0; }
+    10%  { opacity: 0.95; }
+    30%  { transform: translate3d(var(--sway, 14px), 55px, 0); }
+    60%  { transform: translate3d(calc(var(--sway, 14px) * -1), 115px, 0); }
+    100% { transform: translate3d(0, 200px, 0); opacity: 0; }
+  }
   .xmas-btn.gift { background: linear-gradient(#f5b82e, #d99a14); color: #4a3200; box-shadow: 0 2px 0 #8a6100; }
   .xmas-btn[hidden] { display: none; }
   .xmas-spinner { display: inline-block; width: 14px; height: 14px; border: 3px solid #c9b48a; border-top-color: #2f6f4e; border-radius: 50%; animation: xmas-spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
@@ -734,7 +752,8 @@
         if (IS_PREVIEW) return say('🎮 Menang! (preview — klaim dinonaktifkan)', '#1e7a4f');
         claimQuestCore(eventId, questId, rewardCoin, type);
       },
-      (reason, message) => { btnEl.disabled = false; say('😅 ' + (message || 'Belum berhasil — coba lagi!'), '#c0392b'); }
+      (reason, message) => { btnEl.disabled = false; say('😅 ' + (message || 'Belum berhasil — coba lagi!'), '#c0392b'); },
+      { eventId }
     );
   }
   window.claimQuest = claimQuest;
@@ -888,7 +907,7 @@
   // openMinigame(type, onWin, onLose): onWin() bila menang; onLose(reason) bila waktu habis
   // ('timeout') atau ditutup pemain ('cancel'). Tipe tak dikenal -> lolos (jangan blokir
   // reward karena salah konfigurasi).
-  function openMinigame(type, onWin, onLose) {
+  function openMinigame(type, onWin, onLose, opts) {
     const def = MINIGAMES[type];
     if (!def) { console.warn('Minigame tidak dikenal:', type); if (onWin) onWin(); return; }
 
@@ -936,6 +955,7 @@
 
     cleanup = def.start({
       area,
+      eventId: opts && opts.eventId, // untuk minigame yang butuh tahu event-nya (water-tree)
       setInfo: (t) => { infoEl.textContent = t; },
       setTime: (sec, frac) => { timeEl.textContent = `⏱️ ${Math.ceil(sec)}s`; barEl.style.width = (frac * 100) + '%'; },
       win: () => finish('win'),
@@ -1055,7 +1075,7 @@
         const res = await fetch('/api/tycoon', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'water-xmas-tree', memberId: m.memberId, sessionToken: m.sessionToken }),
+          body: JSON.stringify({ action: 'water-xmas-tree', memberId: m.memberId, sessionToken: m.sessionToken, eventId: api.eventId }),
         });
         let data = {};
         try { data = await res.json(); } catch (e) { /* respons bukan JSON */ }
@@ -1088,7 +1108,7 @@
         const res = await fetch('/api/tycoon', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get-xmas-tree-state', memberId: m.memberId, sessionToken: m.sessionToken }),
+          body: JSON.stringify({ action: 'get-xmas-tree-state', memberId: m.memberId, sessionToken: m.sessionToken, eventId: api.eventId }),
         });
         const data = await res.json();
         if (ended) return;
@@ -1307,24 +1327,44 @@
     document.body.appendChild(ov);
   }
 
+  // Serpihan salju acak (CSS murni; animasi di .snowflake). Dipakai latar panel Pohon Natal.
+  function snowFlakesHtml(n) {
+    return Array.from({ length: n }, () => {
+      const left = (3 + Math.random() * 94).toFixed(1);
+      const dur = (4 + Math.random() * 4).toFixed(1);
+      const delay = (-Math.random() * 8).toFixed(1);
+      const size = Math.round(9 + Math.random() * 9);
+      const sway = Math.round(8 + Math.random() * 14);
+      return `<span class="snowflake" style="left:${left}%; animation-duration:${dur}s; animation-delay:${delay}s; font-size:${size}px; --sway:${sway}px;">❄️</span>`;
+    }).join('');
+  }
+
   function openXmasPanel(eventId) {
     const overlay = document.createElement('div');
     overlay.className = 'mg-overlay';
     overlay.innerHTML = `
-      <div class="mg-card xmas-card" role="dialog" aria-modal="true">
-        <div class="mg-head">
-          <div class="mg-title">🎄 Pohon Natal</div>
-          <button type="button" class="mg-close" aria-label="Tutup">✕</button>
+      <div class="mg-card xmas-card xmas-snow" role="dialog" aria-modal="true">
+        <div class="xmas-top">
+          <div class="mg-head">
+            <div class="mg-title">🎄 Pohon Natal</div>
+            <button type="button" class="mg-close" aria-label="Tutup">✕</button>
+          </div>
+          <div class="xmas-scene">
+            <div class="snow-layer">${snowFlakesHtml(14)}</div>
+            <div class="snow-pile"></div>
+            <div class="xmas-tree">🌱</div>
+            <div class="xmas-orn"></div>
+          </div>
         </div>
-        <div class="xmas-tree">🌱</div>
-        <div class="xmas-orn"></div>
-        <div class="xmas-stats">Memuat...</div>
-        <div class="xmas-gift"></div>
-        <div class="xmas-msg"></div>
-        <div class="xmas-actions">
-          <button type="button" class="xmas-btn gift" data-act="open" hidden>🎁 Buka Kado</button>
-          <button type="button" class="xmas-btn" data-act="craft" disabled>🛠️ Craft Bola (50 🪙)</button>
-          <button type="button" class="xmas-btn alt" data-act="install" disabled>🎄 Pasang Bola</button>
+        <div class="xmas-ground">
+          <div class="xmas-stats">Memuat...</div>
+          <div class="xmas-gift"></div>
+          <div class="xmas-msg"></div>
+          <div class="xmas-actions">
+            <button type="button" class="xmas-btn gift" data-act="open" hidden>🎁 Buka Kado</button>
+            <button type="button" class="xmas-btn" data-act="craft" disabled>🛠️ Craft Bola (50 🪙)</button>
+            <button type="button" class="xmas-btn alt" data-act="install" disabled>🎄 Pasang Bola</button>
+          </div>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -1407,12 +1447,13 @@
         say('👀 Preview: server tidak dipanggil');
         return render();
       }
-      const { ok, data } = await xmasApi('get-xmas-tree-state');
+      const { ok, data } = await xmasApi('get-xmas-tree-state', { eventId });
       if (!alive) return;
       if (!ok) { statsEl.textContent = 'Gagal memuat pohon'; say(data.error || 'Coba lagi nanti.', true); return; }
       st = data;
       if (data.serverNow) offset = data.serverNow - Date.now();
       render();
+      if (data.stateReset) say('🎄 Event baru dimulai: pohon direset. Bola & kado dari event lama tetap bisa dipakai.');
     })();
   }
   window.openXmasPanel = openXmasPanel;
