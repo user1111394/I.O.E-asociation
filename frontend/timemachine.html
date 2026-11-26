@@ -176,6 +176,14 @@ body.embed .home-link { display:none; }
   .logo, .wormhole-ring, .msg, .loading-dots::after { animation:none !important; }
   .wormhole-ring { transform:translate(-50%,-50%) scale(.6); opacity:.5; }
 }
+/* ── GERBANG LOGIN (Time Machine khusus member) ── */
+.gate { position:fixed; inset:0; z-index:100; display:none; align-items:center; justify-content:center; padding:20px; background:rgba(5,8,16,.94); }
+.gate.on { display:flex; }
+.gate-box { max-width:420px; width:100%; text-align:center; border:1px solid var(--border); background:var(--panel); padding:28px 22px; border-radius:12px; box-shadow:0 0 40px rgba(255,111,0,.2); }
+.gate-title { font-family:'Orbitron',system-ui,sans-serif; color:var(--amber); font-size:1.15rem; letter-spacing:.15em; margin-bottom:12px; }
+.gate-msg { line-height:1.6; margin-bottom:18px; }
+.gate-btn { display:inline-block; padding:12px 22px; border:1px solid var(--amber); color:var(--amber); text-decoration:none; font-family:'Orbitron',system-ui,sans-serif; letter-spacing:.12em; border-radius:6px; }
+.gate-btn:hover { background:rgba(255,179,0,.12); }
 </style>
 </head>
 <body>
@@ -257,6 +265,13 @@ body.embed .home-link { display:none; }
 </div>
 
 <script src="js/device.js"></script>
+<div class="gate" id="loginGate" role="dialog" aria-modal="true">
+  <div class="gate-box">
+    <div class="gate-title" id="gateTitle">KHUSUS MEMBER</div>
+    <div class="gate-msg" id="gateMsg"></div>
+    <a class="gate-btn" id="gateBtn" href="login.html" target="_top">MASUK / DAFTAR</a>
+  </div>
+</div>
 <script>
 (() => {
 'use strict';
@@ -279,10 +294,33 @@ async function ensureDeviceId() {
   catch (e) { id = 'tm-' + Math.random().toString(36).slice(2); }
   return (state.deviceId = id);
 }
+// ── Akun: Time Machine hanya untuk member terdaftar (server juga menolak tanpa sesi valid) ──
+const SESSION_KEY = 'ioe_account_session';
+function getSession() {
+  try { const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); return s && s.memberId && s.sessionToken ? s : null; } catch (e) { return null; }
+}
+const GATE_TEXT = {
+  LOGIN_REQUIRED: ['KHUSUS MEMBER', 'Time Machine hanya bisa dipakai setelah masuk. Masuk atau daftar akun I.O.E dulu ya.', true],
+  SESSION_INVALID: ['SESI BERAKHIR', 'Sesi loginmu sudah tidak berlaku (mungkin kamu masuk di perangkat lain). Silakan masuk lagi.', true],
+  BANNED: ['AKUN DIBATASI', 'Akunmu sedang dibatasi, jadi Time Machine tidak bisa dipakai.', false],
+  AUTH_UNAVAILABLE: ['LAYANAN AKUN GANGGUAN', 'Server belum bisa memeriksa akunmu. Tutup halaman ini dan coba lagi sebentar lagi.', false],
+};
+function showLoginGate(code) {
+  const t = GATE_TEXT[code] || GATE_TEXT.LOGIN_REQUIRED;
+  $('gateTitle').textContent = t[0]; $('gateMsg').textContent = t[1]; $('gateBtn').style.display = t[2] ? '' : 'none';
+  $('loginGate').classList.add('on');
+}
 async function api(body, signal) {
   const deviceId = await ensureDeviceId();
-  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify({ timeMachineMode: true, deviceId, ...body }) });
+  const sess = getSession();
+  if (!sess) { showLoginGate('LOGIN_REQUIRED'); const e = new Error('Masuk dulu untuk memakai Time Machine.'); e.status = 401; throw e; }
+  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify({ timeMachineMode: true, deviceId, memberId: sess.memberId, sessionToken: sess.sessionToken, ...body }) });
   const d = await r.json().catch(() => ({}));
+  if (!r.ok && GATE_TEXT[d.code]) {
+    // sesi tidak berlaku -> hapus sesi lokal (sama seperti clearIoeSession di ioe-auth.js) dan minta masuk lagi
+    if (d.code === 'SESSION_INVALID' || d.code === 'LOGIN_REQUIRED') { try { localStorage.removeItem(SESSION_KEY); } catch (e) {} }
+    showLoginGate(d.code);
+  }
   if (!r.ok) { const e = new Error(d.error || 'Terjadi kesalahan'); e.status = r.status; e.data = d; throw e; }
   return d;
 }
@@ -535,6 +573,7 @@ async function sendChat() {
 $('sendBtn').addEventListener('click', sendChat);
 $('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
 $('chatBack').addEventListener('click', () => history.back());
+if (!getSession()) showLoginGate('LOGIN_REQUIRED'); // belum login: gerbang langsung tampil, tanpa menunggu klik
 })();
 </script>
 </body>
