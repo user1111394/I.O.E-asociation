@@ -1214,6 +1214,65 @@ async function handleTimeMachineMode(ctx, res) {
 // #ROUTER# — pintu masuk: validasi awal, lalu arahkan ke handler mode yang sesuai.
 // Urutan mode: gambar AI -> gambar 3D -> sandbox 3D -> chat biasa (default).
 // ═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════
+   #GERBANG AKUN#  Cosmos AI & Time Machine hanya untuk member terdaftar.
+   Semua mode (chat, cari web, reasoning, gambar, 3D, sandbox, Time Machine) lewat handler() di bawah,
+   jadi SATU gerbang di sana melindungi semuanya. Dicek di SERVER: kalau hanya di halaman, siapa pun tetap
+   bisa memanggil /api/ai langsung dan menghabiskan kuota Groq. Aturannya sama dengan action 'verify' di
+   auth.js dan riwayat chat: account:{memberId}.currentSession harus sama dengan sessionToken, dan akun
+   tidak boleh banned. Kuota harian TETAP per perangkat (deviceId), tidak berubah.
+   Kode galat (untuk klien): LOGIN_REQUIRED, SESSION_INVALID, BANNED, AUTH_UNAVAILABLE.
+   Saklar darurat: env AI_REQUIRE_LOGIN=off mematikan gerbang (default: aktif).
+═══════════════════════════════════════════════ */
+const MEMBER_ID_RE = /^[A-Za-z0-9_-]{3,40}$/; // sama dengan ID_RE di _history/chatHistory.js
+const MEMBER_CACHE_MS = 20000;                // hemat panggilan Redis; ban/logout berlaku paling lambat 20 dtk
+const memberCache = new Map();                // `${memberId}:${token}` -> waktu kedaluwarsa (hanya sesi VALID)
+
+async function requireMember(body, res) {
+  if (String(process.env.AI_REQUIRE_LOGIN || '').toLowerCase() === 'off') return true;
+  const { memberId, sessionToken } = body || {};
+  if (!MEMBER_ID_RE.test(String(memberId || '')) || !sessionToken || typeof sessionToken !== 'string') {
+    res.status(401).json({ error: 'Belum login. Masuk atau daftar akun dulu untuk memakai AI.', code: 'LOGIN_REQUIRED' });
+    return false;
+  }
+  const cacheKey = `${memberId}:${sessionToken}`;
+  const hit = memberCache.get(cacheKey);
+  if (hit && hit > Date.now()) return true;
+  memberCache.delete(cacheKey);
+
+  const url = process.env.KV_REST_API_URL, token = process.env.KV_REST_API_TOKEN;
+  if (!url || !token) {
+    // gagal TERTUTUP: gerbang akun tidak boleh terbuka hanya karena penyimpanan akun tidak terkonfigurasi
+    res.status(503).json({ error: 'Layanan akun sedang gangguan. Coba lagi nanti.', code: 'AUTH_UNAVAILABLE' });
+    return false;
+  }
+  let account = null;
+  try {
+    const r = await fetch(`${url}/get/${encodeURIComponent('account:' + memberId)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await r.json();
+    if (data.result !== null && data.result !== undefined) {
+      let parsed = JSON.parse(data.result);
+      // kompatibilitas data lama yang pernah double-stringify (sama seperti kvGet di auth.js)
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      account = parsed && typeof parsed === 'object' ? parsed : null;
+    }
+  } catch (e) {
+    res.status(503).json({ error: 'Layanan akun sedang gangguan. Coba lagi nanti.', code: 'AUTH_UNAVAILABLE' });
+    return false;
+  }
+  if (!account || account.currentSession !== sessionToken) {
+    res.status(401).json({ error: 'Sesi login tidak berlaku (mungkin kamu masuk di perangkat lain). Silakan masuk lagi.', code: 'SESSION_INVALID' });
+    return false;
+  }
+  if (account.banned) {
+    res.status(403).json({ error: 'Akunmu sedang dibatasi, jadi AI tidak bisa dipakai.', code: 'BANNED' });
+    return false;
+  }
+  if (memberCache.size > 500) memberCache.clear();
+  memberCache.set(cacheKey, Date.now() + MEMBER_CACHE_MS);
+  return true;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -1221,6 +1280,9 @@ export default async function handler(req, res) {
 
   // Riwayat chat (Firestore per akun): tidak butuh kunci Groq maupun deviceId, jadi dicek paling awal.
   if (req.body && req.body.action === 'chat-history') return handleChatHistory(req.body, res);
+
+  // Gerbang akun: semua mode di bawah ini wajib login (lihat #GERBANG AKUN#).
+  if (!(await requireMember(req.body, res))) return;
 
   const availableKeys = collectGroqKeys();
   if (availableKeys.length === 0) {
